@@ -1,13 +1,13 @@
 {
     "api": "describe-cluster",
     "apiKey": 60,
-    "section": "DescribeCluster API (key 60, v0)",
-    "description": "Wire vectors of the DescribeCluster API (key 60, v0), replayed by tests/Compliance.",
+    "section": "DescribeCluster API (key 60, v0 and v1)",
+    "description": "Wire vectors of the DescribeCluster API (key 60, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describecluster.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeCluster request v0 (Kafka 2.8, KIP-700) **without** the acl flag - the smallest request of this protocol: the request header v2 and a single boolean, and the two tag buffers that a flexible frame always carries.",
@@ -25,7 +25,7 @@
         {
             "id": "describecluster.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the container: the error code 0, the cluster id, the controller id 0 and the one broker of the cluster with a **null** rack. `cluster_authorized_operations` is `80 00 00 00` - `Integer.MIN_VALUE`, the default of the specification, which is what a request that did not ask for the bit field is answered with and not an error.",
@@ -53,7 +53,7 @@
         {
             "id": "describecluster.request.v0.with-operations",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequestV0",
             "version": 0,
             "source": "broker",
             "description": "The same request with `include_cluster_authorized_operations` set: one byte differs.",
@@ -71,7 +71,7 @@
         {
             "id": "describecluster.response.v0.with-operations",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponseV0",
             "version": 0,
             "source": "broker",
             "description": "And its answer, whose last field is now **8096** (`00 00 1f a0`, `0b1111110100000`) - the bits 5, 7, 8, 9, 10, 11 and 12 of `AclOperation` @ 2.8.2, i.e. `CREATE`, `ALTER`, `DESCRIBE`, `CLUSTER_ACTION`, `DESCRIBE_CONFIGS`, `ALTER_CONFIGS` and `IDEMPOTENT_WRITE`: the whole set `AclEntry.supportedOperations(CLUSTER)` names, because the container runs without an authorizer and allows everything.",
@@ -94,6 +94,271 @@
                     }
                 ],
                 "clusterAuthorizedOperations": 8096
+            }
+        },
+        {
+            "id": "describecluster.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "DescribeCluster request **v1** (Kafka 3.7, KIP-919) without the acl flag: the version 0 frame plus the `endpoint_type` byte, `01` - the brokers, which is the `\"default\": \"1\"` of the field and the only thing a version 0 frame could mean.",
+            "hex": "00000020003c000100000e7500126b61666b612d636c69656e742d74312d333700000100",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 60,
+                "apiVersion": 1,
+                "correlationId": 3701,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "includeClusterAuthorizedOperations": false,
+                "endpointType": 1
+            }
+        },
+        {
+            "id": "describecluster.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer of the KRaft node, one byte longer than the version 0 one: the `endpoint_type` `01` sits between the error message and the cluster id. `controller_id` is **1**, the id of the one broker - `KafkaApis.handleDescribeCluster` @ 3.9.2 maps a `KRaftCachedControllerId` to `metadataCache.getRandomAliveBrokerId`, because the real controller is not a broker and has no endpoint a client may use.",
+            "hex": "0000004200000e75000000000000000001175f71364361375f615139796d61694f6a4e756e576b410000000102000000010a3132372e302e302e310000238400008000000000",
+            "fields": {
+                "messageSize": 66,
+                "correlationId": 3701,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "endpointType": 1,
+                "clusterId": "_q6Ca7_aQ9ymaiOjNunWkA",
+                "controllerId": 1,
+                "brokers": {
+                    "1": {
+                        "brokerId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                },
+                "clusterAuthorizedOperations": -2147483648
+            }
+        },
+        {
+            "id": "describecluster.request.v1.with-operations",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The same request with `include_cluster_authorized_operations` set: one byte differs, as in version 0.",
+            "hex": "00000020003c000100000e7600126b61666b612d636c69656e742d74312d333700010100",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 60,
+                "apiVersion": 1,
+                "correlationId": 3702,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "includeClusterAuthorizedOperations": true,
+                "endpointType": 1
+            }
+        },
+        {
+            "id": "describecluster.response.v1.with-operations",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "And its answer, whose last field is **8096** (`00 00 1f a0`) - the whole set `AclEntry.supportedOperations(CLUSTER)` names. The node runs the `StandardAuthorizer`, but the principal of a PLAINTEXT connection is `ANONYMOUS`, one of its `super.users`.",
+            "hex": "0000004200000e76000000000000000001175f71364361375f615139796d61694f6a4e756e576b410000000102000000010a3132372e302e302e3100002384000000001fa000",
+            "fields": {
+                "messageSize": 66,
+                "correlationId": 3702,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "endpointType": 1,
+                "clusterId": "_q6Ca7_aQ9ymaiOjNunWkA",
+                "controllerId": 1,
+                "brokers": {
+                    "1": {
+                        "brokerId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                },
+                "clusterAuthorizedOperations": 8096
+            }
+        },
+        {
+            "id": "describecluster.request.v1.controllers",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The `endpoint_type` **2**: the same question asked about the **controllers** of the cluster, sent to a broker listener.",
+            "hex": "00000020003c000100000e7700126b61666b612d636c69656e742d74312d333700000200",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 60,
+                "apiVersion": 1,
+                "correlationId": 3703,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "includeClusterAuthorizedOperations": false,
+                "endpointType": 2
+            }
+        },
+        {
+            "id": "describecluster.response.v1.controllers",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **114** `MismatchedEndpointType` of KIP-919, the error code Kafka 3.7 added for exactly this: `The request was sent to an endpoint of type BROKER, but we wanted an endpoint of type CONTROLLER`. The answer is the refusal alone - `AuthHelper.computeDescribeClusterResponse` @ 3.9.2 returns a bare response data - so the `endpoint_type` is the `1` of the schema default and says nothing, the cluster id is the **empty string**, the controller id is -1 and the broker array is empty.",
+            "hex": "0000007800000e7700000000000072615468652072657175657374207761732073656e7420746f20616e20656e64706f696e74206f6620747970652042524f4b45522c206275742077652077616e74656420616e20656e64706f696e74206f66207479706520434f4e54524f4c4c45520101ffffffff018000000000",
+            "fields": {
+                "messageSize": 120,
+                "correlationId": 3703,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 114,
+                "errorMessage": "The request was sent to an endpoint of type BROKER, but we wanted an endpoint of type CONTROLLER",
+                "endpointType": 1,
+                "clusterId": "",
+                "controllerId": -1,
+                "brokers": [],
+                "clusterAuthorizedOperations": -2147483648
+            }
+        },
+        {
+            "id": "describecluster.request.v1.unknown-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "An `endpoint_type` of **3**, which no version of the api defines.",
+            "hex": "00000020003c000100000e7800126b61666b612d636c69656e742d74312d333700000300",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 60,
+                "apiVersion": 1,
+                "correlationId": 3704,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "includeClusterAuthorizedOperations": false,
+                "endpointType": 3
+            }
+        },
+        {
+            "id": "describecluster.response.v1.unknown-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **115** `UnsupportedEndpointType` with the byte in its message: `Unsupported endpoint type 3`. `EndpointType.fromId` maps everything but 1 and 2 to `UNKNOWN`, and the unknown type is checked **before** the mismatch, so a nonsense byte never produces the 114. A version **0** request would be answered the 42 `InvalidRequest` here instead, but no version 0 frame carries a type at all.",
+            "hex": "0000003300000e78000000000000731c556e737570706f7274656420656e64706f696e74207479706520330101ffffffff018000000000",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 3704,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 115,
+                "errorMessage": "Unsupported endpoint type 3",
+                "endpointType": 1,
+                "clusterId": "",
+                "controllerId": -1,
+                "brokers": [],
+                "clusterAuthorizedOperations": -2147483648
+            }
+        },
+        {
+            "id": "describecluster.request.v1.zero-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The `endpoint_type` **0**, which is the `UNKNOWN` of the enum itself and the one value of `Admin\\EndpointType` that a caller can name and the server refuses.",
+            "hex": "00000020003c000100000e7900126b61666b612d636c69656e742d74312d333700000000",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 60,
+                "apiVersion": 1,
+                "correlationId": 3705,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "includeClusterAuthorizedOperations": false,
+                "endpointType": 0
+            }
+        },
+        {
+            "id": "describecluster.response.v1.zero-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The same **115**, with the 0 in its message: the zero of the enum is not \"not asked\", it is a type the server does not support.",
+            "hex": "0000003300000e79000000000000731c556e737570706f7274656420656e64706f696e74207479706520300101ffffffff018000000000",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 3705,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 115,
+                "errorMessage": "Unsupported endpoint type 0",
+                "endpointType": 1,
+                "clusterId": "",
+                "controllerId": -1,
+                "brokers": [],
+                "clusterAuthorizedOperations": -2147483648
+            }
+        },
+        {
+            "id": "describecluster.request.v0.node",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "The very same question at **version 0** on the node, which still serves it: one byte shorter, because the `endpoint_type` of KIP-919 is not in the frame.",
+            "hex": "0000001f003c000000000e7a00126b61666b612d636c69656e742d74312d3337000000",
+            "fields": {
+                "messageSize": 31,
+                "apiKey": 60,
+                "apiVersion": 0,
+                "correlationId": 3706,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "includeClusterAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "describecluster.response.v0.node",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "And its answer, one byte shorter than the version 1 one for the same reason. Everything else is identical - the cluster id, the controller id 1 and the one broker - which is what makes the pair the cheapest demonstration of what the version really added.",
+            "hex": "0000004100000e7a0000000000000000175f71364361375f615139796d61694f6a4e756e576b410000000102000000010a3132372e302e302e310000238400008000000000",
+            "fields": {
+                "messageSize": 65,
+                "correlationId": 3706,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "clusterId": "_q6Ca7_aQ9ymaiOjNunWkA",
+                "controllerId": 1,
+                "brokers": {
+                    "1": {
+                        "brokerId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                },
+                "clusterAuthorizedOperations": -2147483648
             }
         }
     ]

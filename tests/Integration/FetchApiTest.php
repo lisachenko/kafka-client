@@ -30,6 +30,9 @@ use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
+use Protocol\Kafka\Protocol\Request\FetchRequestV13;
+use Protocol\Kafka\Protocol\Request\FetchRequestV15;
+use Protocol\Kafka\Protocol\Request\FetchRequestV16;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
@@ -63,7 +66,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ({@see FetchSessionApiTest}) - this one only checks that a version 7 request **without** a session is served
  * like a version 6 one, which is what {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]
@@ -318,7 +321,10 @@ final class FetchApiTest extends IntegrationTestCase
             bin2hex((string) $versionEight->messageSet)
         );
         self::assertSame(8, FetchRequestV8::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(12, FetchRequest::VERSION, 'and the client sends the version Kafka 2.7 added');
+        self::assertSame(13, FetchRequestV13::VERSION, 'the version Kafka 3.1 added');
+        self::assertSame(15, FetchRequestV15::VERSION, 'the version Kafka 3.5 added');
+        self::assertSame(16, FetchRequestV16::VERSION, 'the version Kafka 3.7 added');
+        self::assertSame(17, FetchRequest::VERSION, 'and the client sends the version Kafka 3.9 added');
     }
 
     public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void
@@ -338,7 +344,9 @@ final class FetchApiTest extends IntegrationTestCase
             65536,
             -1,
             self::CLIENT_ID,
-            92
+            92,
+            // Version 13 names the topic by its id and by nothing else (KIP-516)
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         )->writeTo($stream);
 
         $response = FetchResponse::unpack($stream);
@@ -351,7 +359,7 @@ final class FetchApiTest extends IntegrationTestCase
             'the broker answers the session id 0 when it was not asked to open a session'
         );
         self::assertSame(0, $response->throttleTimeMs);
-        self::assertSame(['one', 'two'], self::valuesOf($response->topics[$this->topic]->partitions[0]));
+        self::assertSame(['one', 'two'], self::valuesOf(self::fetchedTopic($response, $this->topic)->partitions[0]));
     }
 
     public function testTheLastStableOffsetAndTheAbortedTransactionsAreTheAnswerOfAReadCommittedFetchAlone(): void
@@ -542,7 +550,7 @@ final class FetchApiTest extends IntegrationTestCase
     private function produce(int $partition, array $records): void
     {
         $stream = $this->connect();
-        // A message set may only travel in a request below version 3, see docs/protocol/2.8.md
+        // A message set may only travel in a request below version 3, see docs/protocol/3.9.md
         new ProduceRequestV2(
             [$this->topic => [$partition => MessageSet::fromRecords($records)]],
             1,
@@ -609,13 +617,14 @@ final class FetchApiTest extends IntegrationTestCase
             -1,
             self::CLIENT_ID,
             $correlationId,
-            $maxBytes
+            $maxBytes,
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         )->writeTo($stream);
 
         $response = FetchResponse::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
 
-        return $response->topics[$this->topic]->partitions;
+        return self::fetchedTopic($response, $this->topic)->partitions;
     }
 
     /**
@@ -683,13 +692,14 @@ final class FetchApiTest extends IntegrationTestCase
             self::CLIENT_ID,
             $correlationId,
             FetchRequest::DEFAULT_MAX_BYTES,
-            $isolationLevel
+            $isolationLevel,
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         )->writeTo($stream);
 
         $response = $responseClass::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
 
-        return $response->topics[$this->topic]->partitions[$partition];
+        return self::fetchedTopic($response, $this->topic)->partitions[$partition];
     }
 
     /**

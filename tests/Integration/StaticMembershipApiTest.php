@@ -68,9 +68,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group of this class is named `t3-345-…` and every consumer instance `t3-345-…`, so that the tests can run
  * next to the other suites on the shared container.
  *
- * @see docs/protocol/2.8.md, sections "Static membership (KIP-345)", "The authorized operations of a group (v3,
- *      KIP-430)", "JoinGroup API (key 11, v0 to v7)", "SyncGroup API (key 14, v0 to v5)", "Heartbeat API (key 12,
- *      v0 to v3)", "OffsetCommit API (key 8, v0 to v8)", "DescribeGroups API (key 15, v0 to v5)" and
+ * @see docs/protocol/3.9.md, sections "Static membership (KIP-345)", "The authorized operations of a group (v3,
+ *      KIP-430)", "JoinGroup API (key 11, v0 to v9)", "SyncGroup API (key 14, v0 to v5)", "Heartbeat API (key 12,
+ *      v0 to v3)", "OffsetCommit API (key 8, v0 to v9)", "DescribeGroups API (key 15, v0 to v5)" and
  *      "The batch leave of KIP-345 (v3)"
  */
 #[CoversClass(JoinGroupRequest::class)]
@@ -282,9 +282,15 @@ final class StaticMembershipApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::NO_ERROR, $second->errorCode);
         self::assertSame(
-            $first->memberId,
+            $second->memberId,
             $second->leaderId,
-            'the answer still names the old member id as the leader: `leaderOrNull` is read before the swap'
+            'at version 9 the answer names the NEW member id as the leader: the branch of KIP-814 reads'
+            . ' `group.leaderOrNull()` AFTER the swap, where every version below it answers the leader it read'
+            . ' before (`currentLeader`), i.e. the id that has just been replaced'
+        );
+        self::assertTrue(
+            $second->skipAssignment,
+            'and it is told to keep the assignment of the generation it did not change (KIP-814)'
         );
 
         // Every request of the older member is answered 82 from here on

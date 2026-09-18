@@ -52,7 +52,7 @@ use RuntimeException;
  * The session state that these tests look at is the {@see FetchSessionHandler} of the client, which
  * {@see SessionAwareConsumer} exposes; everything else is the consumer of the package.
  *
- * @see docs/protocol/2.8.md, section "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, section "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchSessionHandler::class)]
 #[CoversClass(FetchSessionHandlerBuilder::class)]
@@ -106,6 +106,22 @@ final class FetchSessionConsumerTest extends IntegrationTestCase
      * Slots of the fetch session cache of the broker, `max.incremental.fetch.session.cache.slots`
      */
     private const int SESSION_CACHE_SLOTS = 1000;
+
+    /**
+     * Shards the fetch session cache of a 3.9.2 node is split into, `KafkaBroker.NumFetchSessionCacheShards`
+     *
+     * A new session is put into a shard **round-robin** (`FetchSessionCache.getNextCacheShard` @ 3.9.2, a global
+     * counter modulo the number of shards), and every shard holds
+     * `max.incremental.fetch.session.cache.slots / 8` sessions of its own. One refusal therefore only says that
+     * *one* shard is full: the cache as a whole is full when as many requests in a row are refused as there are
+     * shards.
+     */
+    private const int SESSION_CACHE_SHARDS = 8;
+
+    /**
+     * How often a newcomer is started again when a slot of the full cache was freed by another suite of the node
+     */
+    private const int NEWCOMER_ATTEMPTS = 3;
 
     /**
      * Error codes of a partition that exists but is not being served by this broker yet
@@ -402,15 +418,7 @@ final class FetchSessionConsumerTest extends IntegrationTestCase
         $sessionIds = [];
 
         try {
-            $refused = 0;
-            for ($created = 0; $created < self::SESSION_CACHE_SLOTS + 1; $created++) {
-                $answer = $this->rawFetch(FetchMetadata::initial(), [0 => 0], [], 0);
-                if ($answer->sessionId === FetchMetadata::INVALID_SESSION_ID) {
-                    $refused = $created;
-                    break;
-                }
-                $sessionIds[] = $answer->sessionId;
-            }
+            $refused = $this->fillTheSessionCache($sessionIds);
 
             self::assertGreaterThan(0, $refused, 'the cache of the broker is expected to fill up and refuse a session');
             self::assertLessThanOrEqual(self::SESSION_CACHE_SLOTS, $refused);
@@ -427,21 +435,45 @@ final class FetchSessionConsumerTest extends IntegrationTestCase
             );
 
             // A consumer that starts while the cache is full is answered with the session id 0 and keeps sending
-            // full fetches, which is exactly what a broker below Kafka 1.1 answers as well
-            $newcomer = $this->consumer();
-            $newcomer->assign([$this->topic => [0]]);
-            $records = $this->pollUntil($newcomer, 2);
+            // full fetches, which is exactly what a broker below Kafka 1.1 answers as well.
+            //
+            // The cache is a resource of the whole node, and several suites run against it at once: a session
+            // another one closed between the loop above and this consumer is a free slot that the newcomer takes.
+            // The attempt is therefore bounded and repeated - the slot is given back, the cache filled up again
+            // and a new consumer started - instead of being asserted on the first try.
+            $sessionOfTheNewcomer = null;
+            for ($attempt = 0; $attempt < self::NEWCOMER_ATTEMPTS; $attempt++) {
+                $newcomer = $this->consumer();
+                $newcomer->assign([$this->topic => [0]]);
+                $records = $this->pollUntil($newcomer, 2);
 
-            self::assertSame(['a-one', 'a-two'], self::valuesOf($records, 0), 'and it reads the log all the same');
+                self::assertSame(['a-one', 'a-two'], self::valuesOf($records, 0), 'and it reads the log all the same');
+
+                $session              = $newcomer->fetchSession($node);
+                $sessionOfTheNewcomer = $session?->getSessionId();
+                if ($sessionOfTheNewcomer === FetchMetadata::INVALID_SESSION_ID) {
+                    self::assertSame(
+                        FetchMetadata::INITIAL_EPOCH,
+                        $session?->getNextMetadata()->epoch,
+                        'so every one of its requests is a full fetch'
+                    );
+                    break;
+                }
+
+                $newcomer->unsubscribe();
+                $this->rawFetch(
+                    new FetchMetadata((int) $sessionOfTheNewcomer, FetchMetadata::FINAL_EPOCH),
+                    [],
+                    [],
+                    0
+                );
+                $this->fillTheSessionCache($sessionIds);
+            }
+
             self::assertSame(
                 FetchMetadata::INVALID_SESSION_ID,
-                $newcomer->fetchSession($node)?->getSessionId(),
+                $sessionOfTheNewcomer,
                 'the broker had no slot left for it'
-            );
-            self::assertSame(
-                FetchMetadata::INITIAL_EPOCH,
-                $newcomer->fetchSession($node)?->getNextMetadata()->epoch,
-                'so every one of its requests is a full fetch'
             );
         } finally {
             foreach ($sessionIds as $sessionId) {
@@ -532,6 +564,43 @@ final class FetchSessionConsumerTest extends IntegrationTestCase
         );
 
         return $received;
+    }
+
+    /**
+     * Opens sessions until every shard of the cache of the node refuses one, and returns the first refusal
+     *
+     * The cache is sharded (see {@see self::SESSION_CACHE_SHARDS}) and a new session lands in the next shard of a
+     * round-robin, so the first refusal only means that the shard this request happened to land in is full. The
+     * loop therefore goes on until as many requests in a row have been refused as there are shards - which is the
+     * state "no shard has a slot left" - and it is bounded by the total number of slots, because several suites
+     * share the node and one of them freeing a slot must not keep this loop running.
+     *
+     * @param list<int> $sessionIds Ids of the sessions that were opened, appended to and closed by the caller
+     *
+     * @return int The number of sessions this run had opened when the first request was refused
+     */
+    private function fillTheSessionCache(array &$sessionIds): int
+    {
+        $firstRefusal = 0;
+        $inARow       = 0;
+        $opened       = 0;
+
+        for ($request = 0; $request < self::SESSION_CACHE_SLOTS + self::SESSION_CACHE_SHARDS; $request++) {
+            $answer = $this->rawFetch(FetchMetadata::initial(), [0 => 0], [], 0);
+            if ($answer->sessionId === FetchMetadata::INVALID_SESSION_ID) {
+                $firstRefusal = $firstRefusal === 0 ? max($opened, 1) : $firstRefusal;
+                if (++$inARow >= self::SESSION_CACHE_SHARDS) {
+                    break;
+                }
+
+                continue;
+            }
+            $inARow       = 0;
+            $sessionIds[] = $answer->sessionId;
+            $opened++;
+        }
+
+        return $firstRefusal;
     }
 
     /**
@@ -629,7 +698,9 @@ final class FetchSessionConsumerTest extends IntegrationTestCase
             FetchRequest::DEFAULT_MAX_BYTES,
             FetchRequest::READ_UNCOMMITTED,
             $metadata,
-            $forgotten
+            $forgotten,
+            // Version 13 names every topic of a session by its id and by nothing else (KIP-516)
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         );
 
         $socket = $this->rawSocket();

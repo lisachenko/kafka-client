@@ -13,16 +13,28 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Tests\Fixture;
 
-use function sprintf;
+use function getenv;
+use function json_encode;
+
+use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\ClientQuotaAlteration;
+use Protocol\Kafka\Admin\ClientQuotaAlterationOp;
+use Protocol\Kafka\Admin\ClientQuotaEntity;
+use Protocol\Kafka\Admin\ClientQuotaFilter;
+use Protocol\Kafka\Admin\ClientQuotaFilterComponent;
+use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Cluster;
+use RuntimeException;
 
 /**
- * Sets and removes the client quotas of a Kafka 0.10.2.2 broker that runs in a Docker container.
+ * Sets and removes the client quotas of the broker under test.
  *
- * Quotas are the only way to make a broker answer with a non-zero `ThrottleTime`, and Kafka 0.9 has no api to
- * configure them: they live in ZooKeeper under `/config/clients/<client id>` and are written with the
- * `kafka-configs.sh` tool of the distribution, which the broker picks up through a watch within milliseconds
- * (`kafka/server/ConfigHandler.scala` @ 0.10.2.2). This fixture therefore shells out into the container of
- * `docker-compose.yml`:
+ * Quotas are the only way to make a broker answer with a non-zero `ThrottleTime`. The lines up to 2.x wrote them
+ * into ZooKeeper with the `kafka-configs.sh --zookeeper` tool of the distribution, which meant a `docker exec` into
+ * the container of `docker-compose.yml`; since Kafka 2.6 the quotas have a protocol of their own (KIP-546, the apis
+ * 48 and 49 that {@see AdminClient::alterClientQuotas()} speaks), and the 3.9.2 node of this line has no ZooKeeper
+ * at all, so this fixture writes them through the wire. The broker applies an alteration before it answers it
+ * (`ClientQuotaMetadataManager` on a KRaft node), so a quota is in force by the time {@see self::set()} returns.
  *
  * <code>
  *   $quota = ClientQuota::forClientId('my-test-client');
@@ -34,39 +46,29 @@ use function sprintf;
  *   }
  * </code>
  *
- * A quota that is left behind slows every later request of that client id down for an hour, so {@see self::set()}
+ * A quota that is left behind slows every later request of that client id down for good, so {@see self::set()}
  * must always be paired with a {@see self::remove()} in a `finally` block. The client id has to be unique for the
  * test that sets the quota: the broker of this suite is shared, and a quota is enforced for whoever sends that id.
  *
- * {@see self::isSupported()} tells whether the tool can be reached at all, so that a suite which runs against a
- * broker outside of Docker skips those tests instead of failing them.
+ * {@see self::isSupported()} tells whether a broker is configured at all (`KAFKA_BOOTSTRAP_SERVERS`), so that a
+ * suite which runs without one skips those tests instead of failing them.
  *
- * @see docs/protocol/2.8.md, section "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, section "Quotas and throttle time"
  */
 final class ClientQuota
 {
     /**
-     * Name of the environment variable that overrides the container the broker runs in
+     * Name of the environment variable that names the broker the quotas are written to
      */
-    public const string CONTAINER_ENV = 'KAFKA_CONTAINER';
+    public const string BOOTSTRAP_ENV = 'KAFKA_BOOTSTRAP_SERVERS';
 
     /**
-     * Container of `docker-compose.yml`, used when the environment variable is not set
+     * How long {@see self::set()} waits for the broker to report the quota it has just set, in seconds
      */
-    private const string DEFAULT_CONTAINER = 'kafka-2-8-2';
+    private const int APPLY_TIMEOUT = 30;
 
     /**
-     * Path of the configuration tool inside the container
-     */
-    private const string CONFIGS_TOOL = '/opt/kafka/bin/kafka-configs.sh';
-
-    /**
-     * ZooKeeper connection string inside the container
-     */
-    private const string ZOOKEEPER = 'localhost:2181';
-
-    /**
-     * Names of the configuration entries that are currently set for the client id
+     * Names of the quota entries that are currently set for the client id
      *
      * @var list<string>
      */
@@ -74,7 +76,7 @@ final class ClientQuota
 
     private function __construct(
         private readonly string $clientId,
-        private readonly string $container
+        private readonly AdminClient $admin
     ) {}
 
     /**
@@ -82,22 +84,21 @@ final class ClientQuota
      */
     public static function forClientId(string $clientId): self
     {
-        return new self($clientId, self::container());
+        $configuration = self::configuration();
+
+        return new self($clientId, new AdminClient(Cluster::bootstrap($configuration), $configuration));
     }
 
     /**
      * Tells whether the quotas of the broker under test can be changed from here
      *
-     * That needs a `docker` binary and a running container that holds the Kafka distribution; a broker that is not
-     * started by `docker-compose.yml` - or a machine without Docker - has neither.
+     * That needs a broker: the quota apis are spoken to whatever `KAFKA_BOOTSTRAP_SERVERS` names.
      */
     public static function isSupported(): bool
     {
-        return self::run(sprintf(
-            'docker exec %s test -x %s',
-            escapeshellarg(self::container()),
-            escapeshellarg(self::CONFIGS_TOOL)
-        )) !== null;
+        $servers = getenv(self::BOOTSTRAP_ENV);
+
+        return $servers !== false && trim($servers) !== '';
     }
 
     /**
@@ -107,17 +108,57 @@ final class ClientQuota
      */
     public function set(array $configuration): void
     {
-        $entries = [];
+        $ops = [];
         foreach ($configuration as $name => $value) {
-            $entries[] = "{$name}={$value}";
+            $ops[] = ClientQuotaAlterationOp::set($name, (float) $value);
         }
 
-        $output = self::run($this->command('--add-config', implode(',', $entries)));
-        if ($output === null) {
-            throw new \RuntimeException("Can not set the quota {$this->clientId}: " . implode(',', $entries));
+        $result = $this->admin->alterClientQuotas([new ClientQuotaAlteration($this->entity(), $ops)]);
+        $error  = $result[(string) $this->entity()] ?? null;
+        if ($error !== null) {
+            throw new RuntimeException("Can not set the quota of {$this->clientId}: " . $error->getMessage(), 0, $error);
         }
 
-        $this->applied = array_merge($this->applied, array_keys($configuration));
+        $this->applied = array_values(array_unique(array_merge($this->applied, array_keys($configuration))));
+        $this->awaitApplied($configuration);
+    }
+
+    /**
+     * Waits until the broker reports the quota entries it has just been asked to set
+     *
+     * A quota is a controller write that the broker enforces only once it has replayed the metadata record of it:
+     * a request that follows the AlterClientQuotas answer at once reaches the broker before that, and is not
+     * throttled. The lag is milliseconds on an idle node and seconds on a loaded CI runner; the DescribeClientQuotas
+     * of the same broker reads the same replayed image, so a quota it reports is a quota the broker applies.
+     *
+     * @param array<string, int> $configuration The entries that were set
+     */
+    private function awaitApplied(array $configuration): void
+    {
+        $deadline = microtime(true) + self::APPLY_TIMEOUT;
+        do {
+            $stored = $this->admin->describeClientQuotas(ClientQuotaFilter::containsOnly([
+                ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $this->clientId),
+            ]))[(string) $this->entity()] ?? [];
+
+            $missing = array_filter(
+                $configuration,
+                static fn(int $value, string $name): bool => ($stored[$name] ?? null) !== (float) $value,
+                ARRAY_FILTER_USE_BOTH
+            );
+            if ($missing === []) {
+                return;
+            }
+            usleep(100000);
+        } while (microtime(true) < $deadline);
+
+        throw new RuntimeException(sprintf(
+            'The broker did not apply the quota %s of %s within %d seconds, it reports %s',
+            json_encode($configuration),
+            $this->clientId,
+            self::APPLY_TIMEOUT,
+            json_encode($stored)
+        ));
     }
 
     /**
@@ -132,7 +173,12 @@ final class ClientQuota
             return;
         }
 
-        self::run($this->command('--delete-config', implode(',', array_unique($this->applied))));
+        try {
+            $ops = array_map(static fn(string $name) => ClientQuotaAlterationOp::remove($name), $this->applied);
+            $this->admin->alterClientQuotas([new ClientQuotaAlteration($this->entity(), $ops)]);
+        } catch (\Throwable) {
+            // The broker keeps whatever it has; the next test uses a client id of its own
+        }
 
         $this->applied = [];
     }
@@ -142,50 +188,37 @@ final class ClientQuota
      */
     public function describe(): string
     {
-        return self::run(sprintf(
-            'docker exec %s %s --zookeeper %s --describe --entity-type clients --entity-name %s',
-            escapeshellarg($this->container),
-            escapeshellarg(self::CONFIGS_TOOL),
-            escapeshellarg(self::ZOOKEEPER),
-            escapeshellarg($this->clientId)
-        )) ?? 'the quotas of the broker can not be read';
+        try {
+            $quotas = $this->admin->describeClientQuotas(ClientQuotaFilter::containsOnly([
+                ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $this->clientId),
+            ]));
+
+            return (string) json_encode($quotas);
+        } catch (\Throwable $e) {
+            return 'the quotas of the broker can not be read: ' . $e->getMessage();
+        }
+    }
+
+    private function entity(): ClientQuotaEntity
+    {
+        return ClientQuotaEntity::forClientId($this->clientId);
     }
 
     /**
-     * Builds an `--alter` command line of the configuration tool
+     * @return array<string, mixed>
      */
-    private function command(string $option, string $value): string
+    private static function configuration(): array
     {
-        return sprintf(
-            'docker exec %s %s --zookeeper %s --alter %s %s --entity-type clients --entity-name %s',
-            escapeshellarg($this->container),
-            escapeshellarg(self::CONFIGS_TOOL),
-            escapeshellarg(self::ZOOKEEPER),
-            $option,
-            escapeshellarg($value),
-            escapeshellarg($this->clientId)
+        $servers = array_map(
+            static fn(string $address): string => 'tcp://' . trim($address),
+            explode(',', (string) getenv(self::BOOTSTRAP_ENV))
         );
-    }
 
-    /**
-     * Returns the container the broker runs in
-     */
-    private static function container(): string
-    {
-        $configured = getenv(self::CONTAINER_ENV);
-
-        return $configured === false || trim($configured) === '' ? self::DEFAULT_CONTAINER : trim($configured);
-    }
-
-    /**
-     * Runs a command and returns its output, or null when it failed
-     */
-    private static function run(string $command): ?string
-    {
-        $output   = [];
-        $exitCode = 0;
-        exec($command . ' 2>&1', $output, $exitCode);
-
-        return $exitCode === 0 ? implode("\n", $output) : null;
+        return [
+            ClientConfig::BOOTSTRAP_SERVERS         => $servers,
+            ClientConfig::CLIENT_ID                 => 'kafka-client-quota-fixture',
+            ClientConfig::REQUEST_TIMEOUT_MS        => 20000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+        ] + ClientConfig::getDefaultConfiguration();
     }
 }

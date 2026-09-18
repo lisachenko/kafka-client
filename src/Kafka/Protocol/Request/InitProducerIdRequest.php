@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * InitProducerId, version 2: asks for a producer id and its epoch (ApiKey 22, Kafka 0.11, KIP-98)
+ * InitProducerId, version 5: asks for a producer id and its epoch (ApiKey 22, Kafka 0.11, KIP-98)
  *
  * <pre>
  *   InitProducerId Request (Version: 0 to 2) => transactional_id transaction_timeout_ms
@@ -71,7 +71,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * error that used to make it unusable. The -1/-1 of {@see self::NO_PRODUCER_ID} is the old behaviour, "give me an
  * id"; {@see InitProducerIdRequestV2} is the frame without the two fields.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
+ * **Kafka 3.8 added the version 5** and declares no field for it: *"Verison 5 adds support for new error code
+ * TRANSACTION_ABORTABLE (KIP-890)"* (`InitProducerIdRequest.json` @ 3.8.1, typo and all). It is the version this
+ * client sends, and on a 3.9.2 node it is a promise rather than a change: this api has no partition to verify,
+ * so the code 120 never reaches it - a producer whose epoch the coordinator has left behind is answered the
+ * **90** of KIP-588, at the version 5 as at the version 4.
+ * {@see InitProducerIdRequestV4} is the same frame with the version field of Kafka 2.7.
+ *
+ * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 class InitProducerIdRequest extends AbstractRequest
 {
@@ -83,7 +90,7 @@ class InitProducerIdRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * @inheritdoc

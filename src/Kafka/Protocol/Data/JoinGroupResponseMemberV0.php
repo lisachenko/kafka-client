@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Version 5 (KIP-345, Kafka 2.3) inserted the nullable `group_instance_id` of a static member between the member
  * id and the metadata, see {@see JoinGroupResponseMember}; this is the entry without it.
  *
- * @see docs/protocol/2.8.md, section "Static membership (KIP-345)"
+ * @see docs/protocol/3.9.md, section "Static membership (KIP-345)"
  */
 final class JoinGroupResponseMemberV0 extends JoinGroupResponseMember
 {

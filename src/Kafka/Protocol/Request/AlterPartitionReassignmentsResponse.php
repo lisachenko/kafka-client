@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\ReassignableTopicResponse;
  * data travels afterwards, and a reassignment that was already satisfied - a target replica set the partition
  * already has - is answered with 0 as well, because there is nothing left to do.
  *
- * @see docs/protocol/2.8.md, section "AlterPartitionReassignments API (key 45, v0)"
+ * @see docs/protocol/3.9.md, section "AlterPartitionReassignments API (key 45, v0)"
  */
 class AlterPartitionReassignmentsResponse extends AbstractResponse
 {

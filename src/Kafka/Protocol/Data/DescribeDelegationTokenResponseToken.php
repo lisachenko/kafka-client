@@ -42,14 +42,32 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * can therefore renew and expire it: on a cluster without an authorizer only the owner and the renewers of a token
  * see it at all, which is what `DelegationTokenManager.filterToken` guarantees.
  *
- * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0 to v2)"
+ * **Kafka 3.3 added the requester** ("Version 3 adds token requester details" of
+ * `DescribeDelegationTokenResponse.json` @ 3.3.2): two strings between the owner and the timestamps that name the
+ * principal which **asked** for the token, which is the owner itself for every token below KIP-373 and the caller
+ * for a token that was issued for somebody else. {@see DescribeDelegationTokenResponseTokenV2} is the entry of
+ * every version below 3.
+ *
+ * @see docs/protocol/3.9.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 class DescribeDelegationTokenResponseToken implements BinarySchemaInterface
 {
     /**
+     * Version of the answer this entry belongs to; the version 3 of Kafka 3.3 is the first one with a requester
+     */
+    public const int VERSION = 3;
+
+    /**
      * Principal the token was issued for
      */
     public KafkaPrincipal $owner;
+
+    /**
+     * Principal that asked for the token, the owner itself unless it was issued for somebody else
+     *
+     * @since Version 3 of protocol (Kafka 3.3, KIP-373)
+     */
+    public KafkaPrincipal $tokenRequester;
 
     /**
      * Milliseconds since the epoch at which the broker issued the token
@@ -84,15 +102,32 @@ class DescribeDelegationTokenResponseToken implements BinarySchemaInterface
     public array $renewers;
 
     /**
+     * Returns the principal that asked for the token, which is the owner below the version 3
+     *
+     * A version below 3 does not carry the field at all, so the property stays uninitialized there and the owner
+     * is the only answer the entry has.
+     */
+    public function requester(): KafkaPrincipal
+    {
+        return $this->tokenRequester ?? $this->owner;
+    }
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             // The two principal fields of a `DescribedDelegationToken` are flat fields of the specification, not a
             // structure of their own, so they are inlined: in the flexible v2 of this api (Kafka 2.5) a structure
             // would carry a tagged-field section here and the broker sends none
-            'owner'           => new InlineStruct(KafkaPrincipal::class),
+            'owner' => new InlineStruct(KafkaPrincipal::class),
+        ];
+        // The requester of KIP-373 is two more flat fields, right behind the owner
+        if (static::VERSION >= 3) {
+            $scheme['tokenRequester'] = new InlineStruct(KafkaPrincipal::class);
+        }
+        $scheme += [
             'issueTimestamp'  => BinarySchema::TYPE_INT64,
             'expiryTimestamp' => BinarySchema::TYPE_INT64,
             'maxTimestamp'    => BinarySchema::TYPE_INT64,
@@ -100,5 +135,7 @@ class DescribeDelegationTokenResponseToken implements BinarySchemaInterface
             'hmac'            => BinarySchema::TYPE_BYTEARRAY,
             'renewers'        => [KafkaPrincipal::class],
         ];
+
+        return $scheme;
     }
 }

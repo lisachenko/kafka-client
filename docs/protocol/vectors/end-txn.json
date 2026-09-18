@@ -1,8 +1,8 @@
 {
     "api": "end-txn",
     "apiKey": 26,
-    "section": "EndTxn API (key 26, v0 to v3)",
-    "description": "Wire vectors of the EndTxn API (key 26, v0 to v3), replayed by tests/Compliance.",
+    "section": "EndTxn API (key 26, v0 to v4)",
+    "description": "Wire vectors of the EndTxn API (key 26, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "endtxn.request.v0",
@@ -197,7 +197,7 @@
         {
             "id": "endtxn.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequestV3",
             "version": 3,
             "source": "broker",
             "description": "EndTxn request v3 (Kafka 2.8, KIP-482) that COMMITS: the four fields of the version 2 in the flexible encoding, the first flexible version of this api.",
@@ -218,7 +218,7 @@
         {
             "id": "endtxn.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV3",
             "version": 3,
             "source": "broker",
             "description": "EndTxn answer v3: the error code 0 - the coordinator took the decision and writes the markers of the partitions afterwards, with WriteTxnMarkers.",
@@ -229,6 +229,80 @@
                 "headerTaggedFields": [],
                 "throttleTimeMs": 0,
                 "errorCode": 0
+            }
+        },
+        {
+            "id": "endtxn.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "EndTxn request v4 (Kafka 3.8, KIP-890): the transactional id, the producer id, the epoch and the single boolean of the result, in the flexible encoding of the version 3 - \"Version 4 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\" (`EndTxnRequest.json` @ 3.8.1) and no field. This is the COMMIT of the transaction the frames above opened.",
+            "hex": "0000003a001a000400000eed00126b61666b612d636c69656e742d74342d3338001174342d33382d766563746f72732d7478000000000000004400010100",
+            "fields": {
+                "messageSize": 58,
+                "apiKey": 26,
+                "apiVersion": 4,
+                "correlationId": 3821,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-tx",
+                "producerId": 68,
+                "producerEpoch": 1,
+                "transactionResult": true
+            }
+        },
+        {
+            "id": "endtxn.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "EndTxn answer v4: the code 0, which means that the coordinator has written `PrepareCommit` - the markers of the partitions follow asynchronously. The producer id and the epoch of the **version 5** are Kafka 3.9's.",
+            "hex": "0000000c00000eed0000000000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3821,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "endtxn.request.v4.abort-after-commit",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The same transactional id, producer id and epoch asked to **ABORT** once the commit above is through: the single boolean byte at the end is a `00` instead of a `01`.",
+            "hex": "0000003a001a000400000eee00126b61666b612d636c69656e742d74342d3338001174342d33382d766563746f72732d7478000000000000004400010000",
+            "fields": {
+                "messageSize": 58,
+                "apiKey": 26,
+                "apiVersion": 4,
+                "correlationId": 3822,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-tx",
+                "producerId": 68,
+                "producerEpoch": 1,
+                "transactionResult": false
+            }
+        },
+        {
+            "id": "endtxn.response.v4.abort-after-commit",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The refusal: **48** `InvalidTxnState`. The state table of `TransactionCoordinator.handleEndTransaction` has no transition from `CompleteCommit` to an abort, where a repeated *commit* of the same id is a no-op success. The code is the one of Kafka 0.11, unchanged at the version 4.",
+            "hex": "0000000c00000eee0000000000003000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3822,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 48
             }
         }
     ]

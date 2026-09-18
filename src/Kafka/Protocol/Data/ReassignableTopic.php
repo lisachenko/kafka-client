@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * encoding - so the name is a compact string, the partition array a compact array, and both this structure and
  * every partition of it end in a tagged-field section.
  *
- * @see docs/protocol/2.8.md, section "AlterPartitionReassignments API (key 45, v0)"
+ * @see docs/protocol/3.9.md, section "AlterPartitionReassignments API (key 45, v0)"
  */
 class ReassignableTopic implements BinarySchemaInterface
 {

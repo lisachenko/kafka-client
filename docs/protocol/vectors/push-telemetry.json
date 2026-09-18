@@ -1,0 +1,302 @@
+{
+    "api": "push-telemetry",
+    "apiKey": 72,
+    "section": "PushTelemetry API (key 72, v0)",
+    "description": "Wire vectors of the PushTelemetry API (key 72, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "pushtelemetry.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "PushTelemetry request v0 (Kafka 3.7, KIP-714) of the instance the GetTelemetrySubscriptions above created: its uuid, the `subscription_id` it was given, `terminating = false`, the codec **0** (none) and an **empty** metrics blob, which is one byte - the compact length `01`.",
+            "hex": "000000350048000000000e9200126b61666b612d636c69656e742d74312d33370070a047ee23ba439881180f585897cfb25e529f4200000100",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 72,
+                "apiVersion": 0,
+                "correlationId": 3730,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "70a047ee23ba439881180f585897cfb2"
+                },
+                "subscriptionId": 1582473026,
+                "terminating": false,
+                "compressionType": 0,
+                "metrics": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "pushtelemetry.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "**A throttle time, the code 0 and the two tag buffers**, twelve bytes behind the size field - among the shortest answers this protocol has. The node accepts the push although no receiver plugin is configured - `ClientMetricsManager.processPushTelemetryRequest` @ 3.9.2 only calls the plugin when the blob is non-empty, and an empty plugin list exports nothing - so 0 here means \"taken\", not \"stored\".",
+            "hex": "0000000c00000e920000000000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3730,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "pushtelemetry.request.v0.subscribed",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A push with a **non-empty** blob - two bytes, `0a 00` - of the instance that really is subscribed to `org.apache.kafka.producer.`. The two bytes are not valid OpenTelemetry `MetricsData`; this api never parses the payload, it hands it to the receiver plugin as it stands.",
+            "hex": "000000370048000000000e9d00126b61666b612d636c69656e742d74312d3337007f1214a284544929839dcf2cf7d9d8bedd0efe930000030a0000",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 72,
+                "apiVersion": 0,
+                "correlationId": 3741,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "7f1214a284544929839dcf2cf7d9d8be"
+                },
+                "subscriptionId": -586219885,
+                "terminating": false,
+                "compressionType": 0,
+                "metrics": {
+                    "$bytes": "0a00"
+                }
+            }
+        },
+        {
+            "id": "pushtelemetry.response.v0.subscribed",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The same **0**. A node without a client-metrics receiver plugin drops the blob without looking at it, which is why the api can be spoken end to end on this container without anything collecting a metric.",
+            "hex": "0000000c00000e9d0000000000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3741,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "pushtelemetry.request.v0.unknown-subscription",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A fresh instance pushing with the made-up `subscription_id` 424242.",
+            "hex": "000000350048000000000e9400126b61666b612d636c69656e742d74312d3337005620f37c793d42a9a41d81c6556fd8a40006793200000100",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 72,
+                "apiVersion": 0,
+                "correlationId": 3732,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "5620f37c793d42a9a41d81c6556fd8a4"
+                },
+                "subscriptionId": 424242,
+                "terminating": false,
+                "compressionType": 0,
+                "metrics": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "pushtelemetry.response.v0.unknown-subscription",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **117** `UnknownSubscriptionId` of Kafka 3.7. It is not only the answer to a wrong id: it is how a broker tells a client that the subscription has **changed** under it, and the client answers it by asking GetTelemetrySubscriptions again.",
+            "hex": "0000000c00000e940000000000007500",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3732,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 117
+            }
+        },
+        {
+            "id": "pushtelemetry.request.v0.zero-instance",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A push with the **zero** client instance id, which is the value GetTelemetrySubscriptions prescribes for a *first* request and which this api never accepts.",
+            "hex": "000000350048000000000e9500126b61666b612d636c69656e742d74312d333700000000000000000000000000000000000000000000000100",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 72,
+                "apiVersion": 0,
+                "correlationId": 3733,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "00000000000000000000000000000000"
+                },
+                "subscriptionId": 0,
+                "terminating": false,
+                "compressionType": 0,
+                "metrics": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "pushtelemetry.response.v0.zero-instance",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **42** `InvalidRequest`, not the 117: `processPushTelemetryRequest` checks the id against `Uuid.RESERVED` before it looks up anything, so a client that pushes before it has an id of its own gets no subscription hint at all.",
+            "hex": "0000000c00000e950000000000002a00",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3733,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42
+            }
+        },
+        {
+            "id": "pushtelemetry.request.v0.unsupported-codec",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A push of a valid instance and subscription with the `compression_type` **7**, which is no `CompressionType` at all, and two bytes of payload.",
+            "hex": "000000370048000000000e9700126b61666b612d636c69656e742d74312d33370059edcc84187e4eaea9ea899e3612926b0aacc201000703010200",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 72,
+                "apiVersion": 0,
+                "correlationId": 3735,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "59edcc84187e4eaea9ea899e3612926b"
+                },
+                "subscriptionId": 179094017,
+                "terminating": false,
+                "compressionType": 7,
+                "metrics": {
+                    "$bytes": "0102"
+                }
+            }
+        },
+        {
+            "id": "pushtelemetry.response.v0.unsupported-codec",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **76** `UnsupportedCompressionType` - the code of Kafka 2.1 that the zstd logs of KIP-110 introduced, reused here for a codec the broker will not decompress. The order of the checks in `validatePushRequest` is the order of these vectors: terminating, throttling, subscription id, codec, size.",
+            "hex": "0000000c00000e970000000000004c00",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3735,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 76
+            }
+        },
+        {
+            "id": "pushtelemetry.request.v0.terminating",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The last push of an instance that is shutting down: `terminating = true` (`01`), which a broker accepts even inside the push interval.",
+            "hex": "000000350048000000000e9b00126b61666b612d636c69656e742d74312d33370017f99e127e4643678cbeb1ca1089555f214f623e01000100",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 72,
+                "apiVersion": 0,
+                "correlationId": 3739,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "17f99e127e4643678cbeb1ca1089555f"
+                },
+                "subscriptionId": 558850622,
+                "terminating": true,
+                "compressionType": 0,
+                "metrics": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "pushtelemetry.response.v0.terminating",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The code 0, as for any other push.",
+            "hex": "0000000c00000e9b0000000000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3739,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "pushtelemetry.request.v0.after-terminating",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same instance pushing **again** after that: the very frame above with the flag cleared.",
+            "hex": "000000350048000000000e9c00126b61666b612d636c69656e742d74312d33370017f99e127e4643678cbeb1ca1089555f214f623e00000100",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 72,
+                "apiVersion": 0,
+                "correlationId": 3740,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "17f99e127e4643678cbeb1ca1089555f"
+                },
+                "subscriptionId": 558850622,
+                "terminating": false,
+                "compressionType": 0,
+                "metrics": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "pushtelemetry.response.v0.after-terminating",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **42** `InvalidRequest`: `Client [<uuid>] sent the previous request with state terminating to TRUE, can not accept any requests after that`. A terminated instance stays terminated as long as the broker remembers it, which is 60 seconds.",
+            "hex": "0000000c00000e9c0000000000002a00",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3740,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42
+            }
+        }
+    ]
+}

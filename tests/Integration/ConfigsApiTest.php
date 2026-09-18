@@ -30,7 +30,6 @@ use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
-use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestConfigEntry;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
@@ -54,20 +53,22 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV2;
 
 /**
- * Exercises the DescribeConfigs (key 32) and AlterConfigs (key 33) apis against a real Kafka 2.8.2 broker.
+ * Exercises the DescribeConfigs (key 32) and AlterConfigs (key 33) apis against the Kafka 3.9.2 KRaft node of
+ * this line.
  *
  * Both arrived with Kafka 0.11 (KIP-133) and Kafka 1.1 raised them with KIP-226: DescribeConfigs got a **version 1**
  * that answers a config SOURCE and the synonyms of every option instead of an `is_default` boolean, and AlterConfigs
  * - whose frame did not change at all - started accepting a **broker** resource for the options a broker can change
  * at runtime. Kafka 2.0 raised both apis by one more version without touching a byte (KIP-219), which is what the
  * client sends now: **DescribeConfigs v2** and **AlterConfigs v1**. Every version below is still served and is
- * measured here as well - including the version 0 whose `is_default` boolean a 2.8.2 broker no longer fills in.
+ * measured here as well - including the version 0 whose `is_default` boolean a broker of Kafka 1.1 or above no
+ * longer fills in.
  *
  * The container is shared with the other suites of this line, so the two tests that really change a broker option
  * touch `log.cleaner.backoff.ms` alone - a log-cleaner back-off nothing here depends on - and put the documented
  * default back in a `finally`, explicitly and not by removing the entry, see the quirk in the AlterConfigs section.
  *
- * @see docs/protocol/2.8.md, sections "DescribeConfigs API (key 32, v0 to v4)" and "AlterConfigs API (key 33, v0 to v2)"
+ * @see docs/protocol/3.9.md, sections "DescribeConfigs API (key 32, v0 to v4)" and "AlterConfigs API (key 33, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Config::class)]
@@ -99,26 +100,26 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV2;
 final class ConfigsApiTest extends IntegrationTestCase
 {
     /**
-     * The topic options a 2.8.2 broker never reports as defaults, because the container sets their broker synonym
+     * The topic options the node never reports as defaults, because the image sets their broker synonym
      *
      * KIP-226 replaced the `is_default` boolean of the DescribeConfigs answer with a config **source**:
-     * `ConfigHelper.createTopicConfigEntry()` @ 2.8.2 walks `LogConfig.TopicConfigSynonyms`, and an option whose
+     * `ConfigHelper.createTopicConfigEntry()` @ 3.9.2 walks `LogConfig.TopicConfigSynonyms`, and an option whose
      * broker synonym stands in the `server.properties` of the container gets the source `STATIC_BROKER_CONFIG` -
      * which is not `DEFAULT_CONFIG`, so the option is not a default although the topic itself set nothing. A
      * 0.11.0.3 broker answered `is_default = !topicProps.containsKey(name)` and reported such an option as a
      * default.
      *
-     * The image of this line sets exactly two of them: `log.segment.bytes=1073741824`, the synonym of the topic
-     * option `segment.bytes`, and `log.message.format.version=2.8-IV1`, the synonym of `message.format.version` -
-     * which the 1.1.1 image of the line below did not write into its `server.properties` at all, so the second
-     * entry is new on this line. `log.retention.hours` is set too, and `retention.ms` is a default nevertheless:
-     * the synonyms of that option are looked up under `log.retention.ms`, and `ConfigHelper.configSynonyms()`
-     * @ 2.8.2 only records the broker options that really carry a value under one of the synonym NAMES of
-     * `log.retention.ms` - `log.retention.hours` is not one of them.
+     * The image of this line sets exactly ONE of them: `log.segment.bytes=1073741824`, the synonym of the topic
+     * option `segment.bytes`. The 2.8.2 image of the line below also set `log.message.format.version=2.8-IV1`, and
+     * `message.format.version` was the second entry here; the option is ignored from Kafka 3.0 on (KIP-724), the
+     * KRaft image writes no `log.message.format.version` at all, and the topic option is a `DEFAULT_CONFIG` on the
+     * node. `log.retention.hours` is set too, and `retention.ms` is a default nevertheless: the synonyms of that
+     * option are looked up under `log.retention.ms`, and `ConfigHelper.configSynonyms()` @ 3.9.2 only records the
+     * broker options that really carry a value under one of the synonym NAMES of `log.retention.ms` -
+     * `log.retention.hours` is not one of them.
      */
     private const array STATIC_BROKER_TOPIC_OPTIONS = [
-        'segment.bytes'          => '1073741824',
-        'message.format.version' => '2.8-IV1',
+        'segment.bytes' => '1073741824',
     ];
 
     /**
@@ -133,10 +134,15 @@ final class ConfigsApiTest extends IntegrationTestCase
     /**
      * How long a dynamic broker option may take to reach the broker that answers, in seconds
      *
-     * `AlterConfigs` writes the option into ZooKeeper and the broker applies it when its watch fires, so a
-     * `DescribeConfigs` that overtakes that watch still answers the previous value.
+     * `AlterConfigs` is answered by the KRaft CONTROLLER once the `ConfigRecord` is committed to the metadata
+     * log, and the broker applies it when it replays that record, a moment later - so a `DescribeConfigs` that
+     * overtakes the replay still answers the previous value. A 2.8.2 broker had the same gap around a ZooKeeper
+     * watch.
+     *
+     * The window is generous because the `broker:` resource is SHARED: the node of this line answers four suites at
+     * once, and a replay that takes a moment longer under that load is not a defect of the api.
      */
-    private const float DYNAMIC_OPTION_TIMEOUT = 5.0;
+    private const float DYNAMIC_OPTION_TIMEOUT = 20.0;
 
     private const string DYNAMIC_OPTION_DEFAULT = '15000';
 
@@ -398,14 +404,18 @@ final class ConfigsApiTest extends IntegrationTestCase
     public function testABrokerIdThatIsNotTheOneThatAnswersIsRefused(): void
     {
         // The container runs a single broker, so an id that no broker has can only be answered by the wrong one
+        $nodeId = array_key_first($this->admin->findAllBrokers());
+
         try {
             $this->admin->describeConfigs([ConfigResource::broker(4242)], ['broker.id']);
             self::fail('a broker id that is not the one that answers has to be refused');
         } catch (InvalidRequestException $exception) {
-            self::assertStringContainsString(
-                'Unexpected broker id, expected 0 or empty string, but received',
-                $exception->getMessage(),
-                'the sentence of a 1.1 broker names the empty string of KIP-226 as well'
+            // The sentence is unchanged since Kafka 1.1; the id in it is the `node.id=1` of the KRaft image,
+            // where the ZooKeeper images of the lines below ran as the broker 0
+            self::assertSame(
+                "Unexpected broker id, expected {$nodeId} or empty string, but received 4242",
+                $exception->getContext()['error'] ?? null,
+                'the sentence names the empty string of KIP-226 as well'
             );
         }
     }
@@ -428,19 +438,19 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertSame([$resource->key() => null], $first);
         self::assertEqualsCanonicalizing(
             ['retention.ms' => '3600000', 'cleanup.policy' => 'compact'],
-            $this->ownValues($resource),
+            $this->ownValuesUntil($resource, ['retention.ms' => '3600000', 'cleanup.policy' => 'compact']),
             'both options are the topic\'s own now'
         );
 
         // The second request names only one of them, and the other one falls back to the broker default: the api
-        // REPLACES the ZooKeeper node of the topic instead of patching it
+        // REPLACES the whole configuration of the topic instead of patching it
         $second = $this->admin->alterConfigs([$resource->key() => ['retention.ms' => '7200000']]);
         self::assertSame([$resource->key() => null], $second);
-        self::assertSame(['retention.ms' => '7200000'], $this->ownValues($resource));
+        self::assertSame(['retention.ms' => '7200000'], $this->ownValuesUntil($resource, ['retention.ms' => '7200000']));
 
         // And an empty entry list resets every option of the topic
         self::assertSame([$resource->key() => null], $this->admin->alterConfigs([$resource->key() => []]));
-        self::assertSame([], $this->ownValues($resource));
+        self::assertSame([], $this->ownValuesUntil($resource, []));
         self::assertSame(
             self::STATIC_BROKER_TOPIC_OPTIONS,
             $this->nonDefaults($resource),
@@ -456,7 +466,7 @@ final class ConfigsApiTest extends IntegrationTestCase
         $result = $this->admin->alterConfigs([$resource->key() => ['retention.ms' => '3600000']], true);
 
         self::assertSame([$resource->key() => null], $result, 'the request was valid');
-        self::assertSame([], $this->ownValues($resource), 'and nothing was written to ZooKeeper');
+        self::assertSame([], $this->ownValues($resource), 'and nothing reached the metadata log');
     }
 
     public function testAnUnknownOptionNameIsRefusedWithForty(): void
@@ -471,28 +481,49 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertStringContainsString('Unknown topic config name: no.such.option', $error->getMessage());
     }
 
-    public function testAnUnparsableOptionValueIsRefusedWithFortyTwo(): void
+    /**
+     * A value the `ConfigDef` cannot parse is the code **40** on a KRaft node, where 2.8.2 answered 42
+     *
+     * `ZkAdminManager.alterConfigs()` @ 2.8.2 let the plain `ConfigException` of the config framework escape as an
+     * `InvalidRequestException`, because `Errors.forException()` has no code of its own for it.
+     * `ConfigurationControlManager.validateAlterConfig()` @ 3.9.2 catches it by its type and answers
+     * `new ApiError(INVALID_CONFIG, e.getMessage())` - the very same sentence under the code an unknown option
+     * NAME has always carried.
+     */
+    public function testAnUnparsableOptionValueIsRefusedWithForty(): void
     {
-        // The same value is answered with -1 by CreateTopics, which does not catch the ConfigException itself
         $topic    = $this->createTopic('bad-value');
         $resource = ConfigResource::topic($topic);
 
         $result = $this->admin->alterConfigs([$resource->key() => ['retention.ms' => 'soon']]);
 
         $error = $result[$resource->key()];
-        self::assertInstanceOf(InvalidRequestException::class, $error);
-        self::assertStringContainsString('Not a number of type LONG', $error->getMessage());
+        self::assertInstanceOf(InvalidConfigException::class, $error);
+        self::assertSame(
+            'Invalid value soon for configuration retention.ms: Not a number of type LONG',
+            $error->getContext()['error'] ?? null
+        );
     }
 
-    public function testANullOptionValueIsAnsweredWithMinusOne(): void
+    /**
+     * A null value is refused before the controller sees it, with the code **42**, where 2.8.2 answered -1
+     *
+     * The schema declares the value nullable and `Properties.setProperty` threw a `NullPointerException` on it in
+     * the ZooKeeper path, which reached the client as the unknown server error. `ConfigAdminManager.
+     * validateResourceNameIsCurrentNodeId`'s neighbour `validateLegacyAlterConfigsResources()` @ 3.9.2 collects
+     * every entry whose value is null and refuses the resource with "Null value not supported for : <names>"
+     * before the request is forwarded to the controller at all.
+     */
+    public function testANullOptionValueIsAnsweredWithFortyTwo(): void
     {
-        // The schema declares the value nullable, but `Properties.setProperty` throws a NullPointerException on it
         $topic    = $this->createTopic('null-value');
         $resource = ConfigResource::topic($topic);
 
         $result = $this->admin->alterConfigs([$resource->key() => ['retention.ms' => null]]);
 
-        self::assertInstanceOf(UnknownErrorException::class, $result[$resource->key()]);
+        $error = $result[$resource->key()];
+        self::assertInstanceOf(InvalidRequestException::class, $error);
+        self::assertSame('Null value not supported for : retention.ms', $error->getContext()['error'] ?? null);
         self::assertSame([], $this->ownValues($resource), 'and nothing was changed');
     }
 
@@ -744,9 +775,9 @@ final class ConfigsApiTest extends IntegrationTestCase
     /**
      * Describes a broker resource until the broker reports what the caller waits for, or the timeout passes
      *
-     * A dynamic broker option travels through ZooKeeper: `AlterConfigs` and `IncrementalAlterConfigs` are answered
-     * once the znode is written, and the live configuration of the broker follows when its watch fires, a moment
-     * later. Up to the io fix of #166 every request left this client some 40 ms late - Nagle's algorithm held the
+     * A dynamic broker option travels through the metadata log: `AlterConfigs` and `IncrementalAlterConfigs` are
+     * answered once the controller committed the `ConfigRecord`, and the live configuration of the broker follows
+     * when it replays that record, a moment later (a 2.8.2 broker had the same gap around a ZooKeeper watch). Up to the io fix of #166 every request left this client some 40 ms late - Nagle's algorithm held the
      * field-by-field writes of a frame behind the delayed ACK of the broker - which covered that moment every
      * time; a frame that leaves in one write reaches the broker before the watch fired, so a read that follows
      * a write is repeated with a short back-off - the reads of the tests, and the reads behind the cleanups, so
@@ -791,6 +822,29 @@ final class ConfigsApiTest extends IntegrationTestCase
     }
 
     /**
+     * Returns the options of a resource that are its own once they are the expected ones, or whatever they are
+     * when the wait is over: a write goes through the controller and reaches the brokers only when its record is
+     * replayed, so a read that follows a write has to give the node that moment
+     *
+     * @param array<string, string|null> $expected
+     *
+     * @return array<string, string|null>
+     */
+    private function ownValuesUntil(ConfigResource $resource, array $expected): array
+    {
+        $deadline = microtime(true) + self::DYNAMIC_OPTION_TIMEOUT;
+        do {
+            $own = $this->ownValues($resource);
+            if (count($own) === count($expected) && array_diff_assoc($own, $expected) === []) {
+                return $own;
+            }
+            usleep(50_000);
+        } while (microtime(true) < $deadline);
+
+        return $own;
+    }
+
+    /**
      * Creates a topic of one partition and remembers it for the cleanup
      *
      * @param array<string, string> $configs Topic-level options of the new topic
@@ -818,10 +872,13 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertInstanceOf(ConfigEntry::class, $entry);
         self::assertSame(ConfigType::LIST, $entry->type, '`cleanup.policy` is a LIST - the type APPEND accepts');
         self::assertNotNull($entry->documentation, 'the request asked for it');
+        // The prose was rewritten and moved: `LogConfig.CleanupPolicyDoc` @ 2.8.2 said "A string that is either
+        // "delete" or "compact" or both", `TopicConfig.CLEANUP_POLICY_DOC` @ 3.9.2 - where the topic options of
+        // the Java client live now - describes the two policies one at a time
         self::assertStringContainsString(
-            'either "delete" or "compact"',
+            'The "compact" policy will enable <a href="#compaction">log compaction</a>',
             (string) $entry->documentation,
-            'the documentation of `LogConfig` @ 2.8.2'
+            'the documentation of `TopicConfig` @ 3.9.2'
         );
 
         // The very same request without the flag: the type is still filled, the documentation is not
@@ -910,7 +967,21 @@ final class ConfigsApiTest extends IntegrationTestCase
             $this->admin->createTopics([new NewTopic($topic, 1, 1, configs: $configs)])
         );
 
-        return $topic;
+        // A KRaft node answers the topic it has just created with 3 until the brokers have replayed its records:
+        // the first DescribeConfigs of the test must not be the one that meets that moment
+        $deadline = microtime(true) + 5.0;
+        while (true) {
+            try {
+                $this->admin->describeConfigs([ConfigResource::topic($topic)]);
+
+                return $topic;
+            } catch (UnknownTopicOrPartitionException $notYet) {
+                if (microtime(true) > $deadline) {
+                    throw $notYet;
+                }
+                usleep(50_000);
+            }
+        }
     }
 
     /**

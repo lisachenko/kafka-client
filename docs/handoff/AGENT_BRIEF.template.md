@@ -17,20 +17,25 @@
 ## Kafka broker (shared by all agents)
 - Container `<name>` = Kafka <version>, PLAINTEXT 127.0.0.1:9092, SSL 127.0.0.1:9093 (CA/cert:
   `docker/kafka-<version>/ssl/broker.crt`, `KAFKA_SSL_BOOTSTRAP_SERVERS` in the integration suite),
-  ZooKeeper 127.0.0.1:2181, auto-create topics on, 3 partitions, `offsets.topic.num.partitions=5`,
+  SASL_PLAINTEXT 9094, SASL_SSL 9095 (PLAIN: kafkatest/kafkatest-secret, admin/admin-secret, and acltest/acltest-secret
+  — the one principal that is not a super user of the authorizer), a KRaft node without ZooKeeper (the lines up to
+  2.x had ZooKeeper on 2181), auto-create topics on, 3 partitions, `offsets.topic.num.partitions=5`,
   `group.min.session.timeout.ms=1000`, `group.max.session.timeout.ms=60000`.
 - Unique topic/group prefix per test class (`t<n>-<what>-<random>`). Readiness: use `IntegrationTestCase` (probe topic);
   fresh topics answer 5/6 for a moment — helpers retry those codes only. Other agents' tests run at the same time:
   never assume the broker has no other topics or groups, never delete a topic you did not create, never restart it.
-- In-container tools: `docker exec <name> /opt/kafka/bin/kafka-topics.sh --zookeeper localhost:2181 --list`,
-  `kafka-console-producer.sh --broker-list localhost:9092 --topic X [--compression-codec gzip|snappy]`,
-  `kafka-console-consumer.sh --new-consumer --bootstrap-server localhost:9092 --topic X --from-beginning
-  --consumer.config <file>` (a Java group member; the properties file carries `group.id` and
-  `partition.assignment.strategy`) or `--zookeeper localhost:2181` for the old consumer,
-  `kafka-consumer-groups.sh --new-consumer --bootstrap-server localhost:9092 --list|--describe --group G`,
-  `kafka-configs.sh --zookeeper localhost:2181 ...` (client quotas: `producer_byte_rate`, `consumer_byte_rate`
-  per `--entity-type clients --entity-name <client id>`; `tests/Fixture/ClientQuota` wraps it),
-  `kafka-run-class.sh kafka.tools.DumpLogSegments --files /tmp/kafka-logs/X-0/00000000000000000000.log --print-data-log`.
+- In-container tools (every one of them takes `--bootstrap-server localhost:9092`; there is no `--zookeeper`):
+  `docker exec <name> /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list`,
+  `kafka-console-producer.sh --bootstrap-server localhost:9092 --topic X [--compression-codec gzip|snappy|lz4|zstd]`,
+  `kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic X --from-beginning --consumer.config <file>`
+  (a Java group member; the properties file carries `group.id`, `partition.assignment.strategy` and, for the
+  KIP-848 protocol, `group.protocol=consumer`), `kafka-consumer-groups.sh --bootstrap-server localhost:9092
+  --list|--describe --group G`, `kafka-configs.sh --bootstrap-server localhost:9092 ...` (quotas, broker and topic
+  configs; `tests/Fixture/ClientQuota` sets client quotas through the quota apis instead), `kafka-acls.sh
+  --bootstrap-server localhost:9092 --list`, `kafka-delegation-tokens.sh`, `kafka-metadata-quorum.sh
+  --bootstrap-server localhost:9092 describe --status`, `kafka-run-class.sh kafka.tools.DumpLogSegments --files
+  /tmp/kafka-logs/X-0/00000000000000000000.log --print-data-log` (a partition lands in `/tmp/kafka-logs` or
+  `/tmp/kafka-logs-2`).
 - `docker logs <name>` is the answer to "why did my request never come back": an api key or version the broker
   cannot parse shows up there (`Processor got uncaught exception`) and is dropped without a response.
 - Building the image behind the sandbox proxy: drop the proxy CA bundle into `docker/kafka-<version>/ca/`, which the

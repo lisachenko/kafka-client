@@ -53,7 +53,7 @@ use function strlen;
  * `RequestHeaderData.json` @ 2.8.2) and the tagged-field section of a header, which is declared explicitly with
  * {@see self::TYPE_TAG_BUFFER} because it sits in the *middle* of a frame rather than at the end of a structure.
  *
- * @see docs/protocol/2.8.md, section "Implementation model"
+ * @see docs/protocol/3.9.md, section "Implementation model"
  */
 class BinarySchema
 {
@@ -104,6 +104,18 @@ class BinarySchema
     public const int TYPE_FLOAT64 = 23;
 
     /**
+     * Two bytes read as an **unsigned** big-endian value, the `uint16` of the JSON message specifications (Kafka 3.9)
+     *
+     * `Type.UINT16` of the Java client, added with KIP-853: the `Port` of a `Listener` in a DescribeQuorum **v2**
+     * answer is the first and, at 3.9.2, the only field of the client-facing protocol that uses it - a port is
+     * 0 to 65535, and the int16 that would have carried it turns everything above 32767 into a negative number.
+     * The two bytes on the wire are the ones of {@see self::TYPE_INT16}; what differs is the sign extension this
+     * engine applies to an int16 and never to this type, so `9096` and `50000` both come back as themselves. A
+     * fixed-width type, so the compact encoding of KIP-482 does not touch it.
+     */
+    public const int TYPE_UINT16 = 24;
+
+    /**
      * Array notation key: the element count is a zigzag varint instead of an int32 (the headers of a record, Kafka 0.11)
      */
     public const int FLAG_VARARRAY = 14;
@@ -149,6 +161,11 @@ class BinarySchema
             return self::objectSize($value, $flexible, false);
         }
 
+        // A nullable structure: the int8 that announces it, and the structure itself when it is there
+        if ($schemeType instanceof NullableStruct) {
+            return 1 + ($value === null ? 0 : self::getObjectTypeSize($value, $flexible));
+        }
+
         // If it's a string, then we have an object with an internal scheme
         if (is_string($schemeType)) {
             return self::getObjectTypeSize($value, $flexible);
@@ -163,6 +180,9 @@ class BinarySchema
 
             case self::TYPE_BOOLEAN:
                 return 1;
+
+            case self::TYPE_UINT16:
+                return 2;
 
             case self::TYPE_FLOAT64:
                 return 8;
@@ -416,6 +436,16 @@ class BinarySchema
             return self::readObject($schemeType->type, $stream, "{$path}:{$schemeType->type}", $flexible, false);
         }
 
+        // A nullable structure: the int8 in front of it says whether a structure follows at all
+        if ($schemeType instanceof NullableStruct) {
+            $marker = self::readSingleType(self::TYPE_INT8, $stream, "{$path}[present]");
+            if ($marker === NullableStruct::ABSENT) {
+                return null;
+            }
+
+            return self::readObjectFromStream($schemeType->type, $stream, "{$path}:{$schemeType->type}", $flexible);
+        }
+
         // If it's a string, then we have a nested object that can be unpacked
         if (is_string($schemeType)) {
             return self::readObjectFromStream($schemeType, $stream, "{$path}:{$schemeType}", $flexible);
@@ -449,6 +479,10 @@ class BinarySchema
             case self::TYPE_BOOLEAN:
                 // Types.BOOLEAN of the Java client reads any non-zero byte as true and always writes 0 or 1
                 return $stream->read('CBOOLEAN')['BOOLEAN'] !== 0;
+
+            case self::TYPE_UINT16:
+                // Unsigned, unlike TYPE_INT16 right above: a port of 40000 is a port, not a negative number
+                return $stream->read('nUINT16')['UINT16'];
 
             case self::TYPE_FLOAT64:
                 return $stream->read('EFLOAT64')['FLOAT64'];
@@ -565,6 +599,19 @@ class BinarySchema
             return;
         }
 
+        // A nullable structure: the int8 that announces it, and the structure itself when it is there
+        if ($schemeType instanceof NullableStruct) {
+            if ($value === null) {
+                self::writeSingleType(self::TYPE_INT8, NullableStruct::ABSENT, $stream);
+
+                return;
+            }
+            self::writeSingleType(self::TYPE_INT8, NullableStruct::PRESENT, $stream);
+            self::writeObjectToStream($value, $stream, $flexible);
+
+            return;
+        }
+
         // If it's a string, then we have a nested object that can be packed into the stream
         if (is_string($schemeType)) {
             self::writeObjectToStream($value, $stream, $flexible);
@@ -591,6 +638,10 @@ class BinarySchema
                 return;
             case self::TYPE_BOOLEAN:
                 $stream->write('C', $value ? 1 : 0);
+
+                return;
+            case self::TYPE_UINT16:
+                $stream->write('n', $value);
 
                 return;
             case self::TYPE_FLOAT64:

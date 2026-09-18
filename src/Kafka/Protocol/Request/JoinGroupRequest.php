@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 
 /**
- * JoinGroup, version 7: the request with which a client becomes a member of a group
+ * JoinGroup, version 9: the request with which a client becomes a member of a group
  *
  * When new members join an existing group, all previous members are required to rejoin by sending a new join group
  * request. When a member first joins the group, the member id will be empty ({@see self::DEFAULT_MEMBER_ID}); a
@@ -33,8 +33,8 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * empty member id ({@see JoinGroupRequestV3}) is still added to the group at once.
  *
  * <pre>
- *   JoinGroup Request (Version: 1 to 7) => group_id session_timeout rebalance_timeout member_id
- *                                           group_instance_id protocol_type [group_protocols]
+ *   JoinGroup Request (Version: 1 to 9) => group_id session_timeout rebalance_timeout member_id
+ *                                           group_instance_id protocol_type [group_protocols] reason
  *     group_id          => STRING
  *     session_timeout   => INT32
  *     rebalance_timeout => INT32     -- since version 1
@@ -44,6 +44,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  *     group_protocols   => protocol_name protocol_metadata
  *       protocol_name     => STRING
  *       protocol_metadata => BYTES
+ *     reason            => NULLABLE_STRING  -- since version 8
  * </pre>
  *
  * Version 1 (KIP-62, Kafka 0.10.1) inserted `rebalance_timeout` **after** `session_timeout`, and that is its only
@@ -97,7 +98,21 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * back and may report a null `protocol_name` ({@see JoinGroupResponse}). {@see JoinGroupRequestV6} sends these
  * very bytes one api version lower and is answered with {@see JoinGroupResponseV6}.
  *
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v7)"
+ * **Version 8 (KIP-800, Kafka 3.2) appended the nullable `reason`** - "Version 8 adds the Reason field (KIP-800)"
+ * in `JoinGroupRequest.json` @ 3.2.3 - "the reason why the member (re-)joins the group", a free text the client
+ * writes for a human being: the coordinator logs it next to the rebalance it starts and does nothing else with
+ * it, and a member that has none sends `null` ({@see JoinGroupRequestV7} is the frame without the field). The
+ * Java client truncates it at {@see self::MAX_REASON_LENGTH} characters
+ * (`JoinGroupRequest.maybeTruncateReason` @ 3.2.3) and so does this class, because the field is on the path of
+ * every rebalance of every member and an unbounded one would be a way to fill the log of a broker.
+ *
+ * **Version 9 (KIP-814, Kafka 3.2) changed nothing here** - "Version 9 is the same as version 8" - and gave the
+ * **answer** the `skip_assignment` of a returning static leader ({@see JoinGroupResponse}), which is why
+ * {@see JoinGroupRequestV8} sends the very same bytes one api version lower and is answered with
+ * {@see JoinGroupResponseV8}, whose answer has no such flag.
+ *
+ * @see docs/protocol/3.9.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
+ * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 class JoinGroupRequest extends AbstractRequest
 {
@@ -109,6 +124,14 @@ class JoinGroupRequest extends AbstractRequest
     public const string DEFAULT_MEMBER_ID = '';
 
     /**
+     * How many characters of the `reason` of KIP-800 reach the coordinator, the rest is cut off
+     *
+     * `JoinGroupRequest.maybeTruncateReason` @ 3.2.3 cuts the text of the client at 255 characters before it
+     * builds the request, and LeaveGroup v5 uses the very same bound for the reason of every member of its batch.
+     */
+    public const int MAX_REASON_LENGTH = 255;
+
+    /**
      * @inheritdoc
      */
     public const int API_KEY = ApiKeys::JOIN_GROUP;
@@ -116,7 +139,7 @@ class JoinGroupRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 9;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -130,6 +153,17 @@ class JoinGroupRequest extends AbstractRequest
      * @var array<string, JoinGroupRequestProtocol>
      */
     protected readonly array $groupProtocols;
+
+    /**
+     * Why this member (re-)joins the group, null when it names no reason
+     *
+     * The coordinator logs the text and does nothing else with it: the field is there so that an operator reading
+     * the broker log of a rebalance sees which member started it and why. Longer texts are cut off at
+     * {@see self::MAX_REASON_LENGTH} characters, exactly as `JoinGroupRequest.maybeTruncateReason` @ 3.2.3 does.
+     *
+     * @since Version 8 of protocol
+     */
+    protected readonly ?string $reason;
 
     /**
      * A value of the `$groupProtocols` map is either the raw metadata of that protocol or an already built
@@ -147,6 +181,8 @@ class JoinGroupRequest extends AbstractRequest
      * @param int                                               $correlationId    Correlated request id
      * @param string|null                                       $groupInstanceId  `group.instance.id` of a static
      *        member (KIP-345), null for a dynamic one
+     * @param string|null                                       $reason           Why this member (re-)joins the
+     *        group (KIP-800, version 8), null when it names none; longer texts are truncated
      */
     public function __construct(
         /**
@@ -182,8 +218,11 @@ class JoinGroupRequest extends AbstractRequest
          *
          * @since Version 5 of protocol
          */
-        protected readonly ?string $groupInstanceId = null
+        protected readonly ?string $groupInstanceId = null,
+        ?string $reason = null
     ) {
+        $this->reason = $reason === null ? null : self::truncateReason($reason);
+
         $packedProtocols = [];
         foreach ($groupProtocols as $protocolName => $protocolMetadata) {
             $packedProtocols[$protocolName] = $protocolMetadata instanceof JoinGroupRequestProtocol
@@ -193,6 +232,17 @@ class JoinGroupRequest extends AbstractRequest
         $this->groupProtocols = $packedProtocols;
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
+    }
+
+    /**
+     * Cuts a reason at the {@see self::MAX_REASON_LENGTH} characters the Java client sends
+     *
+     * `JoinGroupRequest.maybeTruncateReason` @ 3.2.3, which both KIP-800 fields go through - this one and the
+     * reason of every member of a {@see LeaveGroupRequest} batch.
+     */
+    public static function truncateReason(string $reason): string
+    {
+        return strlen($reason) > self::MAX_REASON_LENGTH ? substr($reason, 0, self::MAX_REASON_LENGTH) : $reason;
     }
 
     /**
@@ -214,6 +264,9 @@ class JoinGroupRequest extends AbstractRequest
         }
         $body['protocolType']   = BinarySchema::TYPE_STRING;
         $body['groupProtocols'] = ['name' => JoinGroupRequestProtocol::class];
+        if (static::VERSION >= 8) {
+            $body['reason'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
 
         return $header + $body;
     }

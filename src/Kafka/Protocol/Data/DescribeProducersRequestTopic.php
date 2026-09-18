@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     PartitionIndexes => COMPACT_ARRAY of INT32
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
  */
 class DescribeProducersRequestTopic implements BinarySchemaInterface
 {

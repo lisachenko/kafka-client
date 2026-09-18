@@ -21,7 +21,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
-use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Consumer\ConsumerConfig;
@@ -29,7 +29,15 @@ use Protocol\Kafka\Consumer\KafkaConsumer;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV7;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetsResponse;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV7;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
 
 /**
  * Verifies the timestamp lookup of the Offsets (ListOffset) API - version 1 of Kafka 0.10.1, and version 2 with
@@ -42,13 +50,24 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * check of the broker (every five minutes), in the middle of the run. What the tests assert is the table of
  * "What the broker answers" in the protocol document.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
+ * The one answer the node cannot be made to give any more is the **43 UNSUPPORTED_FOR_MESSAGE_FORMAT** of a
+ * timestamp lookup on a log without timestamps: that needed a message format v0 log, and KIP-724 (Kafka 3.0)
+ * retired `message.format.version`, so every log of this node is a record batch v2 and every partition has a time
+ * index. The code stays in {@see KafkaException} and in the error table, it is simply not reachable from a client
+ * of a 3.x broker.
+ *
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(OffsetAndTimestamp::class)]
 #[CoversClass(OffsetsRequest::class)]
+#[CoversClass(OffsetsRequestV7::class)]
+#[CoversClass(OffsetsRequestV8::class)]
+#[CoversClass(OffsetsResponse::class)]
+#[CoversClass(OffsetsResponseV7::class)]
+#[CoversClass(OffsetsResponseV8::class)]
 #[CoversClass(OffsetsResponsePartition::class)]
 final class OffsetsByTimestampTest extends IntegrationTestCase
 {
@@ -72,6 +91,17 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
      * Number of records that a prepared topic holds
      */
     private const int RECORD_COUNT = 5;
+
+    /**
+     * `CreateTime` offsets, relative to {@see self::firstTimestamp()}, of the records of the max-timestamp topic
+     *
+     * They are deliberately **not** monotonic: the largest one sits in the middle of the log, so that the answer
+     * of the target time -3 (KIP-734) is the offset **1** while the log ends at the offset 3. A log whose
+     * timestamps rise with its offsets could not tell the two questions apart.
+     *
+     * @var list<int>
+     */
+    private const array OUT_OF_ORDER_STAMPS = [0, 5000, 2000];
 
     /**
      * How long to wait for a freshly created topic to have a leader, in seconds
@@ -158,26 +188,6 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         self::assertSame(0, $this->lookUp($topic, OffsetsRequest::EARLIEST)?->offset);
     }
 
-    public function testATopicWithoutMessageTimestampsRefusesATimestampLookupButKeepsTheSpecialTimes(): void
-    {
-        // message.format.version=0.9.0 makes the broker store the records in message format v0, which has no
-        // timestamps at all, so there is nothing for the time index to search
-        $topic = $this->preparedTopic('legacy-format');
-
-        self::assertSame(self::RECORD_COUNT, $this->lookUp($topic, OffsetsRequest::LATEST)?->offset);
-        self::assertSame(0, $this->lookUp($topic, OffsetsRequest::EARLIEST)?->offset);
-
-        try {
-            $this->lookUp($topic, self::firstTimestamp() + 1500);
-            self::fail('A timestamp lookup on a message format v0 topic is expected to fail');
-        } catch (TopicPartitionRequestException $exception) {
-            $error = $exception->getExceptions()[$topic][self::PARTITION];
-
-            self::assertInstanceOf(UnsupportedForMessageFormatException::class, $error);
-            self::assertSame(KafkaException::UNSUPPORTED_FOR_MESSAGE_FORMAT, $error->getCode());
-        }
-    }
-
     public function testACompressedBatchIsResolvedToTheInnerRecord(): void
     {
         // The whole batch is one wrapper message on disk, and the broker still answers the offset of the single
@@ -260,6 +270,384 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         }
     }
 
+    public function testTheMaxTimestampFindsTheLargestTimestampAndNotTheEndOfTheLog(): void
+    {
+        $topic = $this->preparedTopic('max-timestamp');
+
+        $found = $this->lookUp($topic, OffsetsRequest::MAX_TIMESTAMP);
+
+        self::assertInstanceOf(OffsetAndTimestamp::class, $found);
+        self::assertSame(
+            1,
+            $found->offset,
+            'the largest timestamp of this log sits in the middle of it, at the offset 1'
+        );
+        self::assertSame(
+            self::firstTimestamp() + self::OUT_OF_ORDER_STAMPS[1],
+            $found->timestamp,
+            'unlike -1 and -2, the answer of -3 carries the timestamp it found'
+        );
+        self::assertSame(
+            count(self::OUT_OF_ORDER_STAMPS),
+            $this->lookUp($topic, OffsetsRequest::LATEST)?->offset,
+            'the log ends behind the record that carries the largest timestamp, which is the whole point of -3'
+        );
+    }
+
+    public function testTheConsumerAndTheAdminClientBothAskForTheMaxTimestamp(): void
+    {
+        $topic    = $this->preparedTopic('max-timestamp');
+        $expected = self::firstTimestamp() + self::OUT_OF_ORDER_STAMPS[1];
+
+        $consumer = new KafkaConsumer([
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => self::CLIENT_ID,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+            ClientConfig::REQUEST_TIMEOUT_MS        => 10000,
+            ConsumerConfig::GROUP_ID                => 't5-timestamps-' . bin2hex(random_bytes(4)),
+            ConsumerConfig::ENABLE_AUTO_COMMIT      => false,
+        ]);
+
+        try {
+            $fromConsumer = $consumer->maxTimestampOffsets([$topic => [self::PARTITION]])[$topic][self::PARTITION];
+            self::assertInstanceOf(OffsetAndTimestamp::class, $fromConsumer);
+            self::assertSame(1, $fromConsumer->offset);
+            self::assertSame($expected, $fromConsumer->timestamp);
+            self::assertSame(
+                0,
+                $fromConsumer->leaderEpoch,
+                'the answer carries the leader epoch of KIP-320 like every other lookup of this api'
+            );
+        } finally {
+            $consumer->close();
+        }
+
+        $configuration = $this->configuration();
+        $admin         = new AdminClient(Cluster::bootstrap($configuration, $topic), $configuration);
+        $fromAdmin     = $admin->listMaxTimestampOffsets([$topic => [self::PARTITION]])[$topic][self::PARTITION];
+
+        self::assertInstanceOf(OffsetAndTimestamp::class, $fromAdmin);
+        self::assertSame(1, $fromAdmin->offset);
+        self::assertSame($expected, $fromAdmin->timestamp);
+        self::assertSame(
+            [$topic => [self::PARTITION => count(self::OUT_OF_ORDER_STAMPS)]],
+            $admin->listOffsets([$topic => [self::PARTITION]]),
+            'the plain listOffsets() still answers the end of the log'
+        );
+    }
+
+    public function testAnEmptyPartitionHasNoMaxTimestampAndNoError(): void
+    {
+        // An empty log has no largest timestamp, and the node reports that the way it reports "no record matches
+        // this timestamp": the error code 0 with the offset -1, which this client hands out as null
+        self::assertNull($this->lookUp($this->preparedTopic('empty'), OffsetsRequest::MAX_TIMESTAMP));
+    }
+
+    public function testAVersionBelowSevenIsRefusedTheMaxTimestampPerPartition(): void
+    {
+        // `KafkaApis.handleListOffsetRequestV1AndAbove` @ 3.9.2 demands version 7 for the target time -3 and
+        // answers the partition of a lower version with 35 - without closing the connection
+        $topic  = $this->preparedTopic('max-timestamp');
+        $stream = $this->connect();
+
+        try {
+            new OffsetsRequestV6(
+                [$topic => [self::PARTITION => OffsetsRequest::MAX_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                7341
+            )->writeTo($stream);
+            $refusal = OffsetsResponseV6::unpack($stream);
+
+            self::assertSame(7341, $refusal->getCorrelationId());
+            $partition = $refusal->topics[$topic]->partitions[self::PARTITION];
+            self::assertSame(KafkaException::UNSUPPORTED_VERSION, $partition->errorCode);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+
+            // The connection is untouched: the very same frame with -1 is served on it
+            new OffsetsRequestV6(
+                [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                7342
+            )->writeTo($stream);
+            $served = OffsetsResponseV6::unpack($stream);
+
+            self::assertSame(7342, $served->getCorrelationId());
+            self::assertSame(
+                KafkaException::NO_ERROR,
+                $served->topics[$topic]->partitions[self::PARTITION]->errorCode
+            );
+            self::assertSame(
+                count(self::OUT_OF_ORDER_STAMPS),
+                $served->topics[$topic]->partitions[self::PARTITION]->offset
+            );
+        } finally {
+            $stream->disconnect();
+        }
+
+        // The same branch of the broker refuses every negative target time it does not know at all: the map of
+        // `KafkaApis.handleListOffsetRequestV1AndAbove` @ 3.9.2 ends at the -5 of KIP-1005, which the version 9
+        // this client sends does carry, so -6 is the first value no version of this api can ask for
+        try {
+            $this->client($topic)->fetchTopicPartitionOffsetsForTimes([$topic => [self::PARTITION => -6]]);
+            self::fail('A target time this cluster does not know is expected to fail');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(
+                UnsupportedVersionException::class,
+                $exception->getExceptions()[$topic][self::PARTITION]
+            );
+        }
+    }
+
+    public function testTheLocalLogStartOffsetOfKip405IsTheStartOfTheLogWithoutTieredStorage(): void
+    {
+        // KIP-405 (Kafka 3.5), the target time -4: "where does the part of this partition that is still on the
+        // broker's own disk begin?". The node runs without remote storage, so `UnifiedLog.localLogStartOffset`
+        // @ 3.9.2 is the log start offset itself and the answer is the one of -2
+        $topic = $this->preparedTopic('max-timestamp');
+
+        $local = $this->lookUp($topic, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+
+        self::assertInstanceOf(OffsetAndTimestamp::class, $local);
+        self::assertSame(0, $local->offset, 'nothing of this log was ever moved anywhere');
+        self::assertSame(
+            OffsetsResponsePartition::UNKNOWN_TIMESTAMP,
+            $local->timestamp,
+            'like -1 and -2, the lookup reads no record and answers the timestamp -1'
+        );
+        self::assertSame(0, $local->leaderEpoch, 'the leader epoch of KIP-320 is answered as everywhere else');
+        self::assertEquals(
+            $this->lookUp($topic, OffsetsRequest::EARLIEST),
+            $local,
+            'without tiered storage the earliest offset and the earliest LOCAL offset are one and the same'
+        );
+
+        $configuration = $this->configuration();
+        $admin         = new AdminClient(Cluster::bootstrap($configuration, $topic), $configuration);
+
+        self::assertSame(
+            [$topic => [self::PARTITION => 0]],
+            $admin->listEarliestLocalOffsets([$topic => [self::PARTITION]]),
+            'AdminClient::listEarliestLocalOffsets() is the OffsetSpec.earliestLocal() of the Java admin client'
+        );
+        self::assertSame(
+            $admin->listOffsets([$topic => [self::PARTITION]], OffsetsRequest::EARLIEST),
+            $admin->listEarliestLocalOffsets([$topic => [self::PARTITION]])
+        );
+    }
+
+    public function testAnEmptyPartitionAnswersTheLocalLogStartOffsetZeroAndNotMinusOne(): void
+    {
+        // An empty log starts where it ends, and its local log start offset is that same 0 - which is the
+        // difference to the max timestamp -3, that has nothing to report on an empty partition
+        $topic = $this->preparedTopic('empty');
+        $local = $this->lookUp($topic, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+
+        self::assertInstanceOf(OffsetAndTimestamp::class, $local);
+        self::assertSame(0, $local->offset);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $local->timestamp);
+        self::assertNull(
+            $this->lookUp($topic, OffsetsRequest::MAX_TIMESTAMP),
+            'the max timestamp of an empty log is the -1 / -1 this client hands out as null'
+        );
+    }
+
+    public function testAVersionBelowEightIsRefusedTheLocalLogStartOffsetPerPartition(): void
+    {
+        // `KafkaApis.handleListOffsetRequestV1AndAbove` @ 3.9.2 demands version 8 for the target time -4 and
+        // answers the partition of a lower version with 35 - without closing the connection
+        $topic  = $this->preparedTopic('max-timestamp');
+        $stream = $this->connect();
+
+        try {
+            new OffsetsRequestV7(
+                [$topic => [self::PARTITION => OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4051
+            )->writeTo($stream);
+            $refusal = OffsetsResponseV7::unpack($stream);
+
+            self::assertSame(4051, $refusal->getCorrelationId());
+            $partition = $refusal->topics[$topic]->partitions[self::PARTITION];
+            self::assertSame(KafkaException::UNSUPPORTED_VERSION, $partition->errorCode);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+
+            // The connection is untouched, and the very same version answers the max timestamp of KIP-734
+            new OffsetsRequestV7(
+                [$topic => [self::PARTITION => OffsetsRequest::MAX_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4052
+            )->writeTo($stream);
+            $served = OffsetsResponseV7::unpack($stream);
+
+            self::assertSame(4052, $served->getCorrelationId());
+            self::assertSame(
+                KafkaException::NO_ERROR,
+                $served->topics[$topic]->partitions[self::PARTITION]->errorCode
+            );
+            self::assertSame(1, $served->topics[$topic]->partitions[self::PARTITION]->offset);
+        } finally {
+            $stream->disconnect();
+        }
+
+        // And the frame of the version 8 is the frame of the version 7, byte for byte behind the api version
+        $arguments = [
+            [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+            OffsetsRequest::CONSUMER_REPLICA_ID,
+            FetchRequest::READ_UNCOMMITTED,
+            self::CLIENT_ID,
+            4053,
+        ];
+        $eight = bin2hex((string) new OffsetsRequestV8(...$arguments));
+        $seven = bin2hex((string) new OffsetsRequestV7(...$arguments));
+
+        self::assertSame($seven, substr_replace($eight, '0007', 12, 4));
+        self::assertSame(7, OffsetsRequestV7::VERSION);
+        self::assertSame(7, OffsetsResponseV7::VERSION);
+        self::assertSame(8, OffsetsRequestV8::VERSION);
+        self::assertSame(-4, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+    }
+
+    public function testTheLastTieredOffsetOfKip1005IsMinusOneWithoutRemoteStorage(): void
+    {
+        // KIP-1005 (Kafka 3.9), the target time -5: "which offset does the part of this partition that has been
+        // moved to remote storage end at?". `UnifiedLog.fetchOffsetByTimestamp` @ 3.9.2 answers
+        // `highestOffsetInRemoteStorage()` only inside an `if (remoteLogEnabled())` and writes the literal
+        // TimestampAndOffset(NO_TIMESTAMP, -1L, Optional.of(-1)) when it is off, which is how this node runs
+        $topic         = $this->preparedTopic('max-timestamp');
+        $configuration = $this->configuration();
+        $admin         = new AdminClient(Cluster::bootstrap($configuration, $topic), $configuration);
+
+        self::assertSame(
+            [$topic => [self::PARTITION => OffsetsResponsePartition::UNKNOWN_OFFSET]],
+            $admin->listLatestTieredOffsets([$topic => [self::PARTITION]]),
+            'AdminClient::listLatestTieredOffsets() is the OffsetSpec.latestTiered() of the Java admin client'
+        );
+        self::assertSame(
+            [$topic => [self::PARTITION => 0]],
+            $admin->listEarliestLocalOffsets([$topic => [self::PARTITION]]),
+            'the -4 of the same partition is the offset 0: the two ends of the tiered range are not the same'
+        );
+        self::assertNull(
+            $this->lookUp($topic, OffsetsRequest::LATEST_TIERED_TIMESTAMP),
+            'the -1 / -1 of "nothing is tiered" is what this client hands a timestamp lookup out as null'
+        );
+
+        // The error code is 0: the question is valid and there is nothing to report, which is why the offset -1
+        // of a log that HAS records has to be read as "nothing of it is tiered" and never as a failure
+        $stream = $this->connect();
+
+        try {
+            new OffsetsRequest(
+                [$topic => [self::PARTITION => OffsetsRequest::LATEST_TIERED_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4061
+            )->writeTo($stream);
+            $answer    = OffsetsResponse::unpack($stream);
+            $partition = $answer->topics[$topic]->partitions[self::PARTITION];
+
+            self::assertSame(4061, $answer->getCorrelationId());
+            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+            self::assertSame(-1, $partition->leaderEpoch, 'and the leader epoch of a -1 offset is -1 as well');
+        } finally {
+            $stream->disconnect();
+        }
+    }
+
+    public function testAnEmptyPartitionAnswersTheSameLastTieredOffsetAsAFilledOne(): void
+    {
+        // Unlike -4, which answers the 0 of a log that starts where it ends, -5 does not depend on the log at all
+        // on a broker without tiered storage
+        $topic         = $this->preparedTopic('empty');
+        $configuration = $this->configuration();
+        $admin         = new AdminClient(Cluster::bootstrap($configuration, $topic), $configuration);
+
+        self::assertSame(
+            [$topic => [self::PARTITION => OffsetsResponsePartition::UNKNOWN_OFFSET]],
+            $admin->listLatestTieredOffsets([$topic => [self::PARTITION]])
+        );
+        self::assertSame(
+            [$topic => [self::PARTITION => 0]],
+            $admin->listEarliestLocalOffsets([$topic => [self::PARTITION]]),
+            'where the local log start offset of an empty log is its 0'
+        );
+    }
+
+    public function testAVersionBelowNineIsRefusedTheLastTieredOffsetPerPartition(): void
+    {
+        // `KafkaApis.handleListOffsetRequestV1AndAbove` @ 3.9.2 demands version 9 for the target time -5 and
+        // answers the partition of a lower version with 35 - without closing the connection
+        $topic  = $this->preparedTopic('max-timestamp');
+        $stream = $this->connect();
+
+        try {
+            new OffsetsRequestV8(
+                [$topic => [self::PARTITION => OffsetsRequest::LATEST_TIERED_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4071
+            )->writeTo($stream);
+            $refusal = OffsetsResponseV8::unpack($stream);
+
+            self::assertSame(4071, $refusal->getCorrelationId());
+            $partition = $refusal->topics[$topic]->partitions[self::PARTITION];
+            self::assertSame(KafkaException::UNSUPPORTED_VERSION, $partition->errorCode);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+
+            // The connection is untouched, and the very same version answers the local log start offset of KIP-405
+            new OffsetsRequestV8(
+                [$topic => [self::PARTITION => OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4072
+            )->writeTo($stream);
+            $served = OffsetsResponseV8::unpack($stream);
+
+            self::assertSame(4072, $served->getCorrelationId());
+            self::assertSame(
+                KafkaException::NO_ERROR,
+                $served->topics[$topic]->partitions[self::PARTITION]->errorCode
+            );
+            self::assertSame(0, $served->topics[$topic]->partitions[self::PARTITION]->offset);
+        } finally {
+            $stream->disconnect();
+        }
+
+        // And the frame of the version 9 is the frame of the version 8, byte for byte behind the api version
+        $arguments = [
+            [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+            OffsetsRequest::CONSUMER_REPLICA_ID,
+            FetchRequest::READ_UNCOMMITTED,
+            self::CLIENT_ID,
+            4073,
+        ];
+        $nine  = bin2hex((string) new OffsetsRequest(...$arguments));
+        $eight = bin2hex((string) new OffsetsRequestV8(...$arguments));
+
+        self::assertSame($eight, substr_replace($nine, '0008', 12, 4));
+        self::assertSame(8, OffsetsRequestV8::VERSION);
+        self::assertSame(8, OffsetsResponseV8::VERSION);
+        self::assertSame(9, OffsetsRequest::VERSION);
+        self::assertSame(-5, OffsetsRequest::LATEST_TIERED_TIMESTAMP);
+    }
+
+
     /**
      * Looks one target time up in the partition under test and returns what the broker found
      */
@@ -285,13 +673,14 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
 
         $topic   = self::uniqueTopicName('t5-timestamps-' . $key);
         $configs = match ($key) {
-            'legacy-format'   => ['message.format.version' => '0.9.0'],
             'log-append-time' => ['message.timestamp.type' => 'LogAppendTime'],
             default           => [],
         };
 
         $this->createTopic($topic, $configs);
-        if ($key !== 'empty') {
+        if ($key === 'max-timestamp') {
+            $this->produceOutOfOrderRecords($topic);
+        } elseif ($key !== 'empty') {
             $this->produceTimestampedRecords($topic, $key === 'gzip' ? 'gzip' : ProducerConfig::COMPRESSION_TYPE_NONE);
         }
 
@@ -330,6 +719,34 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         } while (microtime(true) < $deadline);
 
         self::fail("The topic {$topic} did not get a leader in time");
+    }
+
+    /**
+     * Appends the three records of {@see self::OUT_OF_ORDER_STAMPS} to the partition under test
+     *
+     * They travel in one batch, so their `CreateTime` values reach the log exactly as they are and the largest one
+     * ends up at the offset 1.
+     */
+    private function produceOutOfOrderRecords(string $topic): void
+    {
+        $records = [];
+        foreach (self::OUT_OF_ORDER_STAMPS as $index => $stamp) {
+            $records[] = new Record(
+                'value-' . $index,
+                null,
+                CompressionCodec::NONE,
+                null,
+                self::firstTimestamp() + $stamp
+            );
+        }
+
+        $result = $this->client($topic)->produce([$topic => [self::PARTITION => $records]]);
+
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $result[$topic][self::PARTITION]->errorCode,
+            "The records of {$topic} were not accepted by the broker"
+        );
     }
 
     /**

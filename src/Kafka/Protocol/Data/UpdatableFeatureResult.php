@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     ErrorMessage => COMPACT_NULLABLE_STRING
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "UpdateFeatures API (key 57, v0)"
+ * @see docs/protocol/3.9.md, section "UpdateFeatures API (key 57, v0 and v1)"
  */
 class UpdatableFeatureResult implements BinarySchemaInterface
 {

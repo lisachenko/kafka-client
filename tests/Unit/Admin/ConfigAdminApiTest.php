@@ -43,7 +43,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 to v2)", "DescribeConfigs API (key 32, v0 to v4)" and
+ * @see docs/protocol/3.9.md, sections "DeleteRecords API (key 21, v0 to v2)", "DescribeConfigs API (key 32, v0 to v4)" and
  *      "AlterConfigs API (key 33, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]

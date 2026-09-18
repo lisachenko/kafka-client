@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
@@ -24,22 +25,49 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     TopicName => string
  * </pre>
  *
- * The topic entry itself never changed; what a version selects is the shape of its partition entries, which is
- * what the version constant of this DTO picks in {@see self::partitionClass()}, see {@see FetchRequestTopicV0}.
+ * Up to version 12 the topic entry names the topic by its **name**, and what a version selects is only the shape
+ * of its partition entries, which is what the version constant of this DTO picks in {@see self::partitionClass()},
+ * see {@see FetchRequestTopicV0}.
  *
- * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v12)"
+ * **Version 13 (Kafka 3.1, KIP-516) replaces the name with the `topic_id`**: `FetchRequest.json` @ 3.1.2 declares
+ * `Topic` as `versions 0-12` and `TopicId` as `13+`, so a version 13 entry is 16 raw bytes instead of a compact
+ * string, and a client that does not know the id of a topic can not fetch it at all - it refreshes its metadata
+ * first, see {@see \Protocol\Kafka\Common\Cluster::topicIdOf()}. The {@see self::$topic} of this class stays
+ * next to the id for the client that filled it in: it is not on the wire of a version 13 frame, and an entry that
+ * was **decoded** from one carries the empty name until the id is resolved against the cluster.
+ *
+ * The entry itself did not change again after that; what a version of this class still picks is the shape of its
+ * **partition** entries, and version 17 (Kafka 3.9, KIP-853) changed that one once more by declaring the tagged
+ * `replica_directory_id` of {@see FetchRequestTopicPartition::$replicaDirectoryId}. This class is the entry of
+ * version 17, {@see FetchRequestTopicV13} the one of the versions 13 to 16.
+ *
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "The topic ids of the fetch path
+ *      (v13, KIP-516)" and "The replica directory id of KIP-853 (v17)"
  */
 class FetchRequestTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Fetch API that this DTO is packed for
      */
-    public const int VERSION = 12;
+    public const int VERSION = 17;
 
     /**
-     * Name of the topic to fetch from
+     * Name of the topic to fetch from, the empty string in an entry that was decoded from a version 13 frame
+     *
+     * The field is on the wire in the versions 0 to 12 only.
      */
     public string $topic;
+
+    /**
+     * Id of the topic to fetch from, the 16 raw bytes of the `uuid` of KIP-516
+     *
+     * {@see Uuid::ZERO} is what every version below 13 leaves here and what a caller that names the topic by its
+     * name means; a version 13 frame that carries it is refused by the broker with **100** `UnknownTopicId`,
+     * because no topic of a cluster ever has the zero id.
+     *
+     * @since Version 13 of protocol (Kafka 3.1, KIP-516)
+     */
+    public string $topicId = Uuid::ZERO;
 
     /**
      * Partitions of this topic to fetch from, indexed by the partition id
@@ -51,10 +79,11 @@ class FetchRequestTopic implements BinarySchemaInterface
     /**
      * @param array<int, FetchRequestTopicPartition> $partitions Partitions to fetch from, indexed by partition id
      */
-    public function __construct(string $topic, array $partitions = [])
+    public function __construct(string $topic, array $partitions = [], string $topicId = Uuid::ZERO)
     {
         $this->topic      = $topic;
         $this->partitions = $partitions;
+        $this->topicId    = $topicId;
     }
 
     /**
@@ -62,10 +91,14 @@ class FetchRequestTopic implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
-            'topic'      => BinarySchema::TYPE_STRING,
-            'partitions' => ['partition' => static::partitionClass()],
-        ];
+        // KIP-516 replaced the name with the id in version 13; the two never travel together
+        $scheme = static::VERSION >= 13
+            ? ['topicId' => BinarySchema::TYPE_UUID]
+            : ['topic' => BinarySchema::TYPE_STRING];
+
+        $scheme['partitions'] = ['partition' => static::partitionClass()];
+
+        return $scheme;
     }
 
     /**
@@ -76,7 +109,8 @@ class FetchRequestTopic implements BinarySchemaInterface
     public static function partitionClass(): string
     {
         return match (true) {
-            static::VERSION >= 12 => FetchRequestTopicPartition::class,
+            static::VERSION >= 17 => FetchRequestTopicPartition::class,
+            static::VERSION >= 12 => FetchRequestTopicPartitionV12::class,
             static::VERSION >= 9  => FetchRequestTopicPartitionV9::class,
             static::VERSION >= 5  => FetchRequestTopicPartitionV5::class,
             default               => FetchRequestTopicPartitionV0::class,

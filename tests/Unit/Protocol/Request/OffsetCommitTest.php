@@ -38,6 +38,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV7;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV8;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
@@ -46,18 +47,21 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV7;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
 
 /**
- * Byte-exact tests for the OffsetCommit API (key 8), versions 0 to 6.
+ * Byte-exact tests for the OffsetCommit API (key 8), versions 0 to 9.
  *
  * Version 3 (KIP-124, Kafka 0.11) is the leading `ThrottleTimeMs` of the answer and nothing else: the request of
  * v2 and v3 is one and the same body, and the three lower versions of the answer are one and the same layout.
  * Version 4 (KIP-219, Kafka 2.0) does not touch either half - it is the version from which a throttled broker
  * answers first and mutes the channel afterwards - so the frames of v2, v3 and v4 differ in their api version
  * field alone. Kafka 2.1 changed the frame twice more: version 5 **removes** `retention_time` (KIP-211) and
- * version 6 gives every partition a `committed_leader_epoch` (KIP-320), which is the version this client sends.
+ * version 6 gives every partition a `committed_leader_epoch` (KIP-320). Version 7 (KIP-345) added the
+ * `group_instance_id`, version 8 (KIP-482) is that frame in the flexible encoding, and **version 9** (KIP-848,
+ * Kafka 3.6) is the version 8 frame with another number in its header - the version this client sends.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]
@@ -67,6 +71,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV7;
 #[CoversClass(OffsetCommitRequestV5::class)]
 #[CoversClass(OffsetCommitRequestV6::class)]
 #[CoversClass(OffsetCommitRequestV7::class)]
+#[CoversClass(OffsetCommitRequestV8::class)]
 #[CoversClass(OffsetCommitRequestV4::class)]
 #[CoversClass(OffsetCommitResponse::class)]
 #[CoversClass(OffsetCommitResponseV0::class)]
@@ -75,6 +80,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV7;
 #[CoversClass(OffsetCommitResponseV3::class)]
 #[CoversClass(OffsetCommitResponseV5::class)]
 #[CoversClass(OffsetCommitResponseV7::class)]
+#[CoversClass(OffsetCommitResponseV8::class)]
 #[CoversClass(OffsetCommitResponseV4::class)]
 #[CoversClass(OffsetCommitRequestTopic::class)]
 #[CoversClass(OffsetCommitRequestTopicV0::class)]
@@ -759,6 +765,55 @@ final class OffsetCommitTest extends TestCase
             self::assertSame(0, $response->topics['topic']->partitions[0]->errorCode);
             self::assertSame($frame, bin2hex((string) $response));
         }
+    }
+
+    public function testVersion9SendsTheVersion8FrameWithAnotherNumberInItsHeader(): void
+    {
+        $arguments = ['my-group', 7, 'consumer-1', -1, ['topic' => [0 => 42]], 'test', 1, null];
+        $version9  = bin2hex((string) new OffsetCommitRequest(...$arguments));
+        $version8  = bin2hex((string) new OffsetCommitRequestV8(...$arguments));
+
+        self::assertSame(9, OffsetCommitRequest::VERSION);
+        self::assertSame(8, OffsetCommitRequestV8::VERSION);
+        self::assertSame(
+            $version8,
+            str_replace('00080009', '00080008', $version9),
+            'KIP-848 changed no byte of the body: "the request is the same as version 8"'
+        );
+        self::assertSame(
+            OffsetCommitRequestV8::getScheme(),
+            OffsetCommitRequest::getScheme(),
+            'and therefore no field of the scheme either'
+        );
+    }
+
+    public function testTheAnswerOfVersion9IsTheAnswerOfVersion8(): void
+    {
+        // The 113 StaleMemberEpoch of KIP-848 in the one partition of the topic, which only a version 9 carries
+        $frame = '00000018'
+            . '00000001'
+            . '00'
+            . '00000000'
+            . '02'
+            . '04' . bin2hex('abc')
+            . '02'
+            . '00000000'
+            . '0071'
+            . '00'
+            . '00'
+            . '00';
+
+        $response = OffsetCommitResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(9, OffsetCommitResponse::VERSION);
+        self::assertSame(8, OffsetCommitResponseV8::VERSION);
+        self::assertSame(113, $response->topics['abc']->partitions[0]->errorCode);
+        self::assertSame($frame, bin2hex((string) $response));
+        self::assertSame(
+            $frame,
+            bin2hex((string) OffsetCommitResponseV8::unpack(new StringStream((string) hex2bin($frame)))),
+            'the two versions decode and re-encode one and the same layout'
+        );
     }
 
     public function testPartitionErrorCodeIsReadAsASignedInteger(): void

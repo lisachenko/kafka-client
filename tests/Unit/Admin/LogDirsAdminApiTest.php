@@ -23,6 +23,7 @@ use Protocol\Kafka\Admin\TopicPartitionReplica;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\KafkaStorageException;
 use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
@@ -41,7 +42,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
+ * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v4)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
@@ -61,6 +62,16 @@ final class LogDirsAdminApiTest extends TestCase
     private const string FIRST_DIR = '/tmp/kafka-logs';
 
     private const string SECOND_DIR = '/tmp/kafka-logs-2';
+
+    /**
+     * The `total_bytes` of KIP-827 that the scripted broker answers, i.e. the size of the volume of a directory
+     */
+    private const int VOLUME_TOTAL_BYTES = 270553174016;
+
+    /**
+     * The `usable_bytes` of KIP-827, the free space of that volume
+     */
+    private const int VOLUME_USABLE_BYTES = 23060865024;
 
     private ScriptedConnections $brokers;
 
@@ -102,6 +113,51 @@ final class LogDirsAdminApiTest extends TestCase
         self::assertSame([], $result[0][self::FIRST_DIR]->replicaInfos, 'and holds none of the requested replicas');
 
         self::assertSame([], $result[1][self::FIRST_DIR]->replicaInfos, 'the second broker was asked separately');
+    }
+
+    public function testDescribeLogDirsReportsTheVolumeSizesOfEveryDirectory(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_BROKER, new BrokerConnection(self::describeLogDirsResponse([
+                [0, self::FIRST_DIR, []],
+                [0, self::SECOND_DIR, [self::TOPIC => [[0, 8203970, 0, false]]]],
+            ])))
+            ->install();
+
+        $directories = $this->adminClient()->describeLogDirs([0], [self::TOPIC => [0]])[0];
+
+        foreach ([self::FIRST_DIR, self::SECOND_DIR] as $path) {
+            self::assertSame(
+                self::VOLUME_TOTAL_BYTES,
+                $directories[$path]->totalBytes,
+                'the two sizes of KIP-827 describe the VOLUME, so two directories of one filesystem share them'
+            );
+            self::assertSame(self::VOLUME_USABLE_BYTES, $directories[$path]->usableBytes);
+            self::assertTrue($directories[$path]->hasVolumeSizes(), 'the version 4 measured them');
+        }
+    }
+
+    public function testADirectoryTheBrokerCouldNotMeasureCarriesTheUnknownSizes(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_BROKER, new BrokerConnection(self::describeLogDirsResponse(
+                [[56, self::FIRST_DIR, []]],
+                0,
+                LogDirInfo::UNKNOWN_BYTES,
+                LogDirInfo::UNKNOWN_BYTES
+            )))
+            ->install();
+
+        $directory = $this->adminClient()->describeLogDirs([0], [self::TOPIC => [0]])[0][self::FIRST_DIR];
+
+        self::assertSame(LogDirInfo::UNKNOWN_BYTES, $directory->totalBytes, 'the default -1 of the two fields');
+        self::assertSame(LogDirInfo::UNKNOWN_BYTES, $directory->usableBytes);
+        self::assertFalse(
+            $directory->hasVolumeSizes(),
+            'which is what every answer below the version 4 carries as well'
+        );
     }
 
     public function testDescribeLogDirsReportsAMovingReplicaInBothDirectories(): void
@@ -192,6 +248,20 @@ final class LogDirsAdminApiTest extends TestCase
 
         self::assertInstanceOf(KafkaStorageException::class, $directories[self::FIRST_DIR]->error);
         self::assertSame([], $directories[self::FIRST_DIR]->replicaInfos);
+    }
+
+    public function testTheTopLevelErrorCodeOfVersionThreeIsRaisedForTheWholeRequest(): void
+    {
+        // What the 3.9.2 node answers a principal that may not `Describe` the CLUSTER resource: 31 and no
+        // directory at all. A broker below Kafka 3.2 answers the same refusal with the empty directory map alone
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_BROKER, new BrokerConnection(self::describeLogDirsResponse([], 31)))
+            ->install();
+
+        $this->expectException(ClusterAuthorizationFailedException::class);
+
+        $this->adminClient()->describeLogDirs([0]);
     }
 
     public function testDescribeLogDirsRefusesABrokerIdTheClusterDoesNotHave(): void
@@ -388,18 +458,29 @@ final class LogDirsAdminApiTest extends TestCase
     }
 
     /**
-     * Builds a DescribeLogDirs answer of version **2**, the flexible one the client sends since Kafka 2.6
+     * Builds a DescribeLogDirs answer of version **4**, the one the client sends since Kafka 3.3
      *
-     * The answer of the versions 0 and 1 is the same fields in the plain encoding; the wire vectors of those
-     * versions are replayed by `tests/Compliance` through their own classes, while the scripted broker of these
-     * tests has to speak the version the client sends.
+     * The version 4 is the flexible frame of Kafka 2.6 with the top-level error code of Kafka 3.2 between
+     * `throttle_time_ms` and the directories and the `total_bytes`/`usable_bytes` of KIP-827 at the end of every
+     * directory entry, behind its topics; the answer of the versions 0 and 1 is the same fields in the plain
+     * encoding and without either addition. The wire vectors of the lower versions are replayed by
+     * `tests/Compliance` through their own classes, while the scripted broker of these tests has to speak the
+     * version the client sends.
      *
      * @param list<array{0: int, 1: string, 2: array<string, list<array{0: int, 1: int, 2: int, 3: bool}>>}> $dirs
      *        Error code, path and replicas - by topic, each `[partition, size, offsetLag, isFuture]` - per directory
+     * @param int $errorCode   Error of the whole request, the field the version 3 of Kafka 3.2 added
+     * @param int $totalBytes  Size of the volume of every directory, the field the version 4 of Kafka 3.3 added
+     * @param int $usableBytes Free bytes of that volume, the second field of KIP-827
      */
-    private static function describeLogDirsResponse(array $dirs): string
-    {
+    private static function describeLogDirsResponse(
+        array $dirs,
+        int $errorCode = 0,
+        int $totalBytes = self::VOLUME_TOTAL_BYTES,
+        int $usableBytes = self::VOLUME_USABLE_BYTES
+    ): string {
         $body = pack('N', 0)                       // throttle_time_ms
+            . pack('n', $errorCode)                // the top-level error code of the version 3
             . self::unsignedVarint(count($dirs) + 1);
 
         foreach ($dirs as [$errorCode, $logDir, $topics]) {
@@ -414,6 +495,8 @@ final class LogDirsAdminApiTest extends TestCase
                 }
                 $body .= "\x00";                    // the tag buffer of the topic
             }
+            // The two sizes of KIP-827 are the LAST fields of a directory entry, behind its topics
+            $body .= pack('J', $totalBytes) . pack('J', $usableBytes);
             $body .= "\x00";                        // the tag buffer of the directory
         }
 

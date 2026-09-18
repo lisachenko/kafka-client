@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV3;
 /**
  * Byte-exact tests for the DeleteGroups API of Kafka 1.1 (api key 42, v0, KIP-229).
  *
- * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 #[CoversClass(DeleteGroupsRequest::class)]
 #[CoversClass(DeleteGroupsRequestV0::class)]

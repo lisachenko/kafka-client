@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * which is what {@see TxnOffsetCommitRequest} sends. This class lowers the version constant, and with it
  * {@see TxnOffsetCommitRequest::topicClass()} picks the entries without the epoch.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 final class TxnOffsetCommitRequestV1 extends TxnOffsetCommitRequest
 {

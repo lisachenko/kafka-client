@@ -35,8 +35,10 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV3;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV2;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV3;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
@@ -70,8 +72,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * garbage or runs off the end of the frame, so a green round trip through the version classes is the proof that the
  * field sits where the specification says it does.
  *
- * @see docs/protocol/2.8.md, sections "Quotas and throttle time" and "GroupCoordinator API (key 10, v0 to v3)"
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
+ * @see docs/protocol/3.9.md, sections "Quotas and throttle time" and "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/3.9.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(GroupCoordinatorRequest::class)]
@@ -164,9 +166,15 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         );
 
         // ... and the rest of the answer really is behind the field, not shifted by four bytes
+        $fetchedGroup = $fetch->groupOf($groupId);
+
         self::assertSame(KafkaException::NO_ERROR, $commit->topics[$topic]->partitions[0]->errorCode);
-        self::assertSame(3, $fetch->topics[$topic]->partitions[0]->offset);
-        self::assertSame(KafkaException::NO_ERROR, $fetch->errorCode, 'the group error still closes the answer');
+        self::assertSame(3, $fetchedGroup->topics[$topic]->partitions[0]->offset);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $fetchedGroup->errorCode,
+            'the group error closes the entry of the group since version 8'
+        );
     }
 
     public function testTheGroupMembershipApisCarryTheThrottleTimeOfTheirNewVersions(): void
@@ -283,18 +291,19 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
     {
         // `FindCoordinatorResponse` @ 0.11.0.3 and @ 1.1.1 set `errorMessage = null` in both of the constructors
         // the broker uses, so the NULLABLE_STRING that version 1 added was `ff ff` in every answer of those lines.
-        // `KafkaApis.handleFindCoordinatorRequest` @ 2.8.2 builds every answer with `Errors.message()` instead,
-        // and `Errors.NONE.message()` is the NAME of the constant - there is no exception to take a message from -
-        // so a lookup that succeeded carries the four bytes "NONE" here.
-        $stream = $this->connect();
+        // `KafkaApis.handleFindCoordinatorRequestLessThanV4` @ 3.9.2 still builds every answer below version 4
+        // with `Errors.message()`, and `Errors.NONE.message()` is the NAME of the constant - there is no exception
+        // to take a message from - so a lookup that succeeded carries the four bytes "NONE" up to version 3.
+        $stream  = $this->connect();
+        $groupId = self::uniqueGroupName();
 
-        new GroupCoordinatorRequest(
-            self::uniqueGroupName(),
+        new GroupCoordinatorRequestV3(
+            $groupId,
             GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
             self::CLIENT_ID,
             401
         )->writeTo($stream);
-        $unknownGroup = GroupCoordinatorResponse::unpack($stream);
+        $unknownGroup = GroupCoordinatorResponseV3::unpack($stream);
 
         self::assertSame('NONE', $unknownGroup->errorMessage, 'the message of the error code 0 is its own name');
         self::assertSame(0, $unknownGroup->throttleTimeMs);
@@ -307,6 +316,38 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         $node = $this->client()->getGroupCoordinator(self::uniqueGroupName());
 
         self::assertContains($node->nodeId, array_keys($this->cluster()->nodes()));
+    }
+
+    /**
+     * And the version 4 of KIP-699 carries no message at all: `handleFindCoordinatorRequestV4AndAbove` @ 3.9.2
+     * fills the key, the error code, the host, the node id and the port of every entry and nothing else
+     */
+    public function testTheErrorMessageOfAVersionFourCoordinatorAnswerIsTheEmptyString(): void
+    {
+        $stream  = $this->connect();
+        $groupId = self::uniqueGroupName();
+
+        GroupCoordinatorRequest::forKeys(
+            [$groupId],
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+            self::CLIENT_ID,
+            402
+        )->writeTo($stream);
+        $answer = GroupCoordinatorResponse::unpack($stream);
+        $entry  = $answer->coordinatorOf($groupId);
+
+        self::assertSame(0, $answer->throttleTimeMs);
+        self::assertSame($groupId, $entry->key, 'every entry names the key it answers');
+        self::assertSame(
+            '',
+            $entry->errorMessage,
+            'the version 4 handler never sets the message, so the generated default - the empty string - is sent'
+        );
+        self::assertContains(
+            $entry->errorCode,
+            [KafkaException::NO_ERROR, KafkaException::GROUP_COORDINATOR_NOT_AVAILABLE],
+            'a group nobody has heard of gets a coordinator all the same, or a retriable 15'
+        );
     }
 
     public function testAnUnknownCoordinatorTypeIsAnsweredWithTheErrorCode42(): void

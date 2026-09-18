@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * Every topic, group and transactional id of this class is named `t3-25-…`, so that the tests can run next to the
  * other suites on the shared container.
  *
- * @see docs/protocol/2.8.md, sections "Stable offsets and the 88 of KIP-447 (Kafka 2.5)" and "OffsetFetch API
+ * @see docs/protocol/3.9.md, sections "Stable offsets and the 88 of KIP-447 (Kafka 2.5)" and "OffsetFetch API
  *      (key 9, v0 to v7)"
  */
 #[CoversClass(OffsetFetchRequest::class)]

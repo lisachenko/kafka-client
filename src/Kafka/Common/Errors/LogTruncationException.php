@@ -35,7 +35,7 @@ use Exception;
  * `truncationOffset` the leader answered, so that an application can report the gap it lost.
  *
  * @see \Protocol\Kafka\Consumer\KafkaConsumer::validatePositionsIfNeeded()
- * @see docs/protocol/2.8.md, section "KIP-320 in the consumer: leader epochs and truncation detection"
+ * @see docs/protocol/3.9.md, section "KIP-320 in the consumer: leader epochs and truncation detection"
  */
 class LogTruncationException extends KafkaException implements ClientExceptionInterface
 {

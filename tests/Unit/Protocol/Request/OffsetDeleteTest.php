@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\Request\OffsetDeleteResponse;
  * one thing that is unusual about it is the order of the two fields the answer opens with - the top-level error
  * code stands **before** the throttle time, where every other api of this protocol has it the other way round.
  *
- * @see docs/protocol/2.8.md, section "OffsetDelete API (key 47, v0)"
+ * @see docs/protocol/3.9.md, section "OffsetDelete API (key 47, v0)"
  */
 #[CoversClass(OffsetDeleteRequest::class)]
 #[CoversClass(OffsetDeleteResponse::class)]

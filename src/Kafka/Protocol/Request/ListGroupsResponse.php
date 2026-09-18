@@ -16,18 +16,20 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocolV0;
+use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocolV4;
 
 /**
- * ListGroups response, version 4 (key 16)
+ * ListGroups response, version 5 (key 16)
  *
  * <pre>
- *   ListGroups Response (Version: 1 to 4) => throttle_time_ms error_code [groups]
+ *   ListGroups Response (Version: 1 to 5) => throttle_time_ms error_code [groups]
  *     throttle_time_ms => INT32     -- since version 1
  *     error_code       => INT16
- *     groups           => group_id protocol_type group_state
+ *     groups           => group_id protocol_type group_state group_type
  *       group_id      => STRING
  *       protocol_type => STRING
  *       group_state   => STRING     -- since version 4
+ *       group_type    => STRING     -- since version 5
  * </pre>
  *
  * The error code belongs to the whole request: the coordinator answers 15 (GroupCoordinatorNotAvailable) while it is
@@ -38,16 +40,19 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocolV0;
  * {@see ListGroupsResponseV0} is the answer without it and {@see ListGroupsResponseV1} the one of version 1, which
  * version 2 (KIP-219, Kafka 2.0) repeats byte for byte and version 3 (KIP-482, Kafka 2.4) writes in the flexible
  * encoding ({@see ListGroupsResponseV3}). **Version 4 (KIP-518, Kafka 2.6) gave every group entry its
- * `group_state`**, so that a listing answers what an operator otherwise had to ask DescribeGroups for.
+ * `group_state`**, so that a listing answers what an operator otherwise had to ask DescribeGroups for, and
+ * **version 5 (KIP-848, Kafka 3.8) appended the `group_type`** - *"Version 5 adds the GroupType field (KIP-848)"*
+ * (`ListGroupsResponse.json` @ 3.8.1) - which says whether the group runs the **classic** membership protocol of
+ * Kafka 0.9 or the **consumer** protocol of KIP-848. {@see ListGroupsResponseV4} decodes the answer without it.
  *
- * @see docs/protocol/2.8.md, sections "ListGroups API (key 16, v0 to v4)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, sections "ListGroups API (key 16, v0 to v5)" and "Quotas and throttle time"
  */
 class ListGroupsResponse extends AbstractResponse
 {
     /**
      * Version of the ListGroups API that this class decodes the answer of
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -97,6 +102,10 @@ class ListGroupsResponse extends AbstractResponse
      */
     protected static function groupClass(): string
     {
-        return static::VERSION >= 4 ? ListGroupResponseProtocol::class : ListGroupResponseProtocolV0::class;
+        if (static::VERSION >= 5) {
+            return ListGroupResponseProtocol::class;
+        }
+
+        return static::VERSION >= 4 ? ListGroupResponseProtocolV4::class : ListGroupResponseProtocolV0::class;
     }
 }

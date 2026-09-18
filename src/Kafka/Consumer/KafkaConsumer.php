@@ -37,6 +37,8 @@ use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Serialization\Deserializer;
 use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
 use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
+use Protocol\Kafka\Consumer\Internals\ConsumerCoordinatorInterface;
+use Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestPartition;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
@@ -101,10 +103,10 @@ use Throwable;
  * `max.poll.interval.ms` therefore buys here is the time the *rest* of the group is willing to wait for this member
  * in a rebalance - and the requirement that `request.timeout.ms` exceed it, because a JoinGroup blocks that long.
  *
- * Where the committed offsets are kept is chosen with `offsets.storage`: `kafka` commits them to the coordinator
- * of the group with the version 2 of the OffsetCommit api, which carries the member id and the generation of this
- * consumer, `zookeeper` uses the version 0, which is what the consumers of Kafka 0.8.1 did. The two storages are
- * independent, so a group has one position per storage.
+ * The committed offsets are kept by the coordinator of the group, in the `__consumer_offsets` topic of the
+ * cluster: this consumer commits them with the OffsetCommit api, which carries the member id and the generation of
+ * this consumer. The ZooKeeper storage of Kafka 0.8.1 (the version 0 of the offset apis) is gone from this line -
+ * a KRaft node answers both v0 requests with the error code 35.
  *
  * The records are fetched with **Fetch v7**, and every broker this consumer reads from holds an **incremental
  * fetch session** for it (KIP-227, Kafka 1.1, {@see \Protocol\Kafka\Consumer\Internals\FetchSessionHandler}): the
@@ -133,7 +135,7 @@ use Throwable;
  * {@see \Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter} before poll() returns, because a 0.11.0.3
  * broker sends them and only names them. The default is `read_uncommitted`, which shows every record of the log.
  *
- * @see docs/protocol/2.8.md, section "Transactions"
+ * @see docs/protocol/3.9.md, section "Transactions"
  */
 class KafkaConsumer
 {
@@ -170,8 +172,11 @@ class KafkaConsumer
 
     /**
      * Membership of the configured consumer group, created when the consumer first needs its coordinator
+     *
+     * Which of the two membership protocols it speaks is {@see ConsumerConfig::GROUP_PROTOCOL}: the classic one
+     * of {@see ConsumerCoordinator} or the KIP-848 one of {@see ConsumerGroupHeartbeatCoordinator}.
      */
-    private ?ConsumerCoordinator $groupCoordinator = null;
+    private ?ConsumerCoordinatorInterface $groupCoordinator = null;
 
     /**
      * Assignor that this consumer offers as the group protocol of its JoinGroup requests
@@ -374,8 +379,7 @@ class KafkaConsumer
     /**
      * Get the last committed offset of every given topic-partition, whether this consumer committed it or not.
      *
-     * A topic-partition that the group has never committed comes back with the offset -1, whichever storage the
-     * `offsets.storage` option selects.
+     * A topic-partition that the group has never committed comes back with the offset -1 and the error code 0.
      *
      * The partitions are always named explicitly here, as they are in the Java consumer. "Every topic the group
      * committed" is what the nullable topic array of OffsetFetch v2 asks for, and it is an administrative question
@@ -427,6 +431,9 @@ class KafkaConsumer
      *
      * Nothing is moved by this call: it is a query, and a consumer that wants to read from what it found seeks
      * there itself.
+     *
+     * The special target time {@see OffsetsRequest::MAX_TIMESTAMP} (`-3`) of Kafka 3.0 is accepted here too, and
+     * {@see self::maxTimestampOffsets()} is the method that names it.
      *
      * ```php
      * $offsets = $consumer->offsetsForTimes(['my-topic' => [0 => $sinceMs, 1 => $sinceMs]]);
@@ -647,7 +654,7 @@ class KafkaConsumer
 
         $this->rebalanceListener = $listener;
         $this->subscriptionState->subscribeByTopics($topicNames);
-        $this->groupCoordinator()->requestRejoin();
+        $this->groupCoordinator()->requestRejoin(ConsumerCoordinator::REJOIN_REASON_SUBSCRIPTION);
     }
 
     /**
@@ -666,11 +673,15 @@ class KafkaConsumer
      * A member of a group leaves it with a LeaveGroup request, so that the coordinator rebalances the group right
      * away instead of waiting for the session timeout of a member that simply stopped answering. Nothing else is
      * sent to the broker, and the committed offsets of the group stay where they are.
+     *
+     * @param string|null $reason Why the member leaves, which the request carries since KIP-800 (LeaveGroup v5,
+     *        Kafka 3.2); null is {@see ConsumerCoordinator::LEAVE_REASON_UNSUBSCRIBED}, and {@see self::close()}
+     *        names {@see ConsumerCoordinator::LEAVE_REASON_CLOSED} instead
      */
-    public function unsubscribe(): void
+    public function unsubscribe(?string $reason = null): void
     {
         if ($this->subscriptionState->partitionsAutoAssigned() && $this->groupCoordinator !== null) {
-            $this->groupCoordinator->leaveGroup();
+            $this->groupCoordinator->leaveGroup($reason ?? ConsumerCoordinator::LEAVE_REASON_UNSUBSCRIBED);
         }
 
         $this->subscriptionState->unsubscribe();
@@ -700,7 +711,7 @@ class KafkaConsumer
             }
         }
 
-        $this->unsubscribe();
+        $this->unsubscribe(ConsumerCoordinator::LEAVE_REASON_CLOSED);
     }
 
     /**
@@ -1424,7 +1435,11 @@ class KafkaConsumer
             $this->commitBeforeRebalance();
         }
 
-        $revokedPartitions = $this->assignedPartitionLists();
+        // The classic protocol gives its whole assignment up before it joins again (the eager rebalance), the
+        // KIP-848 one only the partitions the coordinator really took away: which of the two it is, is the answer
+        // of the coordinator itself, so that this method speaks neither protocol
+        $ownedPartitions   = $this->assignedPartitionLists();
+        $revokedPartitions = $groupCoordinator->partitionsToRevoke($ownedPartitions);
         if ($revokedPartitions !== []) {
             $this->rebalanceListener?->onPartitionsRevoked($revokedPartitions);
         }
@@ -1439,7 +1454,9 @@ class KafkaConsumer
             $this->refreshTopicPartitionOffsets($assignment);
         }
 
-        $this->rebalanceListener?->onPartitionsAssigned($this->assignedPartitionLists());
+        $this->rebalanceListener?->onPartitionsAssigned(
+            $groupCoordinator->partitionsToAssign($ownedPartitions, $this->assignedPartitionLists())
+        );
     }
 
     /**
@@ -1500,18 +1517,81 @@ class KafkaConsumer
 
     /**
      * Returns the membership of the configured consumer group, created on the first use
+     *
+     * `group.protocol` decides which of the two membership protocols this consumer speaks: `classic` is the one
+     * of every line below this one, `consumer` the one of KIP-848, where a single ConsumerGroupHeartbeat (key 68)
+     * replaces JoinGroup, SyncGroup, Heartbeat and LeaveGroup and the **coordinator** computes the assignment.
+     * Nothing else of the consumer is aware of the difference.
+     *
+     * @throws InvalidConfigurationException If `group.protocol` is neither `classic` nor `consumer`
      */
-    private function groupCoordinator(): ConsumerCoordinator
+    private function groupCoordinator(): ConsumerCoordinatorInterface
     {
-        return $this->groupCoordinator ??= new ConsumerCoordinator(
-            $this->getClient(),
-            $this->requireGroupId(),
-            $this->assignor,
-            (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
-            (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
-            $this->rebalanceTimeoutMs(),
-            $this->groupInstanceId()
-        );
+        return $this->groupCoordinator ??= $this->usesConsumerGroupProtocol()
+            ? new ConsumerGroupHeartbeatCoordinator(
+                $this->getClient(),
+                $this->getCluster(),
+                $this->requireGroupId(),
+                $this->rebalanceTimeoutMs(),
+                (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
+                $this->groupInstanceId(),
+                $this->serverAssignor(),
+                $this->clientRack()
+            )
+            : new ConsumerCoordinator(
+                $this->getClient(),
+                $this->requireGroupId(),
+                $this->assignor,
+                (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
+                (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
+                $this->rebalanceTimeoutMs(),
+                $this->groupInstanceId()
+            );
+    }
+
+    /**
+     * Tells whether this consumer speaks the new consumer protocol of KIP-848 (`group.protocol = consumer`)
+     *
+     * @throws InvalidConfigurationException If the option names neither of the two protocols
+     */
+    private function usesConsumerGroupProtocol(): bool
+    {
+        $protocol = $this->configuration[ConsumerConfig::GROUP_PROTOCOL] ?? ConsumerConfig::GROUP_PROTOCOL_CLASSIC;
+        if ($protocol === ConsumerConfig::GROUP_PROTOCOL_CONSUMER) {
+            return true;
+        }
+        if ($protocol === ConsumerConfig::GROUP_PROTOCOL_CLASSIC) {
+            return false;
+        }
+
+        throw new InvalidConfigurationException(sprintf(
+            '%s must be either "%s" (the membership protocol of every line below this one) or "%s" (the new '
+            . 'consumer protocol of KIP-848, Kafka 3.5), "%s" given.',
+            ConsumerConfig::GROUP_PROTOCOL,
+            ConsumerConfig::GROUP_PROTOCOL_CLASSIC,
+            ConsumerConfig::GROUP_PROTOCOL_CONSUMER,
+            is_scalar($protocol) ? (string) $protocol : get_debug_type($protocol)
+        ));
+    }
+
+    /**
+     * Returns the `group.remote.assignor` of a KIP-848 member, null to let the coordinator pick one (KIP-848)
+     */
+    private function serverAssignor(): ?string
+    {
+        $assignor = $this->configuration[ConsumerConfig::GROUP_REMOTE_ASSIGNOR] ?? null;
+
+        return is_string($assignor) && $assignor !== '' ? $assignor : null;
+    }
+
+    /**
+     * Returns the `client.rack` of this consumer, null when it names none (KIP-881)
+     */
+    private function clientRack(): ?string
+    {
+        $rack = $this->configuration[ConsumerConfig::CLIENT_RACK] ?? null;
+
+        return is_string($rack) && $rack !== '' ? $rack : null;
     }
 
     /**
@@ -1726,5 +1806,46 @@ class KafkaConsumer
         }
 
         return $result;
+    }
+    /**
+     * Looks the offset of the record with the **largest timestamp** up, for every one of the given partitions
+     *
+     * The consumer half of `OffsetSpec.maxTimestamp()`, i.e. the special target time
+     * {@see OffsetsRequest::MAX_TIMESTAMP} (`-3`) that **Kafka 3.0** added with **KIP-734** and that version 7 of
+     * the Offsets api carries. {@see self::endOffsets()} answers where the log *ends*, this one where its largest
+     * timestamp *is* - and the two are the same offset only while the timestamps of the log rise with its offsets,
+     * which nothing enforces: with the default `message.timestamp.type=CreateTime` the producer stamps its own
+     * records, so a batch assembled out of order, a retry, or two producers whose clocks disagree put the largest
+     * timestamp anywhere in the log.
+     *
+     * The answer carries the largest timestamp next to the offset, so it comes back in the same
+     * {@see OffsetAndTimestamp} shape as {@see self::offsetsForTimes()} - and, as there, a partition that has no
+     * answer is `null` rather than an error: an **empty** log has no largest timestamp and is reported by the
+     * broker with the error code 0 and the offset -1.
+     *
+     * Nothing is moved by this call. The partitions do not have to be assigned to this consumer, and a consumer
+     * that wants to read from what it found seeks there itself.
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Partitions to look up
+     *
+     * @throws TopicPartitionRequestException when a partition was answered with an error code - which is how the
+     *         **35** of a cluster below Kafka 3.0, that does not know the target time -3, arrives
+     *
+     * @return array<string, array<int, OffsetAndTimestamp|null>> [topic][partition] => the largest timestamp of the
+     *                                                            partition and the offset of the record that holds
+     *                                                            it, or null for an empty log
+     */
+    public function maxTimestampOffsets(array $topicPartitions): array
+    {
+        if ($topicPartitions === []) {
+            return [];
+        }
+
+        $request = [];
+        foreach (self::normalizePartitionLists($topicPartitions) as $topic => $partitions) {
+            $request[$topic] = array_fill_keys($partitions, OffsetsRequest::MAX_TIMESTAMP);
+        }
+
+        return $this->getClient()->fetchTopicPartitionOffsetsForTimes($request);
     }
 }

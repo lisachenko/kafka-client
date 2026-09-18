@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponseV0;
  * Kafka 2.6 is well past KIP-482 (`DescribeClientQuotasRequest.json` @ 2.6.3 and @ 2.7.2 both declare
  * `"flexibleVersions": "none"`), and only Kafka **2.8** adds the flexible version 1. This client speaks both.
  *
- * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0 and v1)" and
+ * @see docs/protocol/3.9.md, sections "DescribeClientQuotas API (key 48, v0 and v1)" and
  *      "AlterClientQuotas API (key 49, v0 and v1)"
  */
 #[CoversClass(DescribeClientQuotasRequest::class)]

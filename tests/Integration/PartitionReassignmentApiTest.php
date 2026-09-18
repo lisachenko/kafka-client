@@ -32,12 +32,16 @@ use Throwable;
 
 /**
  * Exercises the two partition-reassignment apis of KIP-455 - AlterPartitionReassignments (45) and
- * ListPartitionReassignments (46) - against a real Kafka 2.8.2 broker.
+ * ListPartitionReassignments (46) - against the Kafka 3.9.2 KRaft node of this line.
  *
  * Kafka 2.4 added both, and with them the **first flexible frames this package sends to an admin api**: the request
  * header v2, compact strings and arrays and a tagged-field section at the end of every structure. A broker that
  * cannot parse such a frame does not answer at all - it closes the connection - so every answer here is also a
  * statement that the compact encoding of the engine is right.
+ *
+ * Both apis are answered by the **KRaft controller** here, and `ReplicationControlManager` @ 3.9.2 words its
+ * refusals differently from `KafkaController` @ 2.8.2 and orders the checks of a cancellation differently - the
+ * three tests below that name a message or a code say which.
  *
  * **What a one-broker cluster cannot show is a reassignment in progress.** Every replica of every partition is
  * already on the only broker, so the controller completes a reassignment before it answers the request that
@@ -49,7 +53,7 @@ use Throwable;
  * null topic array**: that would ask about - or reassign - the partitions of every other suite on the shared
  * container.
  *
- * @see docs/protocol/2.8.md, sections "AlterPartitionReassignments API (key 45, v0)" and
+ * @see docs/protocol/3.9.md, sections "AlterPartitionReassignments API (key 45, v0)" and
  *      "ListPartitionReassignments API (key 46, v0)"
  */
 #[CoversClass(AdminClient::class)]
@@ -157,10 +161,12 @@ final class PartitionReassignmentApiTest extends IntegrationTestCase
 
         self::assertInstanceOf(InvalidReplicaAssignmentException::class, $error);
         self::assertSame(KafkaException::INVALID_REPLICA_ASSIGNMENT, $error->getCode());
-        self::assertStringContainsString(
-            'Replica assignment has brokers that are not alive',
-            $error->getMessage(),
-            'the controller names the replica list it was given and the brokers it knows'
+        self::assertSame(
+            'The manual partition assignment includes broker ' . self::UNKNOWN_BROKER_ID
+            . ', but no such broker is registered.',
+            $error->getContext()['error'],
+            'the KRaft controller names the broker it does not know; on the 2.8.2 ZooKeeper broker the message was'
+            . ' "Replica assignment has brokers that are not alive" with the whole replica list behind it'
         );
     }
 
@@ -177,23 +183,45 @@ final class PartitionReassignmentApiTest extends IntegrationTestCase
 
         self::assertInstanceOf(UnknownTopicOrPartitionException::class, $error);
         self::assertSame(KafkaException::UNKNOWN_TOPIC_OR_PARTITION, $error->getCode());
-        self::assertStringContainsString('The partition does not exist.', $error->getMessage());
+        self::assertSame(
+            "Unable to find a topic named {$unknown}.",
+            $error->getContext()['error'],
+            'the message of `ReplicationControlManager.alterPartitionReassignment`; the 2.8.2 ZooKeeper broker'
+            . ' answered the generic "The partition does not exist." of the error code instead'
+        );
     }
 
     /**
-     * A partition the topic does not have answers 85 for a cancellation, because the map is consulted first
+     * A partition the topic does not have answers 3 for a cancellation, because it is looked up first
      *
-     * `KafkaController.alterPartitionReassignments` @ 2.8.2 looks a cancellation up in the reassignments it has in
-     * flight before it asks whether the partition exists at all, so a cancellation of a partition that never
-     * existed is "no reassignment in progress" and not "unknown topic or partition".
+     * `KafkaController.alterPartitionReassignments` @ 2.8.2 looked a cancellation up in the reassignments it had
+     * in flight before it asked whether the partition existed at all, so a cancellation of a partition that never
+     * existed was "no reassignment in progress" there. `ReplicationControlManager.alterPartitionReassignment`
+     * @ 3.9.2 resolves the topic id and the `PartitionRegistration` **before** it looks at `replicas == null`, so
+     * a cancellation and a reassignment of an unknown partition are the same **3** now, with the same message; the
+     * 85 is left for a partition that really exists and really has nothing in flight
+     * ({@see self::testACancellationWithNothingInProgressIsRefusedWithTheCode85()}).
      */
-    public function testACancellationOfAPartitionThatDoesNotExistIsAlso85(): void
+    public function testACancellationOfAPartitionThatDoesNotExistIsTheCode3(): void
     {
         $topic = $this->topic();
 
-        $result = $this->admin->alterPartitionReassignments([$topic => [42 => null]]);
+        $brokerId = array_key_first($this->admin->findAllBrokers());
 
-        self::assertInstanceOf(NoReassignmentInProgressException::class, $result[$topic][42]);
+        $cancellation = $this->admin->alterPartitionReassignments([$topic => [42 => null]]);
+        $reassignment = $this->admin->alterPartitionReassignments([$topic => [42 => [$brokerId]]]);
+
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $cancellation[$topic][42]);
+        self::assertSame(
+            "Unable to find partition {$topic}:42.",
+            $cancellation[$topic][42]->getContext()['error']
+        );
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $reassignment[$topic][42]);
+        self::assertSame(
+            $cancellation[$topic][42]->getContext()['error'],
+            $reassignment[$topic][42]->getContext()['error'],
+            'the lookup happens before the two are told apart'
+        );
     }
 
     /**
@@ -250,7 +278,21 @@ final class PartitionReassignmentApiTest extends IntegrationTestCase
         $topic = self::uniqueTopicName('t1-reassign');
         $this->admin->createTopics([new NewTopic($topic, 3, 1)]);
 
-        return self::$topic = $topic;
+        // A KRaft controller elects the leaders with the creation, so a fresh topic is either unknown - the error
+        // code **3**, never the 5 (`LeaderNotAvailable`) of a ZooKeeper broker - or complete; a reassignment of a
+        // partition it does not know yet would be that 3
+        $deadline = microtime(true) + 30.0;
+        do {
+            $metadata = $this->admin->describeTopics([$topic])[$topic] ?? null;
+            if ($metadata !== null
+                && $metadata->topicErrorCode === KafkaException::NO_ERROR
+                && count($metadata->partitions) === 3) {
+                return self::$topic = $topic;
+            }
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("The topic {$topic} did not become available in time");
     }
 
     /**

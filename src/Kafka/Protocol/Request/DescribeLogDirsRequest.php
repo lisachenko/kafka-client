@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
 
 /**
- * DescribeLogDirs, version 1: what each disk of one broker holds (ApiKey 35, Kafka 1.0, KIP-113)
+ * DescribeLogDirs, version 4: what each disk of one broker holds (ApiKey 35, Kafka 1.0, KIP-113)
  *
  * <pre>
  *   DescribeLogDirs Request (Version: 0 and 1) => [topics]
@@ -58,7 +58,20 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
  * array is the compact nullable one, so the `ff ff ff ff` of a request that asks for every replica of every
  * directory is the single byte `00`. {@see DescribeLogDirsRequestV1} keeps the frame of the versions 0 and 1.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * **Kafka 3.2 added version 3**, and the request did not change: "Version 3 is the same as version 2 (new field
+ * in response)" of `DescribeLogDirsRequest.json` @ 3.2.3. The higher version is what asks the broker for the
+ * **top-level error code** the answer of the same release gained, so that a refusal of the whole request is a
+ * code instead of an empty directory list - see {@see DescribeLogDirsResponse};
+ * {@see DescribeLogDirsRequestV2} is the same frame with the version field of Kafka 2.6, which is what a broker
+ * below Kafka 3.2 is asked with.
+ *
+ * **Kafka 3.3 added version 4**, and the request did not change either: "Version 4 is the same as version 2 (new
+ * fields in response)" of `DescribeLogDirsRequest.json` @ 3.3.2. The higher version asks the broker for the
+ * `total_bytes` and `usable_bytes` of KIP-827 - the size and the free space of the **volume** each directory sits
+ * on - which is the answer to "will this disk still take the partition" that no earlier version could give. It is
+ * the version this client sends; {@see DescribeLogDirsRequestV3} is the same frame for a broker below Kafka 3.3.
+ *
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 class DescribeLogDirsRequest extends AbstractRequest
 {
@@ -70,7 +83,7 @@ class DescribeLogDirsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 4;
 
     /**
      * The version 2 of Kafka 2.6 is the first flexible one of this api (KIP-482)

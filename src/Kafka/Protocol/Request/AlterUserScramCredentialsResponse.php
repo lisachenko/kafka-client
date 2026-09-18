@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Data\AlterUserScramCredentialsResult;
  * there, **92** (`DuplicateResource`) when one request names the same user and mechanism twice, and **93**
  * (`UnacceptableCredential`) for an iteration count the mechanism does not allow.
  *
- * @see docs/protocol/2.8.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/3.9.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 class AlterUserScramCredentialsResponse extends AbstractResponse
 {

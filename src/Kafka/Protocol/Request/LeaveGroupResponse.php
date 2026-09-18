@@ -17,14 +17,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\LeaveGroupResponseMember;
 
 /**
- * LeaveGroup response, version 3.
+ * LeaveGroup response, version 5.
  *
  * <pre>
  *   LeaveGroup Response (Version: 1 and 2) => throttle_time_ms error_code
  *     throttle_time_ms => INT32     -- since version 1
  *     error_code       => INT16
  *
- *   LeaveGroup Response (Version: 3) => throttle_time_ms error_code [members]
+ *   LeaveGroup Response (Version: 3 to 5) => throttle_time_ms error_code [members]
  *     members => member_id group_instance_id error_code   -- since version 3
  *       member_id         => STRING
  *       group_instance_id => NULLABLE_STRING
@@ -45,7 +45,12 @@ use Protocol\Kafka\Protocol\Data\LeaveGroupResponseMember;
  * (`GroupCoordinatorNotAvailable`), 16 (`NotCoordinatorForGroup`), 14 (`GroupLoadInProgress`) - and a request whose
  * members were all refused still carries **0** there, with the member array holding every reason.
  *
- * @see docs/protocol/2.8.md, sections "The batch leave of KIP-345 (v3)", "LeaveGroup API (key 13, v0 to v4)" and
+ * **Version 4 (KIP-482, Kafka 2.4) is that answer in the flexible encoding and version 5 (KIP-800, Kafka 3.2)
+ * changed nothing at all** - "Version 5 is the same as version 4" in `LeaveGroupResponse.json` @ 3.2.3 - because
+ * the reason of that release travels in the **request** ({@see LeaveGroupRequest}). {@see LeaveGroupResponseV4}
+ * therefore decodes the very same bytes one api version lower.
+ *
+ * @see docs/protocol/3.9.md, sections "The batch leave of KIP-345 (v3)", "LeaveGroup API (key 13, v0 to v5)" and
  *      "Quotas and throttle time"
  */
 class LeaveGroupResponse extends AbstractResponse
@@ -53,7 +58,7 @@ class LeaveGroupResponse extends AbstractResponse
     /**
      * Version of the LeaveGroup API that this class decodes the answer of
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

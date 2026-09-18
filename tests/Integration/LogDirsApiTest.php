@@ -24,13 +24,17 @@ use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Security\SaslMechanism;
+use Protocol\Kafka\Common\Security\SecurityProtocol;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsRequestLogDir;
 use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsRequestTopic;
@@ -43,21 +47,35 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV2;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV3;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV2;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
 
 /**
- * Exercises the two JBOD apis of KIP-113 against a real Kafka 1.1.1 broker with **two** log directories.
+ * Exercises the two JBOD apis of KIP-113 against the 3.9.2 KRaft node with **two** log directories.
  *
  * The container of `docker-compose.yml` runs with `log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2`, which is what makes
  * this suite possible at all: a broker with one directory can only ever answer "the replica is already there".
  * Every test moves replicas of a topic it created itself, because the broker is shared with the other suites.
  *
- * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
+ * Two things about the node are not visible in this api and were measured next to it: each directory carries a
+ * `directory.id` of KIP-858 in its `meta.properties`, and the directory a replica really lives in is reported to
+ * the controller with `AssignReplicasToDirs` (key 73, controller listener) - a move therefore writes a
+ * `PARTITION_CHANGE_RECORD` into the metadata log about 90 ms after the answer of AlterReplicaLogDirs. The raft
+ * log `__cluster_metadata-0` sits in the first directory and is never part of an answer of this api.
+ *
+ * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v4)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeLogDirsRequest::class)]
+#[CoversClass(DescribeLogDirsRequestV2::class)]
+#[CoversClass(DescribeLogDirsRequestV3::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]
+#[CoversClass(DescribeLogDirsResponseV2::class)]
+#[CoversClass(DescribeLogDirsResponseV3::class)]
 #[CoversClass(DescribeLogDirsRequestTopic::class)]
 #[CoversClass(DescribeLogDirsResponseLogDir::class)]
 #[CoversClass(DescribeLogDirsResponseTopic::class)]
@@ -74,11 +92,18 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 final class LogDirsApiTest extends IntegrationTestCase
 {
     /**
-     * The two directories of `log.dirs` of `docker/kafka-2.8.2/start.sh`
+     * The two directories of `log.dirs` of `docker/kafka-3.9.2/start.sh`
      */
     private const string FIRST_DIR = '/tmp/kafka-logs';
 
     private const string SECOND_DIR = '/tmp/kafka-logs-2';
+
+    /**
+     * The one SASL user of the image that is not in `super.users` and that no acl of the node names
+     */
+    private const string UNPRIVILEGED_USER = 'acltest';
+
+    private const string UNPRIVILEGED_PASSWORD = 'acltest-secret';
 
     /**
      * A path that is not in `log.dirs`, which is what the broker answers 57 for
@@ -217,6 +242,16 @@ final class LogDirsApiTest extends IntegrationTestCase
         self::assertNotContains($absent, $this->admin->listTopics(), 'and the topic was not created');
     }
 
+    /**
+     * The null array is every replica of the broker; a named selection is only what it names.
+     *
+     * A 2.8.2 broker answered both with the same frame - it grouped every log of a directory by topic and only
+     * then applied the partition filter, so the answer carried one entry per topic of the broker. The node drops
+     * the topics that keep nothing of the request (`.filterNot(_.partitions().isEmpty)` of
+     * `ReplicaManager.describeLogDirs` @ 3.9.2, a filter Kafka 3.7 added), which is why the named request below is
+     * one replica and the null one is the whole broker. `__cluster_metadata-0` is in neither: the raft log belongs
+     * to the `KafkaRaftManager`, not to the `LogManager` this api reads.
+     */
     public function testANullSelectionAsksForEveryReplicaOfTheBroker(): void
     {
         $topic = $this->topicWithRecords('all');
@@ -386,6 +421,142 @@ final class LogDirsApiTest extends IntegrationTestCase
         $this->admin->describeLogDirs([$this->brokerId() + 4242]);
     }
 
+    /**
+     * The two sizes of KIP-827 that the version 4 of Kafka 3.3 added to every directory entry of the answer
+     *
+     * They describe the **volume** the directory sits on, not the directory: the two log directories of this node
+     * are two paths of the same filesystem, so they answer the same pair in the same frame - which is exactly what
+     * makes them recognisable as a property of the mount point and not of the logs.
+     */
+    public function testEveryLogDirectoryReportsTheSizeAndTheFreeSpaceOfItsVolume(): void
+    {
+        $topic = $this->topicWithRecords('sizes');
+
+        $directories = $this->admin->describeLogDirs([$this->brokerId()], [$topic => [0]])[$this->brokerId()];
+
+        $first  = $directories[self::FIRST_DIR];
+        $second = $directories[self::SECOND_DIR];
+
+        foreach ([$first, $second] as $directory) {
+            self::assertTrue($directory->hasVolumeSizes(), 'the version 4 measured the volume of the directory');
+            self::assertGreaterThan(0, $directory->totalBytes, 'File.getTotalSpace of the volume');
+            self::assertGreaterThan(0, $directory->usableBytes, 'File.getUsableSpace of the volume');
+            self::assertLessThanOrEqual(
+                $directory->totalBytes,
+                $directory->usableBytes,
+                'a volume never has more free bytes than bytes'
+            );
+        }
+
+        self::assertSame(
+            [$first->totalBytes, $first->usableBytes],
+            [$second->totalBytes, $second->usableBytes],
+            'both log directories of this node sit on the same filesystem, so the two numbers are the same twice'
+        );
+
+        // The sizes have nothing to do with what the request asked for: the same pair comes back for a request
+        // that names no replica at all
+        $empty = $this->admin->describeLogDirs([$this->brokerId()], [])[$this->brokerId()][self::FIRST_DIR];
+        self::assertSame($first->totalBytes, $empty->totalBytes);
+    }
+
+    public function testTheRefusalOfTheWholeRequestCarriesNoVolumeSizeAtAll(): void
+    {
+        $unprivileged = $this->unprivilegedStream();
+
+        new DescribeLogDirsRequest(null, 't5-logdirs', 5162)->writeTo($unprivileged);
+        $refused = DescribeLogDirsResponse::unpack($unprivileged);
+
+        self::assertSame(5162, $refused->getCorrelationId());
+        self::assertSame(KafkaException::CLUSTER_AUTHORIZATION_FAILED, $refused->errorCode);
+        self::assertSame(
+            [],
+            $refused->logDirs,
+            'the two fields of KIP-827 live INSIDE a directory entry, and a refusal has no directory entry'
+        );
+    }
+
+    public function testAVersionThreeAnswerCarriesTheDirectoriesWithoutTheirVolumeSizes(): void
+    {
+        $topic  = $this->topicWithRecords('v3sizes');
+        $stream = $this->connect();
+
+        new DescribeLogDirsRequestV3([$topic => [0]], 't5-logdirs', 5163)->writeTo($stream);
+        $answer = DescribeLogDirsResponseV3::unpack($stream);
+
+        self::assertSame(5163, $answer->getCorrelationId());
+        self::assertSame(KafkaException::NO_ERROR, $answer->errorCode, 'the top-level code of Kafka 3.2 is there');
+        self::assertSame([self::FIRST_DIR, self::SECOND_DIR], array_keys($answer->logDirs));
+
+        foreach ($answer->logDirs as $directory) {
+            self::assertSame(
+                DescribeLogDirsResponseLogDir::UNKNOWN_BYTES,
+                $directory->totalBytes,
+                'a version below 4 has no field for the volume sizes, so they stay at the -1 of the default'
+            );
+            self::assertSame(DescribeLogDirsResponseLogDir::UNKNOWN_BYTES, $directory->usableBytes);
+        }
+    }
+
+    public function testAnUnauthorizedPrincipalIsRefusedWithTheTopLevelErrorCodeOfVersionThree(): void
+    {
+        $unprivileged = $this->unprivilegedStream();
+
+        new DescribeLogDirsRequest(null, 't5-logdirs', 5160)->writeTo($unprivileged);
+        $refused = DescribeLogDirsResponse::unpack($unprivileged);
+
+        self::assertSame(5160, $refused->getCorrelationId());
+        self::assertSame(
+            KafkaException::CLUSTER_AUTHORIZATION_FAILED,
+            $refused->errorCode,
+            '`KafkaApis.handleDescribeLogDirsRequest` @ 3.9.2 asks the authorizer for DESCRIBE on CLUSTER before'
+            . ' it reads the topics of the request, and `acltest` is the one principal outside `super.users`'
+        );
+        self::assertSame([], $refused->logDirs, 'and not one directory comes with that code');
+    }
+
+    public function testTheSameRefusalBelowVersionThreeIsAnEmptyDirectoryArrayAndNoCode(): void
+    {
+        $unprivileged = $this->unprivilegedStream();
+
+        new DescribeLogDirsRequestV2(null, 't5-logdirs', 5161)->writeTo($unprivileged);
+        $refused = DescribeLogDirsResponseV2::unpack($unprivileged);
+
+        self::assertSame(5161, $refused->getCorrelationId());
+        self::assertSame([], $refused->logDirs);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $refused->errorCode,
+            'the version 2 has no field for the refusal at all, so the frame of a refused request and the frame of'
+            . ' a broker without a single log directory are the same bytes - which is what the version 3 fixed'
+        );
+    }
+
+    public function testDescribeLogDirsRaisesTheTopLevelErrorCodeOfTheUnauthorizedPrincipal(): void
+    {
+        if (self::saslBootstrapServer() === '') {
+            self::markTestSkipped(self::SASL_BOOTSTRAP_SERVERS_ENV . ' is not set, the refusal needs a principal');
+        }
+
+        $configuration = [
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::saslBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => 't5-logdirs',
+            ClientConfig::REQUEST_TIMEOUT_MS        => 10000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+            ClientConfig::SECURITY_PROTOCOL         => SecurityProtocol::SASL_PLAINTEXT,
+            ClientConfig::SASL_MECHANISM            => SaslMechanism::PLAIN,
+            ClientConfig::SASL_USERNAME             => self::UNPRIVILEGED_USER,
+            ClientConfig::SASL_PASSWORD             => self::UNPRIVILEGED_PASSWORD,
+        ];
+        $unprivileged = new AdminClient(Cluster::bootstrap($configuration), $configuration);
+
+        // Since the version 3 the refusal is a code and not an empty map, so the client can throw instead of
+        // handing a caller two directories that are simply missing
+        $this->expectException(ClusterAuthorizationFailedException::class);
+
+        $unprivileged->describeLogDirs([$this->brokerId()]);
+    }
+
     public function testTheRawFramesOfBothApisMatchTheDocumentedGrammar(): void
     {
         $topic  = $this->topicWithRecords('raw');
@@ -395,7 +566,12 @@ final class LogDirsApiTest extends IntegrationTestCase
         $described = DescribeLogDirsResponse::unpack($stream);
 
         self::assertSame(5150, $described->getCorrelationId());
-        self::assertSame(0, $described->throttleTimeMs, 'the container sets no quota');
+        self::assertSame(0, $described->throttleTimeMs, 'the node sets no quota');
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $described->errorCode,
+            'the top-level error code the version 3 of Kafka 3.2 added, 0 for an answer the node really built'
+        );
         self::assertSame([self::FIRST_DIR, self::SECOND_DIR], array_keys($described->logDirs));
 
         new AlterReplicaLogDirsRequest(
@@ -473,7 +649,8 @@ final class LogDirsApiTest extends IntegrationTestCase
             $this->admin->alterConfigs([
                 $resource->key() => [self::MOVER_QUOTA_OPTION => (string) self::MOVER_QUOTA_BYTES_PER_SECOND],
             ]),
-            'the mover quota is a dynamic broker option a 1.1.1 broker accepts through AlterConfigs'
+            'the mover quota is a dynamic broker option every broker of this cascade, the KRaft node included, '
+            . 'accepts through AlterConfigs'
         );
         $this->moverThrottled = true;
     }
@@ -600,6 +777,32 @@ final class LogDirsApiTest extends IntegrationTestCase
                 $this->cluster->reload();
             }
         } while (true);
+    }
+
+    /**
+     * Opens an authenticated stream of the one principal of the node that the `StandardAuthorizer` applies to
+     *
+     * `super.users=User:ANONYMOUS;User:admin;User:kafkatest` covers the PLAINTEXT listener and the two other SASL
+     * users of the image, so `acltest` - which no acl names either - is the only way to measure a refusal here.
+     */
+    private function unprivilegedStream(): SocketStream
+    {
+        if (self::saslBootstrapServer() === '') {
+            self::markTestSkipped(self::SASL_BOOTSTRAP_SERVERS_ENV . ' is not set, the refusal needs a principal');
+        }
+
+        return new SocketStream(
+            'tcp://' . self::saslBootstrapServer(),
+            [
+                ClientConfig::SECURITY_PROTOCOL  => SecurityProtocol::SASL_PLAINTEXT,
+                ClientConfig::SASL_MECHANISM     => SaslMechanism::PLAIN,
+                ClientConfig::SASL_USERNAME      => self::UNPRIVILEGED_USER,
+                ClientConfig::SASL_PASSWORD      => self::UNPRIVILEGED_PASSWORD,
+                ClientConfig::CLIENT_ID          => 't5-logdirs',
+                ClientConfig::REQUEST_TIMEOUT_MS => 10000,
+            ],
+            5.0
+        );
     }
 
     /**

@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Kafka 2.8 inserted the **`topic_id`** of KIP-516 between the name and the error code with the version 6 and made
  * the name nullable; the version 5 is the frame with the error message of Kafka 2.7 and nothing else.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 final class DeleteTopicsResponseTopicV5 extends DeleteTopicsResponseTopic
 {

@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The same four fields a Metadata answer carries for a broker - KIP-700 did not change what is known about one,
  * it gave the cluster itself a request that does not have to name a single topic.
  *
- * @see docs/protocol/2.8.md, section "DescribeCluster API (key 60, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0 and v1)"
  */
 class DescribeClusterBroker implements BinarySchemaInterface
 {

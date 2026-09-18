@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 8
+ * The produce API, version 11
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -101,9 +101,34 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * **Version 9 (Kafka 2.8) is the flexible version of KIP-482**, see {@see self::FLEXIBLE_VERSION}: the same body
  * once more, written with the request header **v2**, a compact `transactional_id` and topic name, compact arrays,
  * a **compact record set** and a tagged-field section at the end of the body, of every topic entry and of every
- * partition entry. This class is that version and {@see ProduceRequestV8} keeps the plain frame.
+ * partition entry. {@see ProduceRequestV9} keeps that version and {@see ProduceRequestV8} the plain frame.
  *
- * {@see ProduceRequestV8}, {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
+ * **Version 10 (Kafka 3.7, KIP-951) sends the version 9 body a seventh time.** `ProduceRequest.json` @ 3.7.2
+ * declares no field of it and its whole comment is "Version 10 is the same as version 9 (KIP-951)", so a version
+ * 10 request is a version 9 request with another number in its header. What the version states is that the client
+ * understands the **leader discovery** the answer gained: the tagged `current_leader` of a partition entry that
+ * was refused **6** `NOT_LEADER_OR_FOLLOWER` and the tagged `node_endpoints` of the body that says where that
+ * leader can be reached, see {@see ProduceResponse::$nodeEndpoints}. A producer that reads them re-sends the
+ * batch to the new leader without asking Metadata first, which is the round trip the KIP removes.
+ * {@see ProduceRequestV10} keeps that version.
+ *
+ * **Version 11 (Kafka 3.8, KIP-890) sends the very same body an eighth time** - `ProduceRequest.json` @ 3.8.1
+ * declares no field of it and its whole comment is "Version 11 adds support for new error code
+ * TRANSACTION_ABORTABLE (KIP-890)" - so a version 11 request is a version 10 request with another number in its
+ * header, which is the version this class sends. What it states is that the client understands the error code
+ * **120** ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}) in a partition of the answer: the
+ * broker's way of saying "this transaction can not be committed any more, abort it and carry on with the same
+ * transactional id" instead of the fatal-looking **48** `InvalidTxnState` the versions below are answered.
+ *
+ * **The version alone is what the broker decides that on.**
+ * `KafkaApis.handleProduceRequest` @ 3.9.2 turns it into the `TransactionSupportedOperation` of the append,
+ * `val transactionSupportedOperation = if (request.header.apiVersion > 10) genericError else defaultError`, and
+ * `AddPartitionsToTxnManager` @ 3.9.2 maps a 120 of the verification back to the 48 for everything below
+ * ("For backward compatibility with clients"). Measured on the node: a transactional batch for a partition the
+ * coordinator has not verified is answered **120** at this version and **48** with the message "Partition was
+ * not added to the transaction" at version 10, see the section of the document.
+ *
+ * {@see ProduceRequestV10}, {@see ProduceRequestV9}, {@see ProduceRequestV8}, {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
  * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
  * them the legacy message sets - available.
  *
@@ -112,7 +137,8 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The abortable transaction error of
+ *      KIP-890 (v11)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -124,7 +150,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 9;
+    public const int VERSION = 11;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

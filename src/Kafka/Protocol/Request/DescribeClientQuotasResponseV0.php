@@ -16,7 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 /**
  * DescribeClientQuotas response, version 0 - the plain frame Kafka 2.6 added (key 48)
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 class DescribeClientQuotasResponseV0 extends DescribeClientQuotasResponse
 {

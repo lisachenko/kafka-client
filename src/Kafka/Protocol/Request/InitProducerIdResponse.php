@@ -17,7 +17,7 @@ use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * InitProducerId response object, version 1 (key 22)
+ * InitProducerId response object, version 5 (key 22)
  *
  * <pre>
  *   InitProducerId Response (Version: 0 and 1) => throttle_time_ms error_code producer_id producer_epoch
@@ -58,14 +58,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * What changes is what the answer MEANS for a request that carried a producer id - the same id with `epoch + 1`
  * instead of a fresh id. {@see InitProducerIdResponseV2} is the identical frame with the version of Kafka 2.4.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
+ * **Kafka 3.8 added the version 5** (KIP-890) and gave the answer nothing at all: the same four values, with the
+ * promise that the client understands the error code 120. What a 3.9.2 coordinator really refuses this api with
+ * is the **90** `TransactionalProducerFenced` - an epoch below the *last* one, or a producer id it does not hold
+ * for the transactional id - while the last epoch itself is read as the retry of a bump and answered the code 0
+ * with the current pair. {@see InitProducerIdResponseV4} is the same frame with the version of Kafka 2.7.
+ *
+ * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 class InitProducerIdResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * @inheritdoc

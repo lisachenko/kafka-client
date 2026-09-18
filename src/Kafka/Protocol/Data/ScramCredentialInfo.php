@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * password, and knowing it is knowing the password. What can be described is which mechanisms a user has a
  * credential for and how many PBKDF2 iterations each of them uses - `ScramCredentialInfo` of the Java admin client.
  *
- * @see docs/protocol/2.8.md, section "DescribeUserScramCredentials API (key 50, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeUserScramCredentials API (key 50, v0)"
  */
 class ScramCredentialInfo implements BinarySchemaInterface
 {

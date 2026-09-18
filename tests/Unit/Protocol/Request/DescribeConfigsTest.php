@@ -48,7 +48,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV3;
  * (`DESCRIBE_CONFIGS_REQUEST_V2 = DESCRIBE_CONFIGS_REQUEST_V1` @ 2.0.1, KIP-219), which is the version the client
  * sends. All three are exercised here, and the derivation of the source from the boolean of a version 0 answer.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 #[CoversClass(DescribeConfigsRequest::class)]
 #[CoversClass(DescribeConfigsRequestV3::class)]

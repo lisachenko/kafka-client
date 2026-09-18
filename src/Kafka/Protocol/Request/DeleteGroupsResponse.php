@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
  *
  * Version 1 (KIP-219, Kafka 2.0) answers the same bytes, which {@see DeleteGroupsResponseV0} decodes as well.
  *
- * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 class DeleteGroupsResponse extends AbstractResponse
 {

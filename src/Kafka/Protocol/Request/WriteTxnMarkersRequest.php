@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarker;
  * the unsecured container of this branch the request is served for anybody, which is what makes a wire vector of it
  * possible at all.
  *
- * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
  */
 class WriteTxnMarkersRequest extends AbstractRequest
 {

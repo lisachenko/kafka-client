@@ -43,7 +43,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * broker really stored is checked, not what the client believes it sent: the partition a key was placed in, the
  * offsets that the promises were resolved with, and the compression of a batch.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
+ * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v11)"
  */
 #[CoversClass(KafkaProducer::class)]
 #[CoversClass(DefaultPartitioner::class)]
@@ -445,10 +445,13 @@ final class KafkaProducerTest extends IntegrationTestCase
             self::FETCH_MAX_BYTES,
             -1,
             self::CLIENT_ID,
-            1
+            1,
+            // Version 13 names the topic by its id and by nothing else (KIP-516)
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         )->writeTo($stream);
 
-        $partitionResponse = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[$partition];
+        $partitionResponse = self::fetchedTopic(FetchResponse::unpack($stream), $this->topic)
+            ->partitions[$partition];
         if ($partitionResponse->errorCode !== 0) {
             throw KafkaException::fromCode(
                 $partitionResponse->errorCode,

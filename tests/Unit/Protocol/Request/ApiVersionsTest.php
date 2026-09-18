@@ -24,13 +24,15 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV1;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV2;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV3;
 
 /**
- * Byte-exact tests for the ApiVersions API (api key 18, v0 to v3).
+ * Byte-exact tests for the ApiVersions API (api key 18, v0 to v4).
  *
  * Kafka 0.10.0 added version 0, Kafka 0.11 version 1 - the same request with a `throttle_time_ms` appended to the
  * answer, the one api of that release that puts the field at the end instead of the beginning - Kafka 2.0 the
@@ -38,41 +40,45 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV2;
  * throttle time itself, and Kafka 2.4 the version 3: the **first flexible frame** of the protocol, with a request
  * header v2, two compact strings of KIP-511 in the request, a compact api array in the answer and the tagged
  * fields of KIP-584 at the end of it - behind a response header **v0**, which is the exception this api is.
+ * Kafka 3.9 added the version 4, which declares no field: it is the v3 frame with a 4 in its header, and what it
+ * buys is a supported feature whose `min_version` is 0 in the answer (KAFKA-17011).
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsRequestV0::class)]
 #[CoversClass(ApiVersionsRequestV1::class)]
 #[CoversClass(ApiVersionsRequestV2::class)]
+#[CoversClass(ApiVersionsRequestV3::class)]
 #[CoversClass(ApiVersionsResponse::class)]
 #[CoversClass(ApiVersionsResponseV0::class)]
 #[CoversClass(ApiVersionsResponseV1::class)]
 #[CoversClass(ApiVersionsResponseV2::class)]
+#[CoversClass(ApiVersionsResponseV3::class)]
 #[CoversClass(ApiVersionsResponseMetadata::class)]
 final class ApiVersionsTest extends TestCase
 {
     /**
-     * ApiVersions request v3, the version this client sends: the first flexible frame of the protocol.
+     * ApiVersions request v4, the version this client sends: the flexible frame of Kafka 2.4 one number higher.
      *
      *   Size                  => 00 00 00 2c (44 bytes)
      *   ApiKey                => 00 12 (18)
-     *   ApiVersion            => 00 03
+     *   ApiVersion            => 00 04
      *   CorrelationId         => 00 00 00 01
      *   ClientId              => 00 04 "test"           (int16 length even here: "flexibleVersions": "none")
      *   TAG_BUFFER            => 00                     (the tagged fields of the request header v2)
      *   ClientSoftwareName    => 18 "lisachenko-kafka-client"   (compact: 23 + 1)
-     *   ClientSoftwareVersion => 04 "2.8"                       (compact: 3 + 1)
+     *   ClientSoftwareVersion => 04 "3.9"                       (compact: 3 + 1)
      *   TAG_BUFFER            => 00                     (the tagged fields of the body)
      */
     private const string REQUEST_HEX = '0000002c'
         . '0012'
-        . '0003'
+        . '0004'
         . '00000001'
         . '0004' . '74657374'
         . '00'
         . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74'
-        . '04' . '322e38'
+        . '04' . '332e39'
         . '00';
 
     /**
@@ -186,10 +192,54 @@ final class ApiVersionsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::API_VERSIONS, $request->getApiKey());
-        self::assertSame(3, $request->getApiVersion(), 'this client sends the version 3 of Kafka 2.4');
+        self::assertSame(4, $request->getApiVersion(), 'this client sends the version 4 of Kafka 3.9');
         self::assertSame(44, $request->getMessageSize(), 'the header v2, the two compact strings and two tag buffers');
         self::assertTrue(ApiVersionsRequest::isFlexible(), 'version 3 is the first flexible version of this api');
         self::assertSame(ApiVersionsRequest::HEADER_V2, ApiVersionsRequest::getHeaderVersion());
+    }
+
+    /**
+     * The version 3 request is the version 4 request with another byte in its header (KAFKA-17011)
+     *
+     * "Version 4 fixes KAFKA-17011, which blocked SupportedFeatures.MinVersion in the response from being 0" is the
+     * whole comment of the bump in `ApiVersionsRequest.json` @ 3.9.2: no field, and the same two compact strings.
+     */
+    public function testTheVersionThreeRequestIsTheSameFrame(): void
+    {
+        $versionThree = new ApiVersionsRequestV3('test', 1);
+
+        self::assertSame(3, $versionThree->getApiVersion());
+        self::assertSame(3, ApiVersionsRequestV3::VERSION);
+        self::assertTrue(ApiVersionsRequestV3::isFlexible());
+        self::assertSame(
+            str_replace('00120004', '00120003', self::REQUEST_HEX),
+            bin2hex((string) $versionThree),
+            'the version is the only difference between the two frames'
+        );
+        self::assertSame(
+            ApiVersionsRequest::getScheme(),
+            ApiVersionsRequestV3::getScheme(),
+            'KAFKA-17011 bumped the version without changing the schema'
+        );
+    }
+
+    /**
+     * The version 4 answer is the version 3 answer: the bump filters a feature, it does not add a field
+     */
+    public function testTheVersionFourAnswerIsTheVersionThreeFrame(): void
+    {
+        $versionThree = ApiVersionsResponseV3::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $versionFour  = ApiVersionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(3, ApiVersionsResponseV3::VERSION);
+        self::assertSame(4, ApiVersionsResponse::VERSION);
+        self::assertEquals(
+            ApiVersionsResponseV3::getScheme(),
+            ApiVersionsResponse::getScheme(),
+            'the same error code, the same compact api array, the same throttle time and the same three tags'
+        );
+        self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
+        self::assertSame(ApiVersionsResponse::HEADER_V0, ApiVersionsResponseV3::getHeaderVersion());
     }
 
     /**
@@ -247,8 +297,8 @@ final class ApiVersionsTest extends TestCase
         $request = new ApiVersionsRequest();
 
         self::assertSame(
-            '00000028' . '0012' . '0003' . '00000000' . '0000' . '00'
-            . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74' . '04' . '322e38' . '00',
+            '00000028' . '0012' . '0004' . '00000000' . '0000' . '00'
+            . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74' . '04' . '332e39' . '00',
             bin2hex((string) $request)
         );
     }

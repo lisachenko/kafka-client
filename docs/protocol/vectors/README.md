@@ -1,8 +1,78 @@
-Wire vectors of the Kafka 2.8.2 protocol
+Wire vectors of the Kafka 3.9.2 protocol
 ========================================
+The 3.x line has captured **466** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
+the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
+`list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
+`group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — the 20 frames of Kafka 3.1, the
+10 of Fetch v13 in `fetch.json` and the 10 of Metadata v12 in `metadata.json` — the 25 frames of Kafka 3.2,
+the 12 of JoinGroup v8 and v9 in `join-group.json`, the 4 of LeaveGroup v5 in `leave-group.json` and the 9 of
+DescribeLogDirs v3 in `describe-log-dirs.json` — and the 73 frames of Kafka 3.3, the 10 of DescribeQuorum v0 and
+v1 in the new file `describe-quorum.json`, the 16 of UpdateFeatures v1 in `update-features.json`, the 30 of the
+three ACL apis in the three new files `describe-acls.json`, `create-acls.json` and `delete-acls.json`, the 7 of
+DescribeLogDirs v4 in `describe-log-dirs.json` and the 10 of the two delegation-token apis of KIP-373 in
+`delegation-tokens.json` — and the 30 frames of Kafka 3.5, the 10 of the broker version AddPartitionsToTxn v4 in
+`add-partitions-to-txn.json`, the 12 of Fetch v14 and v15 in `fetch.json` and the 8 of ListOffsets v8 in
+`offsets.json` — and the 18 frames of Kafka 3.6, the OffsetCommit v9 of KIP-848 in `offset-commit.json`, with
+the 69 of a group that does not exist, the 113 of a stale member epoch and the two version 8 frames that answer
+the same questions with the 22 and the 35 — and the 71 frames of Kafka 3.7: the 12 of DescribeCluster v1 (the
+endpoint type of KIP-919, with the 114 of a controller asked on a broker listener and the 115 of a type the api
+does not define) in `describe-cluster.json`, the 26 of the three client-metrics apis of KIP-714 in the three
+new files `get-telemetry-subscriptions.json`, `push-telemetry.json` and `list-client-metrics-resources.json`,
+which are wire only, the 20 of OffsetFetch v9 of KIP-848 in `offset-fetch.json`, with the 113 of a stale
+member epoch, the 25 of an unknown member id and the -1 a null member id with a non-negative epoch is answered,
+and the 13 of the leader discovery of KIP-951: the 5 of Produce v10 in `produce.json`, one of them the
+constructed answer that names the current leader of a refused partition, and the 8 of Fetch v16 in `fetch.json`,
+among them the follower fetch the node really answers with the `current_leader` and the `node_endpoints` — and
+the 88 frames of Kafka 3.8, the 6 of Produce v11 in `produce.json`: the accepted pair, the pair of a
+transactional batch for a partition the coordinator has not verified, which is the **120** `TransactionAbortable`
+of KIP-890, and the pair of the very same request at version 10, which is answered the **48** instead, and the 22 of the group apis: the 16 of ListGroups v5 in `list-groups.json`
+(the group types `classic` and `consumer` of KIP-848, the types filter with its case-insensitive parse and its empty
+answer for a type the enum does not know, and the version 4 pair of the same question without a type) and the 6 of
+FindCoordinator v5 in `group-coordinator.json` (KIP-890: the version 4 frames with another number in their header,
+because no FindCoordinator ever answers the 120 the version exists for), and the 36 of the admin surface: the 28 of
+the new api DescribeTopicPartitions (key 75, KIP-966) in the new file `describe-topic-partitions.json`, with the paging
+cursor, the empty ELR arrays, the 3 of an unknown topic, the 17 of an illegal name, the -1 of the empty one, the two
+42 of a cursor the node refuses and the 29 of a topic the SASL user `acltest` may not describe, and the 8 of
+ListTransactions v1 (the duration filter of KIP-994) in `list-transactions.json`, among them the minute-old filter
+that lists an id which never began a transaction, and the 24 of the five transaction apis, whose version bumps
+declare no field at all: the 4 of InitProducerId v5 in `init-producer-id.json` (with the 90 of an epoch that is
+neither the current nor the last one), the 4 of AddOffsetsToTxn v4 in `add-offsets-to-txn.json` (with the 49 of an
+unknown producer id), the 8 of TxnOffsetCommit in `txn-offset-commit.json` (the v4 with the 25 of a member the
+group does not hold, and the v4/v3 pair of the same commit answered the **120** and the **48** — the partition
+verification of KIP-890 part 1 reporting itself through the version gate), the 4 of the broker version
+AddPartitionsToTxn v5 in `add-partitions-to-txn.json` (with the 120 of a `verify_only` and the top-level 31 of
+`acltest`) and the 4 of EndTxn v4 in `end-txn.json` (with the 48 of an abort after a commit), and the 42 frames of
+Kafka 3.9: the 14 of FindCoordinator v6 in `group-coordinator.json` (KIP-932: the version 5 frames with another
+number in their header, the coordinator type **2** that is the 42 of the version gate at v4 and v5 and the 15 of a
+node without a share coordinator at v6, the type 99 that stays the 42 of the error path, and the 31 of the SASL
+user `acltest`, who may not ask where a share coordinator is), the 16 the same release adds to the producer and
+consumer apis, the 8 of Fetch v17 in `fetch.json` (the tagged `replica_directory_id` of KIP-853, written by a
+consumer, by a follower next to the `replica_state` of KIP-903, and left off the wire altogether, all three
+answered the same as at version 16) and the 8 of ListOffsets v9 in `offsets.json` (the target time `-5`
+`LATEST_TIERED_TIMESTAMP` of KIP-1005 on a filled and on an empty log, both the offset `-1` of a node without
+remote storage, with the version 8 refusal and the ordinary `-1` pair), the 4 of ApiVersions in
+`api-versions.json` (the v4 pair this client sends and the v3 pair of the same question on the same node, 19 bytes
+shorter because the `kraft.version` feature of KAFKA-17011 is hidden below the version 4) and the 8 of
+DescribeQuorum v2 in `describe-quorum.json` (the nodes, the directory ids and the two error messages of KIP-853:
+the metadata quorum, a topic no quorum replicates, the empty topic array and the 31 of the SASL user `acltest`,
+which now says `Cluster authorization failed.`) — and the 50 frames of the **KIP-848 consumer**, the last wave
+of the line: the 34 of ConsumerGroupHeartbeat (key 68) in the new file `consumer-group-heartbeat.json` — the join
+that creates a group and is answered every partition at once, the acknowledgement that echoes them back, the
+steady state of five nulls, the subscription that changes without a rejoin, the revoke of a two-member group, the
+server-side assignor `range`, the leave of the epoch -1, the static join with its instance id and its leave of the
+epoch -2, and the six refusals 42, 42, 110, 25, 112 and 69 — the 14 of ConsumerGroupDescribe (key 69) in the new
+file `consumer-group-describe.json`, with both assignments of every member, the authorized operations of KIP-430,
+the 69 of a classic group and of a group that does not exist, the -1 the empty group id crashes the answer builder
+with and the 30 of `acltest`, and the 2 of the classic DescribeGroups v5 asked for a KIP-848 group in
+`describe-groups.json`, which answers the state `Dead` rather than an error — next
+to the
+**669** vectors of the lines
+up to 2.x below, which are replayed unchanged against the classes of this line, because the 3.9.2 node still serves
+every version they were captured at.
+
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
-machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **669** of them in **48** files: **351** were captured on the `kafka-2-8-2` container of the
+machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
+hex dumps. There are **1135** of them in **60** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -78,7 +148,12 @@ commit of that partition is still open. What **Kafka 2.6** added: the `states_fi
 added: the batch LeaveGroup **v3** of KIP-345 and the **flexible** version of every one of the ten apis (KIP-482) -
 one request/response pair per api, with the compact strings and arrays, the tagged-field section of every
 structure, the request header v2 and the response header v1, plus the plain DescribeGroups v4 whose members carry
-their `group_instance_id`.
+their `group_instance_id`. What **Kafka 3.2** added, captured on the KRaft node: the `reason` of KIP-800 in
+JoinGroup **v8** and in every entry of a LeaveGroup **v5** batch - as a compact string and, for a member that
+names none, as the compact null - and the `skip_assignment` of KIP-814 in the JoinGroup **v9** answer, `false`
+for the 79 of a first join and for the leader of a fresh generation, and **true** for the one frame it exists
+for: a static instance that comes back to a `Stable` group with an empty member id and is told to keep the
+assignment the group already has.
 
 What **Kafka 2.1 and 2.2** added to the admin, transaction and SASL apis, captured with the client id `t4-vectors`
 and the topics `t4-21-vectors` and `t4-22-vectors`:
@@ -158,7 +233,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v11)",
+    "section": "Metadata API (key 3, v0 to v12)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

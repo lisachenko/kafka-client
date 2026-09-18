@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * string rather than a bare string array, so in this flexible api every entry carries a tagged-field section of
  * its own.
  *
- * @see docs/protocol/2.8.md, section "DescribeUserScramCredentials API (key 50, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeUserScramCredentials API (key 50, v0)"
  */
 class ScramUserName implements BinarySchemaInterface
 {

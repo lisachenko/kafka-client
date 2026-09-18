@@ -116,9 +116,15 @@ final class ProtocolFramingTest extends IntegrationTestCase
      *
      * ApiVersions v3 is the first flexible frame this client sends, and it exercises every piece of the encoding at
      * once: a **request header v2** whose `client_id` stays plain and whose tag buffer is empty, two **compact**
-     * strings of KIP-511 in the body, a body tag buffer of its own - and, coming back, a **compact array** of 56
-     * entries that each end in a tag buffer, a tagged field (the finalized-features epoch of KIP-584) and the one
-     * response header the flexible versions did *not* change, because this api keeps the header v0.
+     * strings of KIP-511 in the body, a body tag buffer of its own - and, coming back, a **compact array** of one
+     * entry per api the listener serves, each ending in a tag buffer, a tagged field (the finalized-features epoch
+     * of KIP-584) and the one response header the flexible versions did *not* change, because this api keeps the
+     * header v0.
+     *
+     * The size of that compact array is the api table of the node, which
+     * {@see ApiVersionProbeTest::SERVED_APIS} pins key by key: **61 rows** on a client listener of the 3.9.2 KRaft
+     * node, where the ZooKeeper-backed 2.8.2 broker of the line below answered 56. The count is asserted here, not
+     * the table - the table is that class's subject.
      *
      * The two encodings live on the same connection: the v2 request that follows is written plainly on the socket
      * the v3 request was written compactly on, and the broker answers both.
@@ -134,15 +140,19 @@ final class ProtocolFramingTest extends IntegrationTestCase
         self::assertTrue(ApiVersionsRequest::isFlexible(), 'the client sends the flexible v3');
         self::assertSame(4246, $response->getCorrelationId());
         self::assertSame(0, $response->errorCode, 'the broker accepted the compact body and the two KIP-511 strings');
-        self::assertCount(56, $response->apiVersions, 'the compact array of the api table');
-        self::assertSame(3, $response->maxVersionOf(18));
-        self::assertSame(
+        self::assertCount(61, $response->apiVersions, 'the compact array of the api table');
+        self::assertSame(4, $response->maxVersionOf(18), 'Kafka 3.9 added ApiVersions v4 (KIP-1043)');
+
+        // A KRaft node finalizes `metadata.version` and answers the **offset of its metadata log** in the tagged
+        // field, which grows with every record the controller writes; the ZooKeeper-backed 2.8.2 broker of the
+        // line below finalized no feature at all and answered the epoch 0 with two empty arrays
+        self::assertGreaterThan(
             0,
             $response->finalizedFeaturesEpoch,
-            'the one tagged field a ZooKeeper-backed 2.8.2 broker answers (KIP-584)'
+            'the one tagged field of the answer (KIP-584), on a node that really finalizes a feature'
         );
-        self::assertSame([], $response->supportedFeatures);
-        self::assertSame([], $response->finalizedFeatures);
+        self::assertArrayHasKey('metadata.version', $response->supportedFeatures);
+        self::assertArrayHasKey('metadata.version', $response->finalizedFeatures);
 
         // The plain encoding still works, on the very same connection
         new ApiVersionsRequestV2('kafka-client-t1', 4247)->writeTo($stream);
@@ -162,7 +172,7 @@ final class ProtocolFramingTest extends IntegrationTestCase
 
         // 4 size + 8 header + 2+15 client id + 1 header tag buffer + 24 name + 4 version + 1 body tag buffer
         self::assertSame(59, strlen($frame));
-        self::assertSame('0012' . '0003', bin2hex(substr($frame, 4, 4)));
+        self::assertSame('0012' . '0004', bin2hex(substr($frame, 4, 4)), 'the version of KAFKA-17011');
         self::assertSame('000f', bin2hex(substr($frame, 12, 2)), 'the client id keeps its int16 length');
         self::assertSame('00', bin2hex(substr($frame, 29, 1)), 'the tag buffer of the request header v2');
         self::assertSame('18', bin2hex(substr($frame, 30, 1)), 'a compact string of 23 bytes announces 24');

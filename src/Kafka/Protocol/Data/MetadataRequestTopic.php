@@ -28,13 +28,19 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * and the broker closes the connection on it - measured against the container, which is why this class exists.
  *
  * **Version 10 (Kafka 2.8, KIP-516) adds a `TopicId` in front of the name** and makes the name nullable, so that
- * a client can name a topic by its id instead. `MetadataRequest.json` @ 2.8.2 says in the same breath that "this
- * functionality was not implemented on the server. Versions 10 and 11 should not use the topicId field or set
- * topic name to null", so this client writes {@see Uuid::ZERO} and the real name in every entry - which is what
- * the Java client does as well.
+ * a client can name a topic by its id instead. `MetadataRequest.json` @ 3.1.2 still says in the same breath that
+ * "this functionality was not implemented on the server. Versions 10 and 11 should not use the topicId field or
+ * set topic name to null", so a version 10 or 11 request of this client writes {@see Uuid::ZERO} and the real
+ * name in every entry - which is what the Java client does as well.
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v11)", "Topic ids (v10, KIP-516)" and
- *      "Flexible versions in the engine (KIP-482)"
+ * **Version 12 (Kafka 3.1) is the version at which the server implements it**: the same entry, but the id is now
+ * resolved by the broker, so an entry may carry a real id with a `null` name and is answered with the metadata of
+ * that topic or with the **100** `UnknownTopicId` of an id the cluster does not host, see
+ * {@see \Protocol\Kafka\Protocol\Request\MetadataRequest::byTopicIds()}. The frame of the entry did not
+ * change at all between 10 and 12, so this one class writes every one of them.
+ *
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)", "Topic ids (v10, KIP-516)",
+ *      "Metadata by topic id (v12, KIP-516)" and "Flexible versions in the engine (KIP-482)"
  */
 class MetadataRequestTopic implements BinarySchemaInterface
 {
@@ -44,21 +50,31 @@ class MetadataRequestTopic implements BinarySchemaInterface
     public const int VERSION = 10;
 
     /**
+     * Builds the entry of a topic that is named by its **id** alone, which Kafka 3.1 serves from version 12 on
+     *
+     * @param string $topicId The 16 raw bytes of the topic id, {@see \Protocol\Kafka\Common\Uuid}
+     */
+    public static function byId(string $topicId): static
+    {
+        return new static(null, $topicId);
+    }
+
+    /**
      * Id of the topic to fetch the metadata of, `Uuid::ZERO` for "I am naming it by its name".
      *
-     * The server side of the field does not exist in Kafka 2.8.2 - see the note above - so this is the zero uuid
-     * in every request this client sends.
+     * The server side of the field does not exist below version 12 - see the note above - so this is the zero
+     * uuid in every version 10 and 11 request this client sends.
      *
      * @since Version 10 of protocol (Kafka 2.8, KIP-516)
      */
     public string $topicId = Uuid::ZERO;
 
     /**
-     * Name of the topic to fetch the metadata of
+     * Name of the topic to fetch the metadata of, `null` in an entry that names it by its id alone (version 12)
      */
-    public string $name = '';
+    public ?string $name = '';
 
-    public function __construct(string $name = '', string $topicId = Uuid::ZERO)
+    public function __construct(?string $name = '', string $topicId = Uuid::ZERO)
     {
         $this->name    = $name;
         $this->topicId = $topicId;

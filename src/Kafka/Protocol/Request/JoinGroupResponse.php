@@ -18,17 +18,18 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMemberV0;
 
 /**
- * JoinGroup response, version 7.
+ * JoinGroup response, version 9.
  *
  * <pre>
- *   JoinGroup Response (Version: 2 to 7) => throttle_time_ms error_code generation_id protocol_type
- *                                      group_protocol leader_id member_id [members]
+ *   JoinGroup Response (Version: 2 to 9) => throttle_time_ms error_code generation_id protocol_type
+ *                                      group_protocol leader_id skip_assignment member_id [members]
  *     throttle_time_ms => INT32     -- since version 2
  *     error_code       => INT16
  *     generation_id    => INT32
  *     protocol_type    => NULLABLE_STRING   -- since version 7
  *     group_protocol   => STRING, NULLABLE_STRING since version 7
  *     leader_id        => STRING
+ *     skip_assignment  => BOOLEAN   -- since version 9, between the leader id and the member id
  *     member_id        => STRING
  *     members          => member_id group_instance_id member_metadata
  *       member_id         => STRING
@@ -72,14 +73,27 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMemberV0;
  * empty leader id and an empty member array - and {@see self::$memberId} holding the id the coordinator assigned
  * to the client, which is the whole point of it.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v7)" and "Quotas and throttle time"
+ * **Version 8 (KIP-800, Kafka 3.2) did not change this half at all** - "Version 8 is the same as version 7" in
+ * `JoinGroupResponse.json` @ 3.2.3 - the release added the `reason` to the **request**
+ * ({@see JoinGroupRequest}), so {@see JoinGroupResponseV8} and {@see JoinGroupResponseV7} decode the same bytes.
+ *
+ * **Version 9 (KIP-814, Kafka 3.2) inserted {@see self::$skipAssignment} between the leader id and the member
+ * id**: "True if the leader must skip running the assignment". It is the answer to a *static* member that rejoins
+ * a `Stable` group under an instance id the group already knows, does not change the selected protocol and turns
+ * out to be the leader - the coordinator then does not rebalance the group at all, it only rewrites the member id
+ * of that instance, and the group keeps the assignment it has. The leader of such an answer must **not** compute
+ * an assignment: it sends a SyncGroup with an empty assignment array, and the coordinator answers it the
+ * assignment the generation already agreed on. Every other answer of the api carries `false`, including the
+ * error ones. See "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)" in the document.
+ *
+ * @see docs/protocol/3.9.md, sections "JoinGroup API (key 11, v0 to v9)" and "Quotas and throttle time"
  */
 class JoinGroupResponse extends AbstractResponse
 {
     /**
      * Version of the JoinGroup API that this class decodes the answer of
      */
-    public const int VERSION = 7;
+    public const int VERSION = 9;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -130,6 +144,20 @@ class JoinGroupResponse extends AbstractResponse
     public string $leaderId;
 
     /**
+     * Whether the leader of this generation has to **skip** computing an assignment (KIP-814).
+     *
+     * `true` reaches exactly one member: a static one that rejoined a `Stable` group under an instance id the
+     * group already holds, without changing the protocol it settled on, and that is the leader of it
+     * (`GroupMetadataManager.updateStaticMemberAndRebalance` @ 3.9.2 sets `skipAssignment = isLeader`). No
+     * rebalance happened - only the member id of that instance was replaced - so the assignment of the group
+     * still stands and the leader publishes an **empty** assignment array with its SyncGroup instead of a new
+     * one. Every other answer, error answers included, carries `false`.
+     *
+     * @since Version 9 of protocol
+     */
+    public bool $skipAssignment = false;
+
+    /**
      * The consumer id assigned by the group coordinator.
      */
     public string $memberId;
@@ -160,6 +188,9 @@ class JoinGroupResponse extends AbstractResponse
             ? BinarySchema::TYPE_NULLABLE_STRING
             : BinarySchema::TYPE_STRING;
         $body['leaderId'] = BinarySchema::TYPE_STRING;
+        if (static::VERSION >= 9) {
+            $body['skipAssignment'] = BinarySchema::TYPE_BOOLEAN;
+        }
         $body['memberId'] = BinarySchema::TYPE_STRING;
         $body['members']  = ['memberId' => static::memberClass()];
 

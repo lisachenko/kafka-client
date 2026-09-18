@@ -1171,8 +1171,14 @@ final class KafkaConsumerTest extends TestCase
         $consumer->unsubscribe();
 
         self::assertSame(
-            [['groupId' => self::GROUP, 'memberId' => 'member-1', 'instanceId' => null]],
-            $client->leaves
+            [[
+                'groupId'    => self::GROUP,
+                'memberId'   => 'member-1',
+                'instanceId' => null,
+                'reason'     => ConsumerCoordinator::LEAVE_REASON_UNSUBSCRIBED,
+            ]],
+            $client->leaves,
+            'and the LeaveGroup says why, which KIP-800 (v5) put on the wire'
         );
         self::assertSame([], $consumer->assignment());
         self::assertSame([], $consumer->subscription());

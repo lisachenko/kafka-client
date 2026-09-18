@@ -34,13 +34,19 @@ use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
  *  * `maxTimestamp` is the hard end of its life, `issueTimestamp` plus the maximum lifetime the create request
  *    asked for, capped by `delegation.token.max.lifetime.ms`; no renewal ever moves the expiry beyond it.
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 to v2)"
+ * {@see self::$tokenRequester} is the principal that **asked** for the token, which Kafka 3.3 added to the answers
+ * of the two describe and create apis (KIP-373). It is the owner itself for every token a principal issued for
+ * itself - and for every token described by a broker below Kafka 3.3, which has no field for it.
+ *
+ * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 final class TokenInformation
 {
     /**
      * The argument order is the one of `new TokenInformation(tokenId, owner, renewers, issueTimestamp,
-     * maxTimestamp, expiryTimestamp)` @ 1.1.1, the maximum before the expiry.
+     * maxTimestamp, expiryTimestamp)` @ 1.1.1, the maximum before the expiry. Kafka 3.3 put the requester of
+     * KIP-373 **third** in the Java constructor; this one takes it last, because the six published parameters of
+     * this package are not reordered for it - a caller that leaves it out describes a token of its owner.
      *
      * @param string               $tokenId         Identifier of the token, a base64 uuid
      * @param KafkaPrincipal       $owner           Principal the token was issued for
@@ -48,6 +54,8 @@ final class TokenInformation
      * @param int                  $issueTimestamp  Milliseconds since the epoch at which the token was issued
      * @param int                  $maxTimestamp    Milliseconds since the epoch beyond which it cannot be renewed
      * @param int                  $expiryTimestamp Milliseconds since the epoch at which it expires
+     * @param KafkaPrincipal|null  $tokenRequester  Principal that asked for the token (Kafka 3.3), null for the
+     *        owner itself
      */
     public function __construct(
         public readonly string $tokenId,
@@ -55,8 +63,18 @@ final class TokenInformation
         public readonly array $renewers,
         public readonly int $issueTimestamp,
         public readonly int $maxTimestamp,
-        public readonly int $expiryTimestamp
-    ) {}
+        public readonly int $expiryTimestamp,
+        ?KafkaPrincipal $tokenRequester = null
+    ) {
+        $this->tokenRequester = $tokenRequester ?? $owner;
+    }
+
+    /**
+     * Principal that asked for the token, the owner itself unless it was issued for somebody else
+     *
+     * @since Kafka 3.3 (KIP-373); it is the owner for every token a broker below that release describes
+     */
+    public readonly KafkaPrincipal $tokenRequester;
 
     /**
      * Builds the information of a token out of one entry of a DescribeDelegationToken answer
@@ -69,7 +87,8 @@ final class TokenInformation
             array_values($token->renewers),
             $token->issueTimestamp,
             $token->maxTimestamp,
-            $token->expiryTimestamp
+            $token->expiryTimestamp,
+            $token->requester()
         );
     }
 
@@ -89,7 +108,8 @@ final class TokenInformation
             array_values($renewers),
             $response->issueTimestamp,
             $response->maxTimestamp,
-            $response->expiryTimestamp
+            $response->expiryTimestamp,
+            $response->requester()
         );
     }
 
@@ -99,6 +119,22 @@ final class TokenInformation
     public function ownerAsString(): string
     {
         return (string) $this->owner;
+    }
+
+    /**
+     * Returns the requester in the `<type>:<name>` form, `TokenInformation.tokenRequester()`
+     */
+    public function tokenRequesterAsString(): string
+    {
+        return (string) $this->tokenRequester;
+    }
+
+    /**
+     * Tells whether the token was issued for another principal than the one that asked for it (KIP-373)
+     */
+    public function isIssuedForAnotherPrincipal(): bool
+    {
+        return !$this->owner->equals($this->tokenRequester);
     }
 
     /**
@@ -116,10 +152,23 @@ final class TokenInformation
      *
      * It is the check `DelegationTokenManager.allowedToRenew` @ 1.1.1 performs before it touches a token; a
      * principal that fails it is answered with the error code 63 (`DelegationTokenOwnerMismatch`).
+     *
+     * **Kafka 3.3 widened it by the requester**: `TokenInformation.ownerOrRenewer` @ 3.9.2 is
+     * `owner.equals(principal) || tokenRequester.equals(principal) || renewers.contains(principal)`, so the
+     * principal that asked for a token of KIP-373 sees it in a describe without being named a renewer of it -
+     * `DelegationTokenManager.filterToken` @ 3.9.2 asks exactly this question. Below Kafka 3.3 the requester is
+     * the owner anyway.
+     *
+     * **A KRaft node does not let the requester renew or expire the token, though.**
+     * `DelegationTokenControlManager.allowedToRenew` @ 3.9.2 - the controller half, which is what a KRaft cluster
+     * runs - is `owner || renewers` **without** the requester, so the two questions have different answers there:
+     * measured on the node, the principal that asked for a token of another owner is answered **63**
+     * (`DelegationTokenOwnerMismatch`) by both the renew and the expire api while it sees the very same token in
+     * a describe. Name the requester in the renewers of the request when it should be able to renew it.
      */
     public function ownerOrRenewer(KafkaPrincipal $principal): bool
     {
-        if ($this->owner->equals($principal)) {
+        if ($this->owner->equals($principal) || $this->tokenRequester->equals($principal)) {
             return true;
         }
 

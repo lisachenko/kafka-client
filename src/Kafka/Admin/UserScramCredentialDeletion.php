@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\ScramCredentialDeletion;
  * `UserScramCredentialDeletion` of the Java admin client. A user may hold one credential per mechanism, so a
  * deletion names both.
  *
- * @see docs/protocol/2.8.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/3.9.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 final class UserScramCredentialDeletion implements UserScramCredentialAlteration
 {

@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\ReassignableTopic;
  * the replica fetchers. The work is watched with key 46, and it is throttled by the broker options
  * `leader.replication.throttled.rate`/`follower.replication.throttled.rate`, which this api does not touch.
  *
- * @see docs/protocol/2.8.md, section "AlterPartitionReassignments API (key 45, v0)"
+ * @see docs/protocol/3.9.md, section "AlterPartitionReassignments API (key 45, v0)"
  */
 class AlterPartitionReassignmentsRequest extends AbstractRequest
 {

@@ -39,7 +39,13 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * entries, which is what {@see self::partitionClass()} picks: version 5 of the api (Kafka 1.0, KIP-112/113)
  * appended `OfflineReplicas` to them, the versions 1 to 4 ({@see TopicMetadataV1}) do not carry it.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
+ * **Version 12 (Kafka 3.1, KIP-516) made the topic NAME nullable**: `MetadataResponse.json` @ 3.1.2 declares
+ * `"nullableVersions": "12+"` on `Name`, because from that version the request may name a topic by its id alone
+ * and an id the cluster does not host can not be answered with a name. Such an entry carries the error code
+ * **100** `UnknownTopicId`, a `null` name, the id that was asked for and no partition at all.
+ * {@see TopicMetadataV10} keeps the entry whose name is never null.
+ *
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Metadata by topic id (v12, KIP-516)"
  */
 class TopicMetadata implements BinarySchemaInterface
 {
@@ -48,7 +54,7 @@ class TopicMetadata implements BinarySchemaInterface
     /**
      * Version of the Metadata API that this entry is unpacked from
      */
-    public const int VERSION = 10;
+    public const int VERSION = 12;
 
     /**
      * The error code for the given topic.
@@ -59,9 +65,9 @@ class TopicMetadata implements BinarySchemaInterface
     public int $topicErrorCode = 0;
 
     /**
-     * The name of the topic
+     * The name of the topic, `null` for the entry of a topic id that the broker could not resolve (version 12)
      */
-    public string $topic = '';
+    public ?string $topic = '';
 
     /**
      * Id of the topic, the 16 raw bytes of the `uuid` of KIP-516 (Kafka 2.8).
@@ -109,7 +115,10 @@ class TopicMetadata implements BinarySchemaInterface
     {
         $scheme = [
             'topicErrorCode' => BinarySchema::TYPE_INT16,
-            'topic'          => BinarySchema::TYPE_STRING,
+            // KIP-516 made the name nullable in version 12, for an entry that only has an unresolvable id
+            'topic'          => static::VERSION >= 12
+                ? BinarySchema::TYPE_NULLABLE_STRING
+                : BinarySchema::TYPE_STRING,
         ];
         // The topic id of KIP-516 sits between the name and `is_internal`, which is the field order of
         // `MetadataResponse.json` @ 2.8.2 and therefore the wire order

@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka **2.8** added the version 1, which is this very scheme in the compact encoding of KIP-482 and adds no
  * field; this class keeps the frame a 2.6 or 2.7 broker serves, with the request header v1 instead of the v2.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 class DescribeClientQuotasRequestV0 extends DescribeClientQuotasRequest
 {

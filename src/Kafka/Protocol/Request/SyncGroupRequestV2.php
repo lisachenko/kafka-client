@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 3 (KIP-345, Kafka 2.3) inserted a nullable `group_instance_id` behind the member id, with which a
  * static member names itself; {@see SyncGroupRequest} sends that frame, this one is the version below it.
  *
- * @see docs/protocol/2.8.md, section "Static membership (KIP-345)"
+ * @see docs/protocol/3.9.md, section "Static membership (KIP-345)"
  */
 final class SyncGroupRequestV2 extends SyncGroupRequest
 {

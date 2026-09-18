@@ -14,7 +14,6 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
@@ -43,14 +42,13 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Drives the consumer with the partitions picked by hand against a real Kafka 0.9.0.1 broker.
  *
  * A consumer that selects its partitions with `assign()` joins no group, whichever Kafka version the broker runs:
- * it fetches, seeks and pauses on its own, and the only thing the group id is used for is the offset storage, in
- * the `__consumer_offsets` topic (`offsets.storage` = `kafka`) or in ZooKeeper (the version 0 of the offset apis,
- * `offsets.storage` = `zookeeper`). Both are exercised here, because a consumer resumes from what it committed
- * there. The broker-side group membership of Kafka 0.9 - subscribe(), the rebalance and the heartbeats - is driven
- * by {@see ConsumerGroupTest}.
+ * it fetches, seeks and pauses on its own, and the only thing the group id is used for is the offsets it commits
+ * to the coordinator, in the `__consumer_offsets` topic of the cluster - which is what a second consumer of the
+ * same group resumes from, and what is exercised here. The broker-side group membership of Kafka 0.9 -
+ * subscribe(), the rebalance and the heartbeats - is driven by {@see ConsumerGroupTest}.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)", "Offsets API (key 2, v0 to v4), a.k.a.
- *      ListOffset" and "OffsetFetch API (key 9, v0 to v7)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Offsets API (key 2, v0 to v4), a.k.a.
+ *      ListOffset" and "OffsetFetch API (key 9, v0 to v9)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(SubscriptionState::class)]
@@ -192,23 +190,12 @@ final class KafkaConsumerTest extends IntegrationTestCase
         self::assertSame(2, $consumer->position($this->topic, 1));
     }
 
-    /**
-     * @return iterable<string, array{0: string}>
-     */
-    public static function offsetStorages(): iterable
-    {
-        yield 'kafka'     => [ClientConfig::OFFSETS_STORAGE_KAFKA];
-        yield 'zookeeper' => [ClientConfig::OFFSETS_STORAGE_ZOOKEEPER];
-    }
-
-    #[DataProvider('offsetStorages')]
-    public function testANewConsumerResumesFromTheCommittedOffset(string $storage): void
+    public function testANewConsumerResumesFromTheCommittedOffset(): void
     {
         $groupId = self::uniqueGroupName();
         $this->produce(0, ['one', 'two', 'three']);
 
         $first = $this->consumer($groupId, [
-            ClientConfig::OFFSETS_STORAGE      => $storage,
             ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
             ConsumerConfig::ENABLE_AUTO_COMMIT => false,
         ]);
@@ -223,7 +210,6 @@ final class KafkaConsumerTest extends IntegrationTestCase
         // A second consumer of the same group starts where the first one stopped, although it would otherwise
         // jump to the end of the log
         $second = $this->consumer($groupId, [
-            ClientConfig::OFFSETS_STORAGE      => $storage,
             ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::LATEST,
             ConsumerConfig::ENABLE_AUTO_COMMIT => false,
         ]);
@@ -237,29 +223,22 @@ final class KafkaConsumerTest extends IntegrationTestCase
         self::assertSame([3], $this->offsetsOf($received, 0));
     }
 
-    public function testTheTwoOffsetStoragesAreIndependent(): void
+    /**
+     * A partition of the group that was never committed is the offset -1, next to the one that was
+     */
+    public function testAPartitionWithoutACommittedOffsetIsReportedAsMinusOne(): void
     {
         $groupId = self::uniqueGroupName();
         $this->produce(0, ['one', 'two']);
 
-        $inKafka = $this->consumer($groupId, [
-            ClientConfig::OFFSETS_STORAGE      => ClientConfig::OFFSETS_STORAGE_KAFKA,
-            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
-        ]);
-        $inKafka->assign([$this->topic => [0]]);
-        $inKafka->commitSync([$this->topic => [0 => 2]]);
+        $consumer = $this->consumer($groupId, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->assign([$this->topic => [0]]);
+        $consumer->commitSync([$this->topic => [0 => 2]]);
 
-        $inZooKeeper = $this->consumer($groupId, [
-            ClientConfig::OFFSETS_STORAGE      => ClientConfig::OFFSETS_STORAGE_ZOOKEEPER,
-            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
-        ]);
-        $inZooKeeper->assign([$this->topic => [0]]);
-
-        self::assertSame([$this->topic => [0 => 2]], $inKafka->committed([$this->topic => [0]]));
         self::assertSame(
-            [$this->topic => [0 => -1]],
-            $inZooKeeper->committed([$this->topic => [0]]),
-            'the same group has one position per storage'
+            [$this->topic => [0 => 2, 1 => -1]],
+            $consumer->committed([$this->topic => [0, 1]]),
+            'the coordinator answers a partition this group never committed with the offset -1'
         );
     }
 

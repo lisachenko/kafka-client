@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **One result per affected user, not per change**: a request that deletes the SHA-256 credential of a user and
  * writes their SHA-512 one is answered with a single entry, and there is no top-level error code at all.
  *
- * @see docs/protocol/2.8.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/3.9.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 class AlterUserScramCredentialsResult implements BinarySchemaInterface
 {

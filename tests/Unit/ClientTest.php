@@ -72,7 +72,7 @@ use Protocol\Kafka\Tests\Unit\Fixture\TransactionalTestClient;
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
  * answers, the retries after a metadata refresh and the reporting of a partially failed request.
  *
- * @see docs/protocol/2.8.md
+ * @see docs/protocol/3.9.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(RetryPolicy::class)]
@@ -82,6 +82,14 @@ use Protocol\Kafka\Tests\Unit\Fixture\TransactionalTestClient;
 final class ClientTest extends TestCase
 {
     private const string TOPIC = 'orders';
+
+    /**
+     * Hex of the topic id {@see \Protocol\Kafka\Tests\Fixture\ResponseFrame::topicIdOf()} gives {@see self::TOPIC}
+     *
+     * Fetch v13 (Kafka 3.1, KIP-516) names every topic of the request and of the answer by these 16 raw bytes
+     * and never by its name, so this is what a fetch frame of this test carries where it used to carry `orders`.
+     */
+    private const string TOPIC_ID = '12c500ed0b7879105fb46af0f246be87';
 
     private const string BOOTSTRAP_ADDRESS = 'tcp://bootstrap:9092';
 
@@ -581,9 +589,18 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 12, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
-        // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
-        self::assertStringStartsWith('0001000c', $request, 'the Fetch api is spoken in version 12');
+        // ApiKey 1, ApiVersion 17, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch. A
+        // version 17 frame carries no `replica_id` at all (KIP-903 deprecated it in 15), so `max_wait_ms` follows
+        // the header at once; KIP-951 added nothing to the request of version 16 and the `replica_directory_id`
+        // of KIP-853 is a tagged field a consumer leaves at its zero-uuid default, so version 17 adds nothing
+        // either
+        self::assertStringStartsWith('00010011', $request, 'the Fetch api is spoken in version 17');
+        self::assertStringNotContainsString(
+            '000974372d636c69656e7400' . 'ffffffff',
+            $request,
+            'the deprecated replica_id is not in the body of a version 17 request'
+        );
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',
             $request,
@@ -678,9 +695,9 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 9, correlation id, client id, the tag buffer of the request header v2 and then
+        // ApiKey 0, ApiVersion 11, correlation id, client id, the tag buffer of the request header v2 and then
         // the null transactional id of a plain producer, which a flexible frame writes as the single byte 00
-        self::assertStringStartsWith('00000009', $frame, 'the Produce api is spoken in version 9');
+        self::assertStringStartsWith('0000000b', $frame, 'the Produce api is spoken in version 11');
         self::assertStringContainsString('74372d636c69656e74' . '00' . '00', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
@@ -777,7 +794,7 @@ final class ClientTest extends TestCase
         $frame = $anyBroker->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frame));
-        self::assertSame(4, $this->apiVersionOf($frame), 'Kafka 2.7 raised the api to the version 4 of KIP-588');
+        self::assertSame(5, $this->apiVersionOf($frame), 'Kafka 3.8 raised the api to the version 5 of KIP-890');
         // The compact null of the transactional id, the default transaction timeout of one minute, the -1/-1 of
         // KIP-360 that asks for a new producer id and the tag buffer that closes the body of every flexible frame
         self::assertStringEndsWith(
@@ -804,10 +821,14 @@ final class ClientTest extends TestCase
         $lookupFrame = $lookupNode->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::GROUP_COORDINATOR, $this->apiKeyOf($lookupFrame));
-        self::assertSame(3, $this->apiVersionOf($lookupFrame), 'the flexible FindCoordinator of KIP-482');
-        // The key "tx-1" and the CoordinatorType 1 of a transactional id
+        self::assertSame(
+            6,
+            $this->apiVersionOf($lookupFrame),
+            'the batched FindCoordinator of KIP-699, at the version 6 of KIP-932'
+        );
+        // The CoordinatorType 1 of a transactional id and the one-key batch that carries "tx-1"
         self::assertStringEndsWith(
-            '05' . '74782d31' . '01' . '00',
+            '01' . '02' . '05' . '74782d31' . '00',
             bin2hex($lookupFrame),
             'the compact key is the transactional id, the type 1, and the body ends in its tag buffer'
         );
@@ -1172,6 +1193,63 @@ final class ClientTest extends TestCase
         }
     }
 
+    public function testTheLeaderHintOfKip951TravelsIntoTheContextOfTheRefusedPartition(): void
+    {
+        // Fetch v16 (Kafka 3.7, KIP-951): a partition that is refused 6 NotLeaderForPartition or 74
+        // FencedLeaderEpoch carries the tagged `current_leader` - the node and the epoch it is really led with -
+        // and the body the tagged `node_endpoints` that says where that node listens. Both travel into the
+        // context of the exception of the partition, so that the caller can go there without a Metadata round trip
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::fetch(
+                0,
+                [self::TOPIC => [0 => [KafkaException::FENCED_LEADER_EPOCH, -1, '']]],
+                0,
+                [],
+                0,
+                0,
+                [],
+                [self::TOPIC => [0 => [2, 9]]],
+                [2 => ['kafka-2', 9192, null]]
+            )))
+            ->install();
+
+        try {
+            $this->client()->fetch([self::TOPIC => [0 => 0]], 200);
+            self::fail('A fenced leader epoch is expected to be reported');
+        } catch (TopicPartitionRequestException $exception) {
+            $context = $exception->getExceptions()[self::TOPIC][0]->getContext();
+
+            self::assertSame(2, $context['currentLeaderId'], 'the node the partition is really led by');
+            self::assertSame(9, $context['currentLeaderEpoch']);
+            self::assertSame('kafka-2', $context['currentLeaderHost'], 'and where that node listens');
+            self::assertSame(9192, $context['currentLeaderPort']);
+        }
+    }
+
+    public function testAFetchAnswerWithoutTheHintOfKip951AddsNothingToTheContext(): void
+    {
+        // Every answer of an ordinary consumer fetch, and every answer of a version below 16: the tagged fields
+        // are at their default and are not on the wire at all, so the context is the one of the lines below
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::fetch(0, [
+                self::TOPIC => [0 => [KafkaException::NOT_LEADER_FOR_PARTITION, -1, '']],
+            ])))
+            ->install();
+
+        try {
+            $this->client()->fetch([self::TOPIC => [0 => 0]], 200);
+            self::fail('The refusal of the partition is expected to be reported');
+        } catch (TopicPartitionRequestException $exception) {
+            $context = $exception->getExceptions()[self::TOPIC][0]->getContext();
+
+            self::assertSame([self::TOPIC, 0], [$context['topic'], $context['partitionId']]);
+            self::assertArrayNotHasKey('currentLeaderId', $context, 'the broker named no leader');
+            self::assertArrayNotHasKey('currentLeaderHost', $context);
+        }
+    }
+
     public function testAPartiallyFailedFetchStillReturnsTheRecordsOfTheOtherPartitions(): void
     {
         $messageSet = MessageSet::fromRecords([new Record('readable')])->toBuffer();
@@ -1218,13 +1296,14 @@ final class ClientTest extends TestCase
         [$full, $incremental] = array_map(bin2hex(...), $connection->getReceivedFrames());
 
         // The first request carries the session id 0 with the epoch 0 - "open a session" - and both partitions;
-        // the topics array and the topic name are compact ones, because version 12 is a flexible version
-        self::assertStringContainsString('00000000' . '00000000' . '02' . '076f7264657273', $full);
+        // the topics array is a compact one, because version 12 is a flexible version, and the topic itself is
+        // named by the 16 raw bytes of its id, because version 13 (KIP-516) took the name off the wire
+        self::assertStringContainsString('00000000' . '00000000' . '02' . self::TOPIC_ID, $full);
         // The second one carries the session id of the answer, the epoch 1, the partition whose offset moved and
         // nothing else; the trailing empty compact array is the forgotten_topics_data
         self::assertStringContainsString('00001267' . '00000001', $incremental, 'the session id and the epoch 1');
         self::assertStringEndsWith(
-            '02' . '076f7264657273' . '02'
+            '02' . self::TOPIC_ID . '02'
             . '00000000' . 'ffffffff' . '0000000000000001' . 'ffffffff' . 'ffffffffffffffff' . '00010000' . '00'
             . '00'
             . '01'
@@ -1265,7 +1344,7 @@ final class ClientTest extends TestCase
 
         self::assertStringEndsWith(
             '01'                                   // topicPartitions: nothing moved (the empty compact array)
-            . '02' . '076f7264657273' . '02'       // forgottenTopics: one topic ...
+            . '02' . self::TOPIC_ID . '02'         // forgottenTopics: one topic, by its id since v13 ...
             . '00000001'                           // ... with the partition 1
             . '00'                                 // TAG_BUFFER of that forgotten topic
             . '01'                                 // rackId: the empty rack of KIP-392, compact since v12
@@ -1305,7 +1384,7 @@ final class ClientTest extends TestCase
         // The recovery is a full fetch with the epoch 0 and the session id 0, because a 70 says that the id is gone
         $recovery = bin2hex($connection->getReceivedFrames()[2]);
 
-        self::assertStringContainsString('00000000' . '00000000' . '02' . '076f7264657273', $recovery);
+        self::assertStringContainsString('00000000' . '00000000' . '02' . self::TOPIC_ID, $recovery);
     }
 
     public function testEveryBrokerOfTheClusterGetsAFetchSessionOfItsOwn(): void
@@ -1357,12 +1436,12 @@ final class ClientTest extends TestCase
         self::assertSame(FetchMetadata::INITIAL_EPOCH, $metadata->epoch);
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionSix(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionNine(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
             ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => 0]]),
-            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, 'by the client']]])
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, 'by the client']]], 0, 't7-group')
         );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -1390,28 +1469,17 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(8, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 8');
-        self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(7, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 7');
-    }
-
-    public function testZookeeperOffsetStorageSpeaksVersionZero(): void
-    {
-        $anyNode = new BrokerConnection(
-            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
-            ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => 0]])
+        self::assertSame(
+            9,
+            $this->apiVersionOf($frames[0]),
+            'the client commits with OffsetCommit version 9 since Kafka 3.6 (KIP-848)'
         );
-        $this->brokers
-            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
-            ->on(self::FIRST_LEADER, $anyNode)
-            ->install();
-
-        $client      = $this->client([ClientConfig::OFFSETS_STORAGE => ClientConfig::OFFSETS_STORAGE_ZOOKEEPER]);
-        $coordinator = $client->getGroupCoordinator('t7-group');
-
-        $client->commitGroupOffsets($coordinator, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
-
-        self::assertSame(0, $this->apiVersionOf($anyNode->getReceivedFrames()[1]));
+        self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
+        self::assertSame(
+            9,
+            $this->apiVersionOf($frames[1]),
+            'the client reads the offsets with OffsetFetch version 9 since Kafka 3.7 (KIP-848)'
+        );
     }
 
     public function testACommitErrorOfAPartitionIsReported(): void
@@ -1434,7 +1502,7 @@ final class ClientTest extends TestCase
     public function testEveryCommittedOffsetOfAGroupIsFetchedWithTheNullTopicArray(): void
     {
         $coordinator = new BrokerConnection(
-            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]])
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]], 0, 't7-group')
         );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -1448,7 +1516,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(7, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
+        self::assertSame(9, $this->apiVersionOf($frame), 'the nullable topic array of the one group of the batch');
         self::assertStringEndsWith(
             '0000',
             bin2hex($frame),
@@ -1462,8 +1530,8 @@ final class ClientTest extends TestCase
     public function testStableOffsetsAreAskedForWithTheFlagOfVersionSeven(): void
     {
         $coordinator = new BrokerConnection(
-            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]]),
-            ResponseFrame::offsetFetch(1, [self::TOPIC => [0 => [0, 21, '']]])
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]], 0, 't7-group'),
+            ResponseFrame::offsetFetch(1, [self::TOPIC => [0 => [0, 21, '']]], 0, 't7-group')
         );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -1479,7 +1547,7 @@ final class ClientTest extends TestCase
 
         [$plain, $stable] = $coordinator->getReceivedFrames();
 
-        self::assertSame(7, $this->apiVersionOf($plain));
+        self::assertSame(9, $this->apiVersionOf($plain));
         self::assertStringEndsWith('0000', bin2hex($plain), 'false, then the tag buffer of the body');
         self::assertStringEndsWith('0100', bin2hex($stable), 'true, then the tag buffer of the body');
         self::assertSame(
@@ -1499,7 +1567,9 @@ final class ClientTest extends TestCase
             ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
             ->on(self::SECOND_LEADER, new BrokerConnection(ResponseFrame::offsetFetch(
                 0,
-                [self::TOPIC => [0 => [KafkaException::UNSTABLE_OFFSET_COMMIT, -1, '']]]
+                [self::TOPIC => [0 => [KafkaException::UNSTABLE_OFFSET_COMMIT, -1, '']]],
+                0,
+                't7-group'
             )))
             ->install();
 
@@ -1516,7 +1586,7 @@ final class ClientTest extends TestCase
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, new BrokerConnection(
                 ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
-                ResponseFrame::offsetFetch(0, [], KafkaException::GROUP_AUTHORIZATION_FAILED)
+                ResponseFrame::offsetFetch(0, [], KafkaException::GROUP_AUTHORIZATION_FAILED, 't7-group')
             ))
             ->install();
 
@@ -1534,7 +1604,7 @@ final class ClientTest extends TestCase
                 ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
                 ResponseFrame::offsetFetch(0, [
                     self::TOPIC => [0 => [KafkaException::UNKNOWN_TOPIC_OR_PARTITION, -1, '']],
-                ])
+                ], 0, 't7-group')
             ))
             ->install();
 
@@ -1577,7 +1647,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(7, $this->apiVersionOf($frame), 'JoinGroup v7 is the version of KIP-559');
+        self::assertSame(9, $this->apiVersionOf($frame), 'JoinGroup v9 is the version of KIP-814');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
@@ -2146,7 +2216,6 @@ final class ClientTest extends TestCase
             ClientConfig::METADATA_MAX_AGE_MS       => 300000,
             ClientConfig::RETRY_BACKOFF_MS          => 1,
             ClientConfig::RETRIES                   => 0,
-            ClientConfig::OFFSETS_STORAGE           => ClientConfig::OFFSETS_STORAGE_KAFKA,
 
             ProducerConfig::ACKS       => 1,
             ProducerConfig::TIMEOUT_MS => 100,

@@ -36,7 +36,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * still sends session-less full fetches ({@see \Protocol\Kafka\Client::fetchPartitions()}), so this is the only
  * place where the session half of the frame meets a broker.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -58,6 +58,18 @@ final class FetchSessionApiTest extends IntegrationTestCase
      * How long the broker may hold a fetch request that has nothing to answer, in milliseconds
      */
     private const int FETCH_MAX_WAIT_MS = 500;
+
+    /**
+     * A session id the node never hands out, inside the range its sharded session cache can look up
+     */
+    private const int UNKNOWN_SESSION_ID = 2147483639;
+
+    /**
+     * The lowest session id no shard of the node's session cache owns, `8 * (Int.MaxValue / 8)`
+     *
+     * @see self::testTheHighestEightSessionIdsFallOutsideTheShardedCacheOfTheNode()
+     */
+    private const int FIRST_UNSHARDED_SESSION_ID = 2147483640;
 
     /**
      * Topic of the current test, three partitions, created and given a leader by {@see self::setUp()}
@@ -92,7 +104,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::NO_ERROR, $answer->errorCode);
         self::assertSame(FetchMetadata::INVALID_SESSION_ID, $answer->sessionId);
-        self::assertSame([0], array_keys($answer->topics[$this->topic]->partitions));
+        self::assertSame([0], array_keys(self::fetchedTopic($answer, $this->topic)->partitions));
     }
 
     public function testTheEpochZeroOpensASessionAndTheBrokerAnswersItsId(): void
@@ -110,7 +122,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
         );
         self::assertSame(
             [0, 1],
-            array_keys($created->topics[$this->topic]->partitions),
+            array_keys(self::fetchedTopic($created, $this->topic)->partitions),
             'a full fetch is answered with every partition it asked for'
         );
 
@@ -144,7 +156,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
         self::assertSame($session, $changed->sessionId);
         self::assertSame(
             [1],
-            array_keys($changed->topics[$this->topic]->partitions),
+            array_keys(self::fetchedTopic($changed, $this->topic)->partitions),
             'only the partition whose log grew is answered'
         );
         self::assertSame(['b-two'], self::valuesOf($changed, 1));
@@ -160,7 +172,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
         $session = $this->fetch([0 => 0], FetchMetadata::initial())->sessionId;
         $again   = $this->fetch([], FetchMetadata::newIncremental($session));
 
-        self::assertSame([0], array_keys($again->topics[$this->topic]->partitions));
+        self::assertSame([0], array_keys(self::fetchedTopic($again, $this->topic)->partitions));
         self::assertSame(['a-one'], self::valuesOf($again, 0));
     }
 
@@ -181,7 +193,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
         self::assertSame($session, $forgetting->sessionId);
         self::assertSame(
             [0],
-            array_keys($forgetting->topics[$this->topic]->partitions),
+            array_keys(self::fetchedTopic($forgetting, $this->topic)->partitions),
             'the forgotten partition is left out although it has a new record'
         );
 
@@ -190,7 +202,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
         $this->produce(1, ['b-three']);
         $later = $this->fetch([], new FetchMetadata($session, 3));
 
-        self::assertSame([0], array_keys($later->topics[$this->topic]->partitions));
+        self::assertSame([0], array_keys(self::fetchedTopic($later, $this->topic)->partitions));
     }
 
     public function testForgettingEveryPartitionClosesTheSession(): void
@@ -216,7 +228,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
     {
         $this->produce(0, ['a-one']);
 
-        $answer = $this->fetch([], new FetchMetadata(2147483646, 1));
+        $answer = $this->fetch([], new FetchMetadata(self::UNKNOWN_SESSION_ID, 1));
 
         self::assertSame(KafkaException::FETCH_SESSION_ID_NOT_FOUND, $answer->errorCode);
         self::assertSame(70, KafkaException::FETCH_SESSION_ID_NOT_FOUND);
@@ -226,6 +238,39 @@ final class FetchSessionApiTest extends IntegrationTestCase
             'the answer of a session error carries the session id 0, not the one that was asked for'
         );
         self::assertSame([], $answer->topics, 'a session error is answered with an empty topics array');
+    }
+
+    /**
+     * The eight highest session ids of the int32 range fall outside the sharded session cache of the node
+     *
+     * A 3.9.2 node splits the fetch-session cache into `KafkaBroker.NumFetchSessionCacheShards = 8` shards and
+     * picks one with `sessionId / (Int.MaxValue / 8)` ({@see FetchSessionCache.getCacheShard}), which for every
+     * id from `8 * (Int.MaxValue / 8) = 2147483640` up to `Int.MaxValue` is the shard **8** of a sequence of
+     * eight: the `IndexOutOfBoundsException` reaches the generic handler of `KafkaApis`, and the client gets the
+     * error code **-1 UNKNOWN_SERVER_ERROR** with the session id of the *request* echoed back, instead of the 70
+     * that the very same request with any lower id is answered. A 2.8.2 broker had one unsharded cache and
+     * answered 70 for the whole range. This is not something a client can provoke by itself - the ids it uses
+     * are the ones the broker handed out - but it is what the node does, so it is measured here.
+     */
+    public function testTheHighestEightSessionIdsFallOutsideTheShardedCacheOfTheNode(): void
+    {
+        $this->produce(0, ['a-one']);
+
+        $answer = $this->fetch([], new FetchMetadata(self::FIRST_UNSHARDED_SESSION_ID, 1));
+
+        self::assertSame(KafkaException::UNKNOWN, $answer->errorCode);
+        self::assertSame(-1, KafkaException::UNKNOWN);
+        self::assertSame(
+            self::FIRST_UNSHARDED_SESSION_ID,
+            $answer->sessionId,
+            'the generic error answer repeats the session id of the request instead of the 0 of a session error'
+        );
+
+        // The id one below it is inside the last shard and is answered as an unknown session, as it should be
+        $known = $this->fetch([], new FetchMetadata(self::FIRST_UNSHARDED_SESSION_ID - 1, 1));
+
+        self::assertSame(KafkaException::FETCH_SESSION_ID_NOT_FOUND, $known->errorCode);
+        self::assertSame(FetchMetadata::INVALID_SESSION_ID, $known->sessionId);
     }
 
     public function testAWrongEpochIsTheErrorSeventyOneAndTheSessionSurvivesIt(): void
@@ -317,7 +362,9 @@ final class FetchSessionApiTest extends IntegrationTestCase
             FetchRequest::DEFAULT_MAX_BYTES,
             FetchRequest::READ_UNCOMMITTED,
             $metadata,
-            $forgotten
+            $forgotten,
+            // Version 13 names every topic of a session - the ones it sends and the ones it forgets - by its id
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         )->writeTo($this->stream);
 
         $response = FetchResponse::unpack($this->stream);
@@ -362,7 +409,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
     {
         return array_map(
             static fn(Record $record): ?string => $record->value,
-            $response->topics[$this->topic]->partitions[$partition]->getRecords()->getRecords()
+            self::fetchedTopic($response, $this->topic)->partitions[$partition]->getRecords()->getRecords()
         );
     }
 

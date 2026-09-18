@@ -30,6 +30,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartitionV1;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroup;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -39,31 +40,27 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
-use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
-use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
-use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
-use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 
 /**
  * Verifies the GroupCoordinator, OffsetCommit and OffsetFetch APIs against a real Kafka 0.9.0.1 broker.
  *
- * The versions of the OffsetCommit API address two different storages: version 0 keeps the offsets in ZooKeeper as
- * Kafka 0.8.1 did, versions 1 and 2 keep them in the internal `__consumer_offsets` topic of the cluster. All of them
- * are exercised here, because version 0 and version 2 are reachable through the `offsets.storage` option of the
- * client and version 1 is the version a 0.8 broker expects.
+ * The offsets of a group live in the internal `__consumer_offsets` topic of the cluster and are written by its
+ * coordinator. The version 0 of the two apis addressed the ZooKeeper storage of Kafka 0.8.1 instead, which a KRaft
+ * node cannot serve - it answers every v0 partition with the error code 35 - so this line has no `offsets.storage`
+ * option any more and this suite exercises the versions the coordinator answers (1 and up).
  *
- * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 to v3)",
- *      "OffsetCommit API (key 8, v0 to v8)" and "OffsetFetch API (key 9, v0 to v7)"
+ * @see docs/protocol/3.9.md, sections "GroupCoordinator API (key 10, v0 to v6)",
+ *      "OffsetCommit API (key 8, v0 to v9)" and "OffsetFetch API (key 9, v0 to v9)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -71,19 +68,15 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 #[CoversClass(GroupCoordinatorResponse::class)]
 #[CoversClass(GroupCoordinatorResponseMetadata::class)]
 #[CoversClass(OffsetCommitRequest::class)]
-#[CoversClass(OffsetCommitRequestV0::class)]
 #[CoversClass(OffsetCommitRequestV1::class)]
 #[CoversClass(OffsetCommitRequestPartition::class)]
 #[CoversClass(OffsetCommitRequestPartitionV1::class)]
 #[CoversClass(OffsetCommitRequestTopic::class)]
 #[CoversClass(OffsetCommitRequestTopicV1::class)]
 #[CoversClass(OffsetCommitResponse::class)]
-#[CoversClass(OffsetCommitResponseV0::class)]
 #[CoversClass(OffsetCommitResponseV1::class)]
 #[CoversClass(OffsetFetchRequest::class)]
-#[CoversClass(OffsetFetchRequestV0::class)]
 #[CoversClass(OffsetFetchResponse::class)]
-#[CoversClass(OffsetFetchResponseV0::class)]
 #[CoversClass(OffsetFetchResponseTopic::class)]
 #[CoversClass(OffsetFetchResponsePartition::class)]
 final class OffsetsCoordinatorTest extends IntegrationTestCase
@@ -221,10 +214,10 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $groupId = self::uniqueGroupName();
         $stream  = $this->coordinatorStream($groupId);
 
-        $response = $this->fetchInKafkaResponse($stream, $groupId, null);
+        $group = $this->fetchGroupEntry($stream, $groupId, null);
 
-        self::assertSame([], $response->topics);
-        self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
+        self::assertSame([], $group->topics);
+        self::assertSame(KafkaException::NO_ERROR, $group->errorCode);
     }
 
     /**
@@ -271,46 +264,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         }
     }
 
-    public function testOffsetsCommittedInZooKeeperStorageAreFetchedBackFromAnyBroker(): void
-    {
-        $groupId = self::uniqueGroupName();
-        $topic   = $this->createTopic();
-        // Version 0 does not go through the coordinator at all: the bootstrap connection is enough
-        $stream  = $this->connect();
-
-        new OffsetCommitRequestV0($groupId, [$topic => [0 => 7]], 'kafka-client-t6', 11)->writeTo($stream);
-        $commitResponse = OffsetCommitResponseV0::unpack($stream);
-
-        self::assertSame(11, $commitResponse->getCorrelationId());
-        self::assertSame(0, $commitResponse->topics[$topic]->partitions[0]->errorCode);
-
-        new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 12)->writeTo($stream);
-        $fetchResponse = OffsetFetchResponseV0::unpack($stream);
-
-        self::assertSame(12, $fetchResponse->getCorrelationId());
-        self::assertSame(7, $fetchResponse->topics[$topic]->partitions[0]->offset);
-        self::assertSame(0, $fetchResponse->topics[$topic]->partitions[0]->errorCode);
-    }
-
-    public function testTheTwoStoragesKeepTheirOffsetsApart(): void
-    {
-        $groupId = self::uniqueGroupName();
-        $topic   = $this->createTopic();
-        $stream  = $this->coordinatorStream($groupId);
-
-        $this->commitInKafka($stream, $groupId, [$topic => [0 => 1000]]);
-        new OffsetCommitRequestV0($groupId, [$topic => [0 => 5]], 'kafka-client-t6', 21)->writeTo($stream);
-        OffsetCommitResponseV0::unpack($stream);
-
-        $fromKafka = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
-        new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 22)->writeTo($stream);
-        $fromZooKeeper = OffsetFetchResponseV0::unpack($stream)->topics;
-
-        self::assertSame(1000, $fromKafka[$topic]->partitions[0]->offset);
-        self::assertSame(5, $fromZooKeeper[$topic]->partitions[0]->offset);
-    }
-
-    public function testUncommittedPartitionIsReportedDifferentlyByTheTwoVersions(): void
+    public function testUncommittedPartitionIsTheOffsetMinusOneWithoutAnError(): void
     {
         $groupId = self::uniqueGroupName();
         $topic   = $this->createTopic();
@@ -324,29 +278,20 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             $fromKafka[$topic]->partitions[0]->errorCode,
             'reading a partition of __consumer_offsets that was never written is not an error'
         );
-
-        new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 31)->writeTo($stream);
-        $fromZooKeeper = OffsetFetchResponseV0::unpack($stream)->topics;
-
-        self::assertSame(-1, $fromZooKeeper[$topic]->partitions[0]->offset);
-        self::assertSame(
-            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
-            $fromZooKeeper[$topic]->partitions[0]->errorCode,
-            'a missing ZooKeeper node is reported as UnknownTopicOrPartition'
-        );
+        self::assertSame('', $fromKafka[$topic]->partitions[0]->metadata);
     }
 
     /**
-     * A partition that the cluster does not host is the one answer the two versions stopped sharing in Kafka 0.9.
+     * A partition that the cluster does not host is an uncommitted one for the coordinator.
      *
      * Version 1 of 0.8.2.2 filtered the requested topic-partitions against the metadata cache and reported the
      * unknown ones with the error code 3. Version 1 of 0.9.0.1 does not: KafkaApis hands the whole list to the
      * group coordinator and notes that "we do not need to filter the partitions in the metadata cache as the topic
      * partitions will be filtered in coordinator's offset manager through the offset cache" - and a partition the
-     * offset cache does not know is simply an uncommitted one, i.e. the offset -1 with the error code 0. Version 0
-     * still reads a ZooKeeper node that is not there and keeps reporting the error code 3.
+     * offset cache does not know is simply an uncommitted one, i.e. the offset -1 with the error code 0. The
+     * `handleOffsetFetchRequestFromCoordinator` of a 3.9.2 node answers the very same thing.
      */
-    public function testPartitionThatTheClusterDoesNotHostIsUncommittedToVersionOneAndUnknownToVersionZero(): void
+    public function testPartitionThatTheClusterDoesNotHostIsUncommittedToTheCoordinator(): void
     {
         $groupId          = self::uniqueGroupName();
         $topic            = $this->createTopic();
@@ -364,17 +309,6 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             'version 1 of a 0.9 broker does not check the requested partition against the metadata cache any more'
         );
         self::assertSame(-1, $fromKafka[$topic]->partitions[$missingPartition]->offset);
-
-        new OffsetFetchRequestV0($groupId, [$topic => [$missingPartition]], 'kafka-client-t6', 32)
-            ->writeTo($stream);
-        $fromZooKeeper = OffsetFetchResponseV0::unpack($stream)->topics;
-
-        self::assertSame(
-            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
-            $fromZooKeeper[$topic]->partitions[$missingPartition]->errorCode,
-            'version 0 reads a ZooKeeper node that does not exist'
-        );
-        self::assertSame(-1, $fromZooKeeper[$topic]->partitions[$missingPartition]->offset);
     }
 
     public function testMetadataOfACommittedOffsetSurvivesTheRoundTrip(): void
@@ -406,20 +340,6 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         self::assertSame(
             KafkaException::OFFSET_METADATA_TOO_LARGE,
             $inKafka->topics[$topic]->partitions[0]->errorCode
-        );
-
-        // Version 0 checks the very same limit before it writes the offset to ZooKeeper
-        new OffsetCommitRequestV0(
-            $groupId,
-            [$topic => [0 => new OffsetAndMetadata(1, $metadata)]],
-            'kafka-client-t6',
-            41
-        )->writeTo($stream);
-        $inZooKeeper = OffsetCommitResponseV0::unpack($stream);
-
-        self::assertSame(
-            KafkaException::OFFSET_METADATA_TOO_LARGE,
-            $inZooKeeper->topics[$topic]->partitions[0]->errorCode
         );
     }
 
@@ -683,9 +603,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
     {
         $groupId       = self::uniqueGroupName();
         $topic         = $this->createTopic();
-        $configuration = [ClientConfig::OFFSETS_STORAGE => ClientConfig::OFFSETS_STORAGE_KAFKA]
-            + $this->configuration();
-        $client        = new Client($this->cluster(), $configuration);
+        $client        = new Client($this->cluster(), $this->configuration());
 
         $coordinator = $client->getGroupCoordinator($groupId);
         $client->commitGroupOffsets(
@@ -700,39 +618,15 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         self::assertSame([$topic => [0 => 17]], $client->fetchGroupOffsets($coordinator, $groupId, [$topic => [0]]));
     }
 
-    public function testClientRoundTripsOffsetsThroughTheZooKeeperStorage(): void
+    public function testClientReportsAnOffsetTheGroupNeverCommittedAsMinusOne(): void
     {
-        $groupId       = self::uniqueGroupName();
-        $topic         = $this->createTopic();
-        $configuration = [ClientConfig::OFFSETS_STORAGE => ClientConfig::OFFSETS_STORAGE_ZOOKEEPER]
-            + $this->configuration();
-        $client        = new Client($this->cluster(), $configuration);
-
-        // Version 0 is answered by any broker, the coordinator is just a convenient node to talk to
-        $anyNode = $client->getGroupCoordinator($groupId);
-        $client->commitGroupOffsets(
-            $anyNode,
-            $groupId,
-            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
-            OffsetCommitRequest::DEFAULT_GENERATION_ID,
-            [$topic => [0 => 19]],
-            OffsetCommitRequest::DEFAULT_RETENTION_TIME
-        );
-
-        self::assertSame([$topic => [0 => 19]], $client->fetchGroupOffsets($anyNode, $groupId, [$topic => [0]]));
-    }
-
-    public function testClientSilencesTheUnknownPartitionOfAnUncommittedZooKeeperOffset(): void
-    {
-        $groupId       = self::uniqueGroupName();
-        $topic         = $this->createTopic();
-        $configuration = [ClientConfig::OFFSETS_STORAGE => ClientConfig::OFFSETS_STORAGE_ZOOKEEPER]
-            + $this->configuration();
-        $client        = new Client($this->cluster(), $configuration);
+        $groupId = self::uniqueGroupName();
+        $topic   = $this->createTopic();
+        $client  = new Client($this->cluster(), $this->configuration());
 
         $offsets = $client->fetchGroupOffsets($client->getGroupCoordinator($groupId), $groupId, [$topic => [0]]);
 
-        self::assertSame([$topic => [0 => -1]], $offsets, 'the error code 3 is silenced into the offset -1');
+        self::assertSame([$topic => [0 => -1]], $offsets, 'an uncommitted partition is the offset -1');
     }
 
     /**
@@ -782,15 +676,15 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
      */
     private function fetchInKafka(Stream $stream, string $groupId, ?array $topicPartitions): array
     {
-        $response = $this->fetchInKafkaResponse($stream, $groupId, $topicPartitions);
+        $group = $this->fetchInKafkaResponse($stream, $groupId, $topicPartitions)->groupOf($groupId);
 
         self::assertSame(
             KafkaException::NO_ERROR,
-            $response->errorCode,
-            'the group-level error code of the version 2 answer'
+            $group->errorCode,
+            'the group-level error code, which version 8 carries inside the entry of the group'
         );
 
-        return $response->topics;
+        return $group->topics;
     }
 
     /**
@@ -806,6 +700,17 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         new OffsetFetchRequest($groupId, $topicPartitions, 'kafka-client-t6', 2)->writeTo($stream);
 
         return OffsetFetchResponse::unpack($stream);
+    }
+
+    /**
+     * The group entry of an OffsetFetch answer, which version 8 carries in its `groups` array
+     */
+    private function fetchGroupEntry(
+        Stream $stream,
+        string $groupId,
+        ?array $topicPartitions
+    ): OffsetFetchResponseGroup {
+        return $this->fetchInKafkaResponse($stream, $groupId, $topicPartitions)->groupOf($groupId);
     }
 
     /**
@@ -831,12 +736,14 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             1048576,
             -1,
             $configuration[ClientConfig::CLIENT_ID],
-            3
+            3,
+            // Version 13 names the topic by its id, the internal `__consumer_offsets` included (KIP-516)
+            topicIds: [self::OFFSETS_TOPIC => self::topicIdOf(self::OFFSETS_TOPIC)]
         )->writeTo($stream);
         $response = FetchResponse::unpack($stream);
 
         $entries = [];
-        foreach ($response->topics[self::OFFSETS_TOPIC]->partitions ?? [] as $responsePartition) {
+        foreach (self::fetchedTopic($response, self::OFFSETS_TOPIC)->partitions as $responsePartition) {
             // The internal topic is written in the `log.message.format.version` of the broker, 0.11.0 here, so
             // its entries are record batches: the reader has to be the one that takes any of the three formats
             foreach (MemoryRecords::fromBuffer((string) $responsePartition->messageSet, false)->getRecords() as $record) {

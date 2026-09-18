@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Consumer\Internals;
 
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Throwable;
@@ -74,7 +75,7 @@ use Throwable;
  * itself is not part of a session: a broker keeps the session of a client that reconnects, but the client can not
  * know how much of the last request the broker processed, so it starts over.
  *
- * @see docs/protocol/2.8.md, section "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, section "Fetch sessions (v7, KIP-227)"
  * @see \Protocol\Kafka\Client::fetchPartitionsWithSessions()
  */
 final class FetchSessionHandler
@@ -90,6 +91,18 @@ final class FetchSessionHandler
      * @var array<string, array<int, int>>
      */
     private array $sessionPartitions = [];
+
+    /**
+     * Name of every topic this session ever named, indexed by the 16 raw bytes of its id (KIP-516)
+     *
+     * This is the `sessionTopicNames` of the Java `FetchSessionHandler`, and it exists for exactly one reason: a
+     * **Fetch v13** answer names its topics by id alone (Kafka 3.1), and the verification below - does the answer
+     * hold the partitions of this session, and no others? - is keyed by name. The caller fills it in with the ids
+     * it resolved for the request, {@see self::rememberTopicIds()}.
+     *
+     * @var array<string, string>
+     */
+    private array $sessionTopicNames = [];
 
     /**
      * @param int $node Id of the broker node this session lives on, for the messages of the client
@@ -137,6 +150,34 @@ final class FetchSessionHandler
     }
 
     /**
+     * Remembers the ids the next request names its topics by, so that its answer can be read back (KIP-516)
+     *
+     * A **Fetch v13** frame carries the id of a topic and never its name, in the request and in the answer alike,
+     * so the caller resolves the names against the cluster and hands the map over here before it sends. An id
+     * that is already known is overwritten, which is what a topic that was deleted and re-created needs.
+     *
+     * @param array<string, string> $topicIds Id of every topic of the request, as name => the 16 raw bytes
+     *
+     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     */
+    public function rememberTopicIds(array $topicIds): void
+    {
+        foreach ($topicIds as $topic => $topicId) {
+            $this->sessionTopicNames[$topicId] = (string) $topic;
+        }
+    }
+
+    /**
+     * Returns the name of every topic this session knows an id of, indexed by the 16 raw bytes of that id
+     *
+     * @return array<string, string>
+     */
+    public function getSessionTopicNames(): array
+    {
+        return $this->sessionTopicNames;
+    }
+
+    /**
      * Takes the answer of the request that was built last and tells whether it may be used
      *
      * `false` means that the answer carries nothing to read - a session error, or a set of partitions that does not
@@ -154,7 +195,7 @@ final class FetchSessionHandler
             return false;
         }
 
-        $answered = self::partitionsOf($response);
+        $answered = $this->partitionsOf($response);
         if ($this->nextMetadata->isFull()) {
             // A full fetch is answered with the whole set it asked for, no more and no less
             if (self::findMissing($answered, $this->sessionPartitions) !== []
@@ -260,12 +301,17 @@ final class FetchSessionHandler
      *
      * @return array<string, array<int, bool>>
      */
-    private static function partitionsOf(FetchResponse $response): array
+    private function partitionsOf(FetchResponse $response): array
     {
         $partitions = [];
-        foreach ($response->topics as $topic => $topicResponse) {
+        foreach ($response->topics as $topicResponse) {
+            // Below version 13 the entry names the topic; from version 13 it carries the id and this session
+            // resolves it with the map the caller handed over, {@see self::rememberTopicIds()}
+            $topic = $topicResponse->topic !== '' && $topicResponse->topic !== null
+                ? $topicResponse->topic
+                : ($this->sessionTopicNames[$topicResponse->topicId] ?? Uuid::toString($topicResponse->topicId));
             foreach (array_keys($topicResponse->partitions) as $partition) {
-                $partitions[(string) $topic][(int) $partition] = true;
+                $partitions[$topic][(int) $partition] = true;
             }
         }
 

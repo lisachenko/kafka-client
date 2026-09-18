@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\OngoingTopicReassignment;
  * are therefore the empty answer of a request that named a real topic, and the shape of a partition in flight is
  * documented from the sources in {@see \Protocol\Kafka\Protocol\Data\OngoingPartitionReassignment}.
  *
- * @see docs/protocol/2.8.md, section "ListPartitionReassignments API (key 46, v0)"
+ * @see docs/protocol/3.9.md, section "ListPartitionReassignments API (key 46, v0)"
  */
 class ListPartitionReassignmentsResponse extends AbstractResponse
 {

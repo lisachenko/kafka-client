@@ -22,7 +22,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
-use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestAlterableConfig;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsResponseResource;
@@ -30,14 +30,14 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
 
 /**
- * Exercises the IncrementalAlterConfigs api (key 44, v0) against a real Kafka 2.8.2 broker.
+ * Exercises the IncrementalAlterConfigs api (key 44, v0) against the Kafka 3.9.2 KRaft node of this line.
  *
  * KIP-339 added the api in Kafka 2.3 to replace the AlterConfigs of KIP-133, whose request carries the WHOLE
  * configuration a resource should have afterwards. Every test of this class works on a topic of its own, so that
  * nothing it changes can reach another suite of the shared container; the only broker resource it names is asked
  * with `validate_only`, which validates the change and writes nothing.
  *
- * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(AlterConfigOp::class)]
@@ -49,6 +49,11 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
 final class IncrementalConfigsApiTest extends IntegrationTestCase
 {
     private const string CLIENT_ID = 't4-incremental';
+
+    /**
+     * How long a read-back waits for the broker to replay the controller write it follows, in seconds
+     */
+    private const float REPLAY_TIMEOUT = 20.0;
 
     private Cluster $cluster;
 
@@ -98,7 +103,21 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
         self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
 
-        return $topic;
+        // A KRaft node answers the topic it has just created with 3 until the brokers have replayed its records:
+        // the first DescribeConfigs of the tests below must not be the one that meets that moment
+        $deadline = microtime(true) + 5.0;
+        while (true) {
+            try {
+                $this->admin->describeConfigs([ConfigResource::topic($topic)]);
+
+                return $topic;
+            } catch (UnknownTopicOrPartitionException $notYet) {
+                if (microtime(true) > $deadline) {
+                    throw $notYet;
+                }
+                usleep(50_000);
+            }
+        }
     }
 
     /**
@@ -119,15 +138,15 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         ]);
 
         self::assertSame([$key => null], $result, 'the whole resource was applied');
-        self::assertSame('3600000', $this->valueOf($topic, 'retention.ms'), 'the SET');
+        self::assertSame('3600000', $this->valueOf($topic, 'retention.ms', '3600000'), 'the SET');
         self::assertSame(
             'delete,compact',
-            $this->valueOf($topic, 'cleanup.policy'),
+            $this->valueOf($topic, 'cleanup.policy', 'delete,compact'),
             'the APPEND started from the default of the option, which is `delete`'
         );
         self::assertSame(
             $before,
-            $this->valueOf($topic, 'max.message.bytes'),
+            $this->valueOf($topic, 'max.message.bytes', $before),
             'and an option the request never named kept the value it had'
         );
     }
@@ -141,12 +160,12 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         $key   = ConfigResource::topic($topic)->key();
 
         $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::append('cleanup.policy', 'compact')]]);
-        self::assertSame('delete,compact', $this->valueOf($topic, 'cleanup.policy'));
+        self::assertSame('delete,compact', $this->valueOf($topic, 'cleanup.policy', 'delete,compact'));
 
         $result = $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::subtract('cleanup.policy', 'compact')]]);
 
         self::assertSame([$key => null], $result);
-        self::assertSame('delete', $this->valueOf($topic, 'cleanup.policy'));
+        self::assertSame('delete', $this->valueOf($topic, 'cleanup.policy', 'delete'));
     }
 
     /**
@@ -159,18 +178,24 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         $inherited = $this->valueOf($topic, 'retention.ms');
 
         $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::set('retention.ms', '7200000')]]);
-        self::assertSame('7200000', $this->valueOf($topic, 'retention.ms'));
+        self::assertSame('7200000', $this->valueOf($topic, 'retention.ms', '7200000'));
 
         $result = $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::delete('retention.ms')]]);
 
         self::assertSame([$key => null], $result);
-        self::assertSame($inherited, $this->valueOf($topic, 'retention.ms'));
+        self::assertSame($inherited, $this->valueOf($topic, 'retention.ms', $inherited));
     }
 
     /**
      * An APPEND is only allowed for an option whose `ConfigDef.Type` is LIST - `retention.ms` is a long
+     *
+     * The code is the **40** of the KRaft controller, where 2.8.2 answered 42: `ZkAdminManager.
+     * prepareIncrementalConfigs()` @ 2.8.2 threw an `InvalidRequestException` ("Config value append is not allowed
+     * for config key: retention.ms") and `ConfigurationControlManager.incrementalAlterConfigResource()` @ 3.9.2
+     * answers `new ApiError(INVALID_CONFIG, "Can't APPEND to key … because its type is not LIST.")` - the sentence
+     * names the operation, so a SUBTRACT gets the same one with SUBTRACT in it.
      */
-    public function testAnAppendToAnOptionThatIsNotAListIsRefusedWithFortyTwo(): void
+    public function testAnAppendToAnOptionThatIsNotAListIsRefusedWithForty(): void
     {
         $topic = $this->topic('append-scalar');
         $key   = ConfigResource::topic($topic)->key();
@@ -178,9 +203,9 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
         $error = $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::append('retention.ms', '1000')]])[$key];
 
-        self::assertInstanceOf(InvalidRequestException::class, $error);
+        self::assertInstanceOf(InvalidConfigException::class, $error);
         self::assertSame(
-            'Config value append is not allowed for config key: retention.ms',
+            "Can't APPEND to key retention.ms because its type is not LIST.",
             $error->getContext()['error']
         );
         self::assertSame($before, $this->valueOf($topic, 'retention.ms'), 'and nothing of the resource was applied');
@@ -202,7 +227,10 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         ])[$key];
 
         self::assertInstanceOf(InvalidRequestException::class, $error);
-        self::assertSame('Error due to duplicate config keys : retention.ms', $error->getContext()['error']);
+        // `ConfigAdminManager.validateIncrementalAlterConfigs()` @ 3.9.2 - the broker-side validation that runs
+        // before the request is forwarded to the controller - names no key any more, where `ZkAdminManager`
+        // @ 2.8.2 appended " : retention.ms"
+        self::assertSame('Error due to duplicate config keys', $error->getContext()['error']);
     }
 
     /**
@@ -218,13 +246,20 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         ])[$key];
 
         self::assertInstanceOf(InvalidRequestException::class, $error);
-        self::assertSame('Null value not supported for : SET:retention.ms', $error->getContext()['error']);
+        // The same validation as above lists the plain NAMES of the entries whose value is null;
+        // `ZkAdminManager` @ 2.8.2 listed them as "<OP>:<name>", i.e. "SET:retention.ms"
+        self::assertSame('Null value not supported for : retention.ms', $error->getContext()['error']);
     }
 
     /**
-     * An unknown option name is 40 for a SET - and the **unknown server error** for an APPEND, see the document
+     * An unknown option name is the code 40 for a SET and for an APPEND alike - with two different sentences
+     *
+     * On a 2.8.2 broker the APPEND was the **unknown server error**: `ZkAdminManager` reached
+     * `ConfigDef.listType()` for the unknown key and the `NoSuchElementException` escaped without a message. The
+     * KRaft controller asks its `KafkaConfigSchema` whether the key is splittable BEFORE it looks the key up, so
+     * an unknown name is refused with the LIST sentence of the operation and the option is never validated at all.
      */
-    public function testAnUnknownOptionNameIsFortyForASetAndMinusOneForAnAppend(): void
+    public function testAnUnknownOptionNameIsFortyForASetAndForAnAppend(): void
     {
         $topic = $this->topic('unknown-option');
         $key   = ConfigResource::topic($topic)->key();
@@ -236,11 +271,11 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
         $append = $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::append('not.an.option', '1')]])[$key];
 
-        self::assertInstanceOf(UnknownErrorException::class, $append);
-        self::assertArrayNotHasKey(
-            'error',
-            $append->getContext(),
-            'the NoSuchElementException of `listType()` reaches the client without a message at all'
+        self::assertInstanceOf(InvalidConfigException::class, $append);
+        self::assertSame(
+            "Can't APPEND to key not.an.option because its type is not LIST.",
+            $append->getContext()['error'],
+            'an unknown key is "not a LIST" to the controller, which never gets to the name itself'
         );
     }
 
@@ -290,11 +325,26 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
     /**
      * Reads one option of a topic back through DescribeConfigs
+     *
+     * An incremental alter is a controller write that the broker answers from its own image only once it has
+     * replayed the record: a DescribeConfigs that follows the alter at once reaches the broker before that, and
+     * reports the value the option had. The lag is milliseconds on an idle node and seconds on a loaded CI runner,
+     * so a read that expects a value polls for it, bounded, and returns the last value it saw.
+     *
+     * @param string|null $until The value the read waits for, `null` for a plain read
      */
-    private function valueOf(string $topic, string $option): ?string
+    private function valueOf(string $topic, string $option, ?string $until = null): ?string
     {
-        $key = ConfigResource::topic($topic)->key();
+        $key      = ConfigResource::topic($topic)->key();
+        $deadline = microtime(true) + self::REPLAY_TIMEOUT;
+        do {
+            $value = $this->admin->describeConfigs([ConfigResource::topic($topic)])[$key]->get($option)?->value;
+            if ($until === null || $value === $until) {
+                return $value;
+            }
+            usleep(50_000);
+        } while (microtime(true) < $deadline);
 
-        return $this->admin->describeConfigs([ConfigResource::topic($topic)])[$key]->get($option)?->value;
+        return $value;
     }
 }

@@ -21,6 +21,7 @@ use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\ElectionNotNeededException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\TopicPartition;
@@ -31,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
 use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
 
 /**
- * Exercises the ElectLeaders api (key 43, v0) against a real Kafka 2.8.2 broker.
+ * Exercises the ElectLeaders api (key 43, v0) against the Kafka 3.9.2 KRaft node of this line.
  *
  * KIP-183 added the api in Kafka 2.2 as **ElectPreferredLeaders**: it asks the active controller to move the
  * leadership of a partition back to its preferred replica. On a **one-broker** container every partition is led by
@@ -41,7 +42,12 @@ use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
  * election with a **null** topic array would elect for every partition of every other suite, and no test of this
  * repository ever sends one (the document describes what it answers, measured once).
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 to v2)"
+ * The election is run by the **KRaft controller** here: `ReplicationControlManager.electLeader` @ 3.9.2 answers
+ * `No such topic as <topic>` and `No such partition as <topic>-<partition>` where `KafkaController` @ 2.8.2
+ * answered the generic message of the error code 3. The code itself is unchanged, and so is the 84 of a partition
+ * that needs no election.
+ *
+ * @see docs/protocol/3.9.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]
@@ -140,7 +146,7 @@ final class ElectLeadersApiTest extends IntegrationTestCase
         $result = $this->admin->electLeaders(ElectionType::PREFERRED, [$absent => [0]]);
 
         self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[$absent][0]);
-        self::assertSame('The partition does not exist.', $result[$absent][0]->getContext()['error']);
+        self::assertSame("No such topic as {$absent}", $result[$absent][0]->getContext()['error']);
         self::assertNotContains($absent, $this->admin->listTopics(), 'and the topic was not created either');
     }
 
@@ -154,16 +160,22 @@ final class ElectLeadersApiTest extends IntegrationTestCase
         $result = $this->admin->electLeaders(ElectionType::PREFERRED, [$topic => [7]]);
 
         self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[$topic][7]);
+        self::assertSame(
+            "No such partition as {$topic}-7",
+            $result[$topic][7]->getContext()['error'],
+            'the controller names the partition it could not find'
+        );
     }
 
     /**
      * The **unclean** election of KIP-460 is sendable from the version 1 - and answers the same 84 here
      *
-     * `KafkaController.processReplicaLeaderElection` @ 2.8.2 only elects unclean for a partition whose leader is
-     * gone (`currentLeader == LeaderAndIsr.NoLeader || !liveBrokerIds.contains(currentLeader)`), and the one
-     * broker of the container is the leader of everything it hosts, so the partitions of this suite are never
-     * electable in that sense. What the test proves is that the type byte travels and that the controller does
-     * NOT elect where nothing has failed.
+     * `ReplicationControlManager.electLeader` @ 3.9.2 answers 84 for an unclean election as soon as
+     * `partition.hasLeader()` - as `KafkaController.processReplicaLeaderElection` @ 2.8.2 did with
+     * `currentLeader == LeaderAndIsr.NoLeader || !liveBrokerIds.contains(currentLeader)` - and the one broker of
+     * the container is the leader of everything it hosts, so the partitions of this suite are never electable in
+     * that sense. What the test proves is that the type byte travels and that the controller does NOT elect where
+     * nothing has failed.
      */
     public function testAnUncleanElectionOfAHealthyPartitionIsElectionNotNeededAsWell(): void
     {
@@ -189,7 +201,7 @@ final class ElectLeadersApiTest extends IntegrationTestCase
         $result = $this->admin->electLeaders(ElectionType::UNCLEAN, [$absent => [0]]);
 
         self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[$absent][0]);
-        self::assertSame('The partition does not exist.', $result[$absent][0]->getContext()['error']);
+        self::assertSame("No such topic as {$absent}", $result[$absent][0]->getContext()['error']);
     }
 
     /**
@@ -212,12 +224,21 @@ final class ElectLeadersApiTest extends IntegrationTestCase
 
         self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 2, 1)]));
 
-        // A fresh topic is not in the metadata cache of the controller for a moment, and an election of a
-        // partition it does not know yet would be the 3 of an unknown partition
+        // A fresh topic is not in the metadata cache of the node for a moment, and an election of a partition it
+        // does not know yet would be the 3 of an unknown partition. `Cluster::partitionsForTopic()` raises for
+        // exactly that moment - an `InvalidTopicException` when the metadata answer does not carry the topic at
+        // all and the exception of the topic error code when it carries it with one - so both are part of the
+        // wait. A KRaft node answers **3** there, never the 5 (`LeaderNotAvailable`) of a ZooKeeper broker: the
+        // leader is elected with the creation, so the topic is either unknown or complete. Since the io fix of
+        // #166 the create answer comes back fast enough for the first read to miss it.
         $deadline = microtime(true) + 30.0;
         do {
             $this->cluster->reload();
-            $partitions = $this->cluster->partitionsForTopic($topic);
+            try {
+                $partitions = $this->cluster->partitionsForTopic($topic);
+            } catch (KafkaException) {
+                $partitions = [];
+            }
             if (count($partitions) === 2) {
                 return $topic;
             }

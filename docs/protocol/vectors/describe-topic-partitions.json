@@ -1,0 +1,960 @@
+{
+    "api": "describe-topic-partitions",
+    "apiKey": 75,
+    "section": "DescribeTopicPartitions API (key 75, v0)",
+    "description": "Wire vectors of the DescribeTopicPartitions API (key 75, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describetopicpartitions.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTopicPartitions request v0 (Kafka 3.8, KIP-966) for one topic with the default partition limit 2000 and no cursor: the whole body is one topic entry, the limit and the `ff` of a null cursor.",
+            "hex": "00000033004b000000001e7900126b61666b612d636c69656e742d74312d333800020e74312d33382d766563746f727300000007d0ff00",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7801,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the node: the three partitions of the topic, each of them with the two ELR arrays of KIP-966 - EMPTY, not null - the topic id of KIP-516, the acl bit field 3576 that the api reports without being asked, and the `ff` of a null `next_cursor`, which is what \"the listing is complete\" looks like.",
+            "hex": "0000008700001e7900000000000200000e74312d33382d766563746f7273d98a3006c2af45bf9e43c33b761dd6de000400000000000000000001000000000200000001020000000101010100000000000001000000010000000002000000010200000001010101000000000000020000000100000000020000000102000000010101010000000df800ff00",
+            "fields": {
+                "messageSize": 135,
+                "correlationId": 7801,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-vectors": {
+                        "errorCode": 0,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "d98a3006c2af45bf9e43c33b761dd6de"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 0,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            },
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 1,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            },
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 2,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.first-page",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same topic with the partition limit 1: the smallest page this api can be asked for.",
+            "hex": "00000033004b000000001e7a00126b61666b612d636c69656e742d74312d333800020e74312d33382d766563746f72730000000001ff00",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7802,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    }
+                },
+                "responsePartitionLimit": 1,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.first-page",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The first page: one partition and a `next_cursor` that names the same topic and the partition 1, i.e. the FIRST partition that is missing, never the last one that was delivered.",
+            "hex": "0000006200001e7a00000000000200000e74312d33382d766563746f7273d98a3006c2af45bf9e43c33b761dd6de00020000000000000000000100000000020000000102000000010101010000000df800010e74312d33382d766563746f7273000000010000",
+            "fields": {
+                "messageSize": 98,
+                "correlationId": 7802,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-vectors": {
+                        "errorCode": 0,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "d98a3006c2af45bf9e43c33b761dd6de"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 0,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": {
+                    "topicName": "t1-38-vectors",
+                    "partitionIndex": 1
+                }
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.second-page",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The second page, asked with the cursor of the first answer: the `01` in front of the cursor is the byte that says a structure follows, where the `ff` of the first request said it does not.",
+            "hex": "00000046004b000000001e7b00126b61666b612d636c69656e742d74312d333800020e74312d33382d766563746f72730000000001010e74312d33382d766563746f7273000000010000",
+            "fields": {
+                "messageSize": 70,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7803,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    }
+                },
+                "responsePartitionLimit": 1,
+                "cursor": {
+                    "topicName": "t1-38-vectors",
+                    "partitionIndex": 1
+                }
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.second-page",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The partition 1 alone, and the cursor moved on to the partition 2.",
+            "hex": "0000006200001e7b00000000000200000e74312d33382d766563746f7273d98a3006c2af45bf9e43c33b761dd6de00020000000000010000000100000000020000000102000000010101010000000df800010e74312d33382d766563746f7273000000020000",
+            "fields": {
+                "messageSize": 98,
+                "correlationId": 7803,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-vectors": {
+                        "errorCode": 0,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "d98a3006c2af45bf9e43c33b761dd6de"
+                        },
+                        "isInternal": false,
+                        "partitions": {
+                            "1": {
+                                "errorCode": 0,
+                                "partitionIndex": 1,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            }
+                        },
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": {
+                    "topicName": "t1-38-vectors",
+                    "partitionIndex": 2
+                }
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.last-page",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The third page of the same walk.",
+            "hex": "00000046004b000000001e7c00126b61666b612d636c69656e742d74312d333800020e74312d33382d766563746f72730000000001010e74312d33382d766563746f7273000000020000",
+            "fields": {
+                "messageSize": 70,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7804,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    }
+                },
+                "responsePartitionLimit": 1,
+                "cursor": {
+                    "topicName": "t1-38-vectors",
+                    "partitionIndex": 2
+                }
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.last-page",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The last partition and a null `next_cursor`: the page that ends the listing looks exactly like an answer that never had to page at all.",
+            "hex": "0000004f00001e7c00000000000200000e74312d33382d766563746f7273d98a3006c2af45bf9e43c33b761dd6de00020000000000020000000100000000020000000102000000010101010000000df800ff00",
+            "fields": {
+                "messageSize": 79,
+                "correlationId": 7804,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-vectors": {
+                        "errorCode": 0,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "d98a3006c2af45bf9e43c33b761dd6de"
+                        },
+                        "isInternal": false,
+                        "partitions": {
+                            "2": {
+                                "errorCode": 0,
+                                "partitionIndex": 2,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            }
+                        },
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.two-topics",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "Two topics in the order `t1-38-vectors`, `t1-38-other` with the limit 2.",
+            "hex": "00000040004b000000001e7d00126b61666b612d636c69656e742d74312d333800030e74312d33382d766563746f7273000c74312d33382d6f746865720000000002ff00",
+            "fields": {
+                "messageSize": 64,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7805,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    },
+                    "t1-38-other": {
+                        "name": "t1-38-other"
+                    }
+                },
+                "responsePartitionLimit": 2,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.two-topics",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer is SORTED BY NAME, not in the order of the request: `t1-38-other` first, then the partition 0 of `t1-38-vectors`, and the cursor ends inside the second topic. The two partitions of the limit were spent across two topics.",
+            "hex": "000000a300001e7d00000000000300000c74312d33382d6f746865722bfdd5c6538d4e5897a99799d88d37f100020000000000000000000100000000020000000102000000010101010000000df80000000e74312d33382d766563746f7273d98a3006c2af45bf9e43c33b761dd6de00020000000000000000000100000000020000000102000000010101010000000df800010e74312d33382d766563746f7273000000010000",
+            "fields": {
+                "messageSize": 163,
+                "correlationId": 7805,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-other": {
+                        "errorCode": 0,
+                        "name": "t1-38-other",
+                        "topicId": {
+                            "$bytes": "2bfdd5c6538d4e5897a99799d88d37f1"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 0,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "topicAuthorizedOperations": 3576
+                    },
+                    "t1-38-vectors": {
+                        "errorCode": 0,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "d98a3006c2af45bf9e43c33b761dd6de"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 0,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": {
+                    "topicName": "t1-38-vectors",
+                    "partitionIndex": 1
+                }
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.unknown-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A topic the cluster does not host.",
+            "hex": "00000037004b000000001e7e00126b61666b612d636c69656e742d74312d333800021274312d33382d6e6f6e6578697374656e7400000007d0ff00",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7806,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-nonexistent": {
+                        "name": "t1-38-nonexistent"
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.unknown-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **3** `UnknownTopicOrPartition` in the entry of that topic, with the name filled in, the zero topic id and no partition - and the acl bit field 3576 all the same, because the handler fills it for every entry it answers.",
+            "hex": "0000003700001e7e00000000000200031274312d33382d6e6f6e6578697374656e7400000000000000000000000000000000000100000df800ff00",
+            "fields": {
+                "messageSize": 55,
+                "correlationId": 7806,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-nonexistent": {
+                        "errorCode": 3,
+                        "name": "t1-38-nonexistent",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.internal",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The internal topic of the group coordinator.",
+            "hex": "00000038004b000000001e7f00126b61666b612d636c69656e742d74312d33380002135f5f636f6e73756d65725f6f66667365747300000007d0ff00",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7807,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "__consumer_offsets": {
+                        "name": "__consumer_offsets"
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.internal",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The `is_internal` byte is **01** here, where every topic of a test carries 00; the node runs with `offsets.topic.num.partitions=5`, so five partitions follow it.",
+            "hex": "000000c400001e7f0000000000020000135f5f636f6e73756d65725f6f666673657473f3b577857f84490ba67a81da8fe8db530106000000000000000000010000000002000000010200000001010101000000000000010000000100000000020000000102000000010101010000000000000200000001000000000200000001020000000101010100000000000003000000010000000002000000010200000001010101000000000000040000000100000000020000000102000000010101010000000df800ff00",
+            "fields": {
+                "messageSize": 196,
+                "correlationId": 7807,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "__consumer_offsets": {
+                        "errorCode": 0,
+                        "name": "__consumer_offsets",
+                        "topicId": {
+                            "$bytes": "f3b577857f84490ba67a81da8fe8db53"
+                        },
+                        "isInternal": true,
+                        "partitions": [
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 0,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            },
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 1,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            },
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 2,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            },
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 3,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            },
+                            {
+                                "errorCode": 0,
+                                "partitionIndex": 4,
+                                "leaderId": 1,
+                                "leaderEpoch": 0,
+                                "replicaNodes": [
+                                    1
+                                ],
+                                "isrNodes": [
+                                    1
+                                ],
+                                "eligibleLeaderReplicas": [],
+                                "lastKnownElr": [],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.invalid-cursor",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A cursor that names a topic the topic array of the same request does not contain.",
+            "hex": "00000044004b000000001e8000126b61666b612d636c69656e742d74312d333800020e74312d33382d766563746f727300000007d0010c74312d33382d6f74686572000000000000",
+            "fields": {
+                "messageSize": 68,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7808,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": {
+                    "topicName": "t1-38-other",
+                    "partitionIndex": 0
+                }
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.invalid-cursor",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **42** `InvalidRequest`, and it is written into the entry of every topic of the request: the handler throws, and the error answer of this api is built by naming each requested topic with the code, the zero id, no partition and the `-2147483648` of \"no acl bit field\".",
+            "hex": "0000003300001e80000000000002002a0e74312d33382d766563746f72730000000000000000000000000000000000018000000000ff00",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 7808,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-vectors": {
+                        "errorCode": 42,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "topicAuthorizedOperations": -2147483648
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.negative-cursor",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A cursor whose partition index is negative, the second shape of a cursor the broker refuses.",
+            "hex": "00000046004b000000001e8100126b61666b612d636c69656e742d74312d333800020e74312d33382d766563746f727300000007d0010e74312d33382d766563746f7273ffffffff0000",
+            "fields": {
+                "messageSize": 70,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7809,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": {
+                    "topicName": "t1-38-vectors",
+                    "partitionIndex": -1
+                }
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.negative-cursor",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The same **42** in the same shape - the two refusals of the cursor are one error answer.",
+            "hex": "0000003300001e81000000000002002a0e74312d33382d766563746f72730000000000000000000000000000000000018000000000ff00",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 7809,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-vectors": {
+                        "errorCode": 42,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "topicAuthorizedOperations": -2147483648
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.cursor-past-the-end",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A cursor whose partition index is past the end of its topic - a legal cursor, unlike the two above.",
+            "hex": "00000046004b000000001e8200126b61666b612d636c69656e742d74312d333800020e74312d33382d766563746f727300000007d0010e74312d33382d766563746f7273000000630000",
+            "fields": {
+                "messageSize": 70,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7810,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": {
+                    "topicName": "t1-38-vectors",
+                    "partitionIndex": 99
+                }
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.cursor-past-the-end",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The error code **0** with an empty partition array and a null cursor: a page that begins behind the last partition is empty, not refused.",
+            "hex": "0000003300001e8200000000000200000e74312d33382d766563746f7273d98a3006c2af45bf9e43c33b761dd6de000100000df800ff00",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 7810,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-vectors": {
+                        "errorCode": 0,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "d98a3006c2af45bf9e43c33b761dd6de"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.invalid-name",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A topic name that is not a legal Kafka topic name.",
+            "hex": "00000030004b000000001e8300126b61666b612d636c69656e742d74312d333800020b7431203338206261642100000007d0ff00",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7811,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1 38 bad!": {
+                        "name": "t1 38 bad!"
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.invalid-name",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **17** `InvalidTopic` of `Topic.validate` @ 3.9.2, in the entry of that name.",
+            "hex": "0000003000001e8300000000000200110b7431203338206261642100000000000000000000000000000000000100000df800ff00",
+            "fields": {
+                "messageSize": 48,
+                "correlationId": 7811,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1 38 bad!": {
+                        "errorCode": 17,
+                        "name": "t1 38 bad!",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "topicAuthorizedOperations": 3576
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.empty-name",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The topic whose name is the empty string, which is a legal frame and no legal topic.",
+            "hex": "00000026004b000000001e8400126b61666b612d636c69656e742d74312d333800020100000007d0ff00",
+            "fields": {
+                "messageSize": 38,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7812,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "": {
+                        "name": ""
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.empty-name",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **-1** `UnknownServerError` - and the only request of this api that makes a 3.9.2 node log a `NullPointerException`: the handler compares the name with the empty default of the cursor topic name, finds them equal and dereferences the cursor that is null.",
+            "hex": "0000002600001e84000000000002ffff010000000000000000000000000000000000018000000000ff00",
+            "fields": {
+                "messageSize": 38,
+                "correlationId": 7812,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "": {
+                        "errorCode": -1,
+                        "name": "",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "topicAuthorizedOperations": -2147483648
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.refused",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same question as the first pair, asked by the SASL user `acltest`, which is not one of the `super.users` of the node.",
+            "hex": "00000033004b000000001e8500126b61666b612d636c69656e742d74312d333800020e74312d33382d766563746f727300000007d0ff00",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7813,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-38-vectors": {
+                        "name": "t1-38-vectors"
+                    }
+                },
+                "responsePartitionLimit": 2000,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.refused",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **29** `TopicAuthorizationFailed` in the entry of the topic, with the zero id and no acl bit field: the handler collects the refused topics separately and appends them behind the answered ones.",
+            "hex": "0000003300001e85000000000002001d0e74312d33382d766563746f72730000000000000000000000000000000000018000000000ff00",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 7813,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-38-vectors": {
+                        "errorCode": 29,
+                        "name": "t1-38-vectors",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "topicAuthorizedOperations": -2147483648
+                    }
+                },
+                "nextCursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.request.v0.every-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The **empty** topic array, which asks for every topic of the cluster - asked by `acltest`, because the same question asked by a super user answers every topic of the shared node and cannot be a vector.",
+            "hex": "00000024004b000000001e8600126b61666b612d636c69656e742d74312d33380001000007d0ff00",
+            "fields": {
+                "messageSize": 36,
+                "apiKey": 75,
+                "apiVersion": 0,
+                "correlationId": 7814,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "topics": [],
+                "responsePartitionLimit": 2000,
+                "cursor": null
+            }
+        },
+        {
+            "id": "describetopicpartitions.response.v0.every-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTopicPartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The shortest answer of this api, twelve bytes: a principal that may describe no topic at all is answered an empty topic array and a null cursor, never a 29 - the handler does not disclose that the topics exist.",
+            "hex": "0000000c00001e86000000000001ff00",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 7814,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [],
+                "nextCursor": null
+            }
+        }
+    ]
+}

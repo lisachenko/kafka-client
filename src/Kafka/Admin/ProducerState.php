@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Admin;
  * producer: the last sequence number and timestamp of a producer id, and the first offset of a transaction of it
  * that is still open in this partition.
  *
- * @see docs/protocol/2.8.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
  */
 final class ProducerState
 {

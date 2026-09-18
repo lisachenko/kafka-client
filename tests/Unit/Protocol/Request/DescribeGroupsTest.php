@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV4;
  * Version 3 (KIP-430, Kafka 2.3) is the first one that changed either half: the request gained the boolean
  * `include_authorized_operations` and every group entry of the answer the 32-bit `authorized_operations`.
  *
- * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 #[CoversClass(DescribeGroupsRequest::class)]
 #[CoversClass(DescribeGroupsRequestV0::class)]

@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadataV3;
  * {@see DescribeGroupsResponseV2} is the answer whose entries end with the member array. The entry grows once
  * more at version 4 (KIP-345, Kafka 2.4), which gives every member a `group_instance_id`.
  *
- * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v5)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, sections "DescribeGroups API (key 15, v0 to v5)" and "Quotas and throttle time"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {

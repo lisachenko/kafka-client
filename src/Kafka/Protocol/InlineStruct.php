@@ -40,7 +40,7 @@ namespace Protocol\Kafka\Protocol;
  * A wave-2 ticket needs it whenever it wraps two or more flat fields of a specification in an object of its own;
  * an entry of a `[]Something` array of the specification is never one.
  *
- * @see docs/protocol/2.8.md, section "Implementation model"
+ * @see docs/protocol/3.9.md, section "Implementation model"
  */
 final class InlineStruct
 {

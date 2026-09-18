@@ -20,28 +20,40 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
+use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV3;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV1;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV2;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV3;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV1;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV2;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
 
 /**
- * Byte-exact tests for the DescribeLogDirs API of Kafka 1.0 (api key 35, v0, KIP-113).
+ * Byte-exact tests for the DescribeLogDirs API of Kafka 1.0 (api key 35, v0, KIP-113), for the top-level error
+ * code its version 3 gained in Kafka 3.2 and for the volume sizes of KIP-827 that its version 4 gained in Kafka
+ * 3.3.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 #[CoversClass(DescribeLogDirsRequest::class)]
+#[CoversClass(DescribeLogDirsRequestV3::class)]
+#[CoversClass(DescribeLogDirsRequestV2::class)]
 #[CoversClass(DescribeLogDirsRequestV1::class)]
 #[CoversClass(DescribeLogDirsRequestV0::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]
+#[CoversClass(DescribeLogDirsResponseV3::class)]
+#[CoversClass(DescribeLogDirsResponseV2::class)]
 #[CoversClass(DescribeLogDirsResponseV1::class)]
 #[CoversClass(DescribeLogDirsResponseV0::class)]
 #[CoversClass(DescribeLogDirsRequestTopic::class)]
 #[CoversClass(DescribeLogDirsResponseLogDir::class)]
+#[CoversClass(DescribeLogDirsResponseLogDirV3::class)]
 #[CoversClass(DescribeLogDirsResponseTopic::class)]
 #[CoversClass(DescribeLogDirsResponsePartition::class)]
 final class DescribeLogDirsTest extends TestCase
@@ -234,6 +246,107 @@ final class DescribeLogDirsTest extends TestCase
     {
         // `DescribeLogDirsResponse.INVALID_OFFSET_LAG` @ 1.1.1, the lag of a replica the broker does not have
         self::assertSame(-1, DescribeLogDirsResponsePartition::INVALID_OFFSET_LAG);
+    }
+
+    /**
+     * The refusal of the whole request the version 3 of Kafka 3.2 added, as the node answered it to `acltest`.
+     *
+     *   Size           => 00 00 00 0d (13 bytes)
+     *   CorrelationId  => 00 00 0c e7, then the tag buffer of the response header v1
+     *   ThrottleTimeMs => 00 00 00 00
+     *   ErrorCode      => 00 1f (31, ClusterAuthorizationFailed)   -- the field of the version 3
+     *   LogDirs        => 01 (the empty compact array), then the tag buffer of the body
+     */
+    private const string REFUSAL_V3_HEX = '0000000d' . '00000ce7' . '00' . '00000000' . '001f' . '01' . '00';
+
+    /**
+     * The same refusal of the version 2, which has no field for it: the empty directory array alone.
+     */
+    private const string REFUSAL_V2_HEX = '0000000b' . '00000ce8' . '00' . '00000000' . '01' . '00';
+
+    /**
+     * A version 4 answer with one empty directory, the frame that carries the two sizes of KIP-827.
+     *
+     *   Size / CorrelationId / the tag buffer of the response header v1
+     *   ThrottleTimeMs => 00 00 00 00, ErrorCode => 00 00
+     *   LogDirs        => 02 (one entry): the code 0, the compact path, an empty topic array,
+     *                     TotalBytes  => 00 00 00 3e fe 39 d0 00 (270553174016)
+     *                     UsableBytes => 00 00 00 05 5e 88 e0 00 (23060865024)
+     */
+    private const string SIZED_RESPONSE_V4_HEX = '00000031' . '00000ce9' . '00' . '00000000' . '0000' . '02'
+        . '0000' . '102f746d702f6b61666b612d6c6f6773' . '01'
+        . '0000003efe39d000' . '000000055e88e000' . '00' . '00';
+
+    public function testTheVersionsTwoThreeAndFourOfTheRequestAreTheSameFrame(): void
+    {
+        // "Version 3 is the same as version 2 (new field in response)" of `DescribeLogDirsRequest.json` @ 3.2.3,
+        // and "Version 4 is the same as version 2 (new fields in response)" of the same file @ 3.3.2
+        $version4 = bin2hex((string) new DescribeLogDirsRequest(['topic' => [0, 1]], 'test', 5));
+        $version3 = bin2hex((string) new DescribeLogDirsRequestV3(['topic' => [0, 1]], 'test', 5));
+        $version2 = bin2hex((string) new DescribeLogDirsRequestV2(['topic' => [0, 1]], 'test', 5));
+
+        self::assertSame($version3, substr_replace($version4, '0003', 12, 4));
+        self::assertSame($version2, substr_replace($version4, '0002', 12, 4));
+        self::assertSame(4, new DescribeLogDirsRequest(clientId: 'test')->getApiVersion());
+        self::assertSame(3, new DescribeLogDirsRequestV3(clientId: 'test')->getApiVersion());
+        self::assertSame(2, new DescribeLogDirsRequestV2(clientId: 'test')->getApiVersion());
+    }
+
+    public function testTheVersionFourAnswerCarriesTheVolumeSizesOfEveryDirectory(): void
+    {
+        $answer = DescribeLogDirsResponse::unpack(new StringStream((string) hex2bin(self::SIZED_RESPONSE_V4_HEX)));
+
+        $directory = $answer->logDirs['/tmp/kafka-logs'];
+        self::assertSame(270553174016, $directory->totalBytes, 'File.getTotalSpace of the volume');
+        self::assertSame(23060865024, $directory->usableBytes, 'File.getUsableSpace of the volume');
+        self::assertSame([], $directory->topics, 'the two sizes stand BEHIND the topics of the entry');
+        self::assertSame(self::SIZED_RESPONSE_V4_HEX, bin2hex((string) $answer), 'and survive a round trip');
+    }
+
+    public function testTheVersionThreeAnswerHasNoFieldForThoseSizes(): void
+    {
+        $answer = DescribeLogDirsResponseV3::unpack(new StringStream((string) hex2bin(self::REFUSAL_V3_HEX)));
+
+        self::assertSame([], $answer->logDirs);
+        self::assertSame(KafkaException::CLUSTER_AUTHORIZATION_FAILED, $answer->errorCode);
+        self::assertSame(
+            DescribeLogDirsResponseLogDir::UNKNOWN_BYTES,
+            DescribeLogDirsResponseLogDirV3::UNKNOWN_BYTES,
+            'a directory entry below the version 4 keeps the -1 of the two fields of KIP-827'
+        );
+        self::assertArrayNotHasKey(
+            'totalBytes',
+            DescribeLogDirsResponseLogDirV3::getScheme(),
+            'because the scheme of the version 3 entry does not declare them at all'
+        );
+    }
+
+    public function testTheVersionThreeAnswerCarriesTheErrorCodeOfTheWholeRequest(): void
+    {
+        $refused = DescribeLogDirsResponse::unpack(new StringStream((string) hex2bin(self::REFUSAL_V3_HEX)));
+
+        self::assertSame(KafkaException::CLUSTER_AUTHORIZATION_FAILED, $refused->errorCode);
+        self::assertSame([], $refused->logDirs, 'a refusal carries no directory at all');
+        self::assertSame(0, $refused->throttleTimeMs);
+        self::assertSame(self::REFUSAL_V3_HEX, bin2hex((string) $refused), 'and the frame survives a round trip');
+    }
+
+    public function testTheVersionTwoAnswerHasNoFieldForThatErrorCode(): void
+    {
+        $refused = DescribeLogDirsResponseV2::unpack(new StringStream((string) hex2bin(self::REFUSAL_V2_HEX)));
+
+        self::assertSame([], $refused->logDirs);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $refused->errorCode,
+            'the property stays at its default: below the version 3 the refusal is the empty array alone'
+        );
+        self::assertSame(self::REFUSAL_V2_HEX, bin2hex((string) $refused));
+        self::assertSame(
+            strlen(self::REFUSAL_V3_HEX) - 4,
+            strlen(self::REFUSAL_V2_HEX),
+            'which is exactly the two bytes of the int16 less'
+        );
     }
 
     public function testTheVersionZeroFrameIsTheSameBodyWithALowerVersionField(): void

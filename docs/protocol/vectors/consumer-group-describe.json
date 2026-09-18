@@ -1,0 +1,552 @@
+{
+    "api": "consumer-group-describe",
+    "apiKey": 69,
+    "section": "ConsumerGroupDescribe API (key 69, v0)",
+    "description": "Wire vectors of the ConsumerGroupDescribe API (key 69, v0, KIP-848), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "consumergroupdescribe.v0.two-members.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ConsumerGroupDescribe of the group of two members, without the authorized operations of KIP-430.",
+            "hex": "00000036004500000000213400136b61666b612d636c69656e742d74332d38343800021574332d3834382d766563746f72732d67726f75700000",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 69,
+                "apiVersion": 0,
+                "correlationId": 8500,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-848-vectors-group"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.two-members.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer: the group epoch, the assignment epoch, the assignor the coordinator ran, and both members with their member epoch, their subscription as plain topic names and BOTH assignments - the one they own and the one they are meant to own.",
+            "hex": "0000019c000021340000000000020000001574332d3834382d766563746f72732d67726f757007537461626c6500000004000000040672616e6765032539353033363663632d366131322d346262312d616464372d643737383031323663353937000000000004146b61666b612d636c69656e742d74332d3834380c2f3137322e31382e302e31020f74332d3834382d766563746f727301024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f72730300000000000000010000024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f72730300000000000000010000002561623632653061632d393761312d346534392d626163632d613266313136326138323430000000000004146b61666b612d636c69656e742d74332d3834380c2f3137322e31382e302e31020f74332d3834382d766563746f727301024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f727302000000020000024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f72730200000002000000800000000000",
+            "fields": {
+                "messageSize": 412,
+                "correlationId": 8500,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-848-vectors-group": {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "groupId": "t3-848-vectors-group",
+                        "groupState": "Stable",
+                        "groupEpoch": 4,
+                        "assignmentEpoch": 4,
+                        "assignorName": "range",
+                        "members": {
+                            "950366cc-6a12-4bb1-add7-d7780126c597": {
+                                "memberId": "950366cc-6a12-4bb1-add7-d7780126c597",
+                                "instanceId": null,
+                                "rackId": null,
+                                "memberEpoch": 4,
+                                "clientId": "kafka-client-t3-848",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [
+                                    "t3-848-vectors"
+                                ],
+                                "subscribedTopicRegex": "",
+                                "assignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                0,
+                                                1
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                0,
+                                                1
+                                            ]
+                                        }
+                                    ]
+                                }
+                            },
+                            "ab62e0ac-97a1-4e49-bacc-a2f1162a8240": {
+                                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                                "instanceId": null,
+                                "rackId": null,
+                                "memberEpoch": 4,
+                                "clientId": "kafka-client-t3-848",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [
+                                    "t3-848-vectors"
+                                ],
+                                "subscribedTopicRegex": "",
+                                "assignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.authorized-operations.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same question with `include_authorized_operations` on, the flag of KIP-430.",
+            "hex": "00000036004500000000213500136b61666b612d636c69656e742d74332d38343800021574332d3834382d766563746f72732d67726f75700100",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 69,
+                "apiVersion": 0,
+                "correlationId": 8501,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-848-vectors-group"
+                ],
+                "includeAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.authorized-operations.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer whose `authorized_operations` is the acl bit field of this connection instead of the -2147483648 of \"not requested\".",
+            "hex": "0000019c000021350000000000020000001574332d3834382d766563746f72732d67726f757007537461626c6500000004000000040672616e6765032539353033363663632d366131322d346262312d616464372d643737383031323663353937000000000004146b61666b612d636c69656e742d74332d3834380c2f3137322e31382e302e31020f74332d3834382d766563746f727301024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f72730300000000000000010000024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f72730300000000000000010000002561623632653061632d393761312d346534392d626163632d613266313136326138323430000000000004146b61666b612d636c69656e742d74332d3834380c2f3137322e31382e302e31020f74332d3834382d766563746f727301024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f727302000000020000024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f72730200000002000000000001480000",
+            "fields": {
+                "messageSize": 412,
+                "correlationId": 8501,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-848-vectors-group": {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "groupId": "t3-848-vectors-group",
+                        "groupState": "Stable",
+                        "groupEpoch": 4,
+                        "assignmentEpoch": 4,
+                        "assignorName": "range",
+                        "members": {
+                            "950366cc-6a12-4bb1-add7-d7780126c597": {
+                                "memberId": "950366cc-6a12-4bb1-add7-d7780126c597",
+                                "instanceId": null,
+                                "rackId": null,
+                                "memberEpoch": 4,
+                                "clientId": "kafka-client-t3-848",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [
+                                    "t3-848-vectors"
+                                ],
+                                "subscribedTopicRegex": "",
+                                "assignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                0,
+                                                1
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                0,
+                                                1
+                                            ]
+                                        }
+                                    ]
+                                }
+                            },
+                            "ab62e0ac-97a1-4e49-bacc-a2f1162a8240": {
+                                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                                "instanceId": null,
+                                "rackId": null,
+                                "memberEpoch": 4,
+                                "clientId": "kafka-client-t3-848",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [
+                                    "t3-848-vectors"
+                                ],
+                                "subscribedTopicRegex": "",
+                                "assignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "authorizedOperations": 328
+                    }
+                }
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.static-member.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ConsumerGroupDescribe of a group with one STATIC member that named no `server_assignor` at all.",
+            "hex": "00000035004500000000214200136b61666b612d636c69656e742d74332d38343800021474332d3834382d7374617469632d67726f75700000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 69,
+                "apiVersion": 0,
+                "correlationId": 8514,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-848-static-group"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.static-member.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer: the `instance_id` of the member and the assignor the coordinator picked by itself, which is the first of `group.consumer.assignors`.",
+            "hex": "00000104000021420000000000020000001474332d3834382d7374617469632d67726f757007537461626c65000000010000000108756e69666f726d022531313663343734302d346465632d343331642d383062612d6662396538656538643031350b74332d3834382d6f6e650000000001146b61666b612d636c69656e742d74332d3834380c2f3137322e31382e302e31020f74332d3834382d766563746f727301024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f7273040000000000000001000000020000024e1809809dc642af96e83c551cef8ee40f74332d3834382d766563746f727304000000000000000100000002000000800000000000",
+            "fields": {
+                "messageSize": 260,
+                "correlationId": 8514,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-848-static-group": {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "groupId": "t3-848-static-group",
+                        "groupState": "Stable",
+                        "groupEpoch": 1,
+                        "assignmentEpoch": 1,
+                        "assignorName": "uniform",
+                        "members": {
+                            "116c4740-4dec-431d-80ba-fb9e8ee8d015": {
+                                "memberId": "116c4740-4dec-431d-80ba-fb9e8ee8d015",
+                                "instanceId": "t3-848-one",
+                                "rackId": null,
+                                "memberEpoch": 1,
+                                "clientId": "kafka-client-t3-848",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [
+                                    "t3-848-vectors"
+                                ],
+                                "subscribedTopicRegex": "",
+                                "assignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                0,
+                                                1,
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                                            },
+                                            "topicName": "t3-848-vectors",
+                                            "partitions": [
+                                                0,
+                                                1,
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.classic-group.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ConsumerGroupDescribe (key 69) of a group of the CLASSIC protocol.",
+            "hex": "00000036004500000000214400136b61666b612d636c69656e742d74332d38343800021574332d3834382d636c61737369632d67726f75700000",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 69,
+                "apiVersion": 0,
+                "correlationId": 8516,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-848-classic-group"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.classic-group.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer, which is where the two describe apis separate the two protocols.",
+            "hex": "00000033000021440000000000020045001574332d3834382d636c61737369632d67726f75700100000000000000000101800000000000",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 8516,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-848-classic-group": {
+                        "errorCode": 69,
+                        "errorMessage": null,
+                        "groupId": "t3-848-classic-group",
+                        "groupState": "",
+                        "groupEpoch": 0,
+                        "assignmentEpoch": 0,
+                        "assignorName": "",
+                        "members": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.unknown-group.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ConsumerGroupDescribe of a group the coordinator has never heard of.",
+            "hex": "00000036004500000000214600136b61666b612d636c69656e742d74332d38343800021574332d3834382d6e6f2d737563682d67726f75700000",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 69,
+                "apiVersion": 0,
+                "correlationId": 8518,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-848-no-such-group"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.unknown-group.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The 69 `GroupIdNotFound` inside the entry of that group, with the frame itself error-free - there is no top-level error code in this answer.",
+            "hex": "00000033000021460000000000020045001574332d3834382d6e6f2d737563682d67726f75700100000000000000000101800000000000",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 8518,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-848-no-such-group": {
+                        "errorCode": 69,
+                        "errorMessage": null,
+                        "groupId": "t3-848-no-such-group",
+                        "groupState": "",
+                        "groupEpoch": 0,
+                        "assignmentEpoch": 0,
+                        "assignorName": "",
+                        "members": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.empty-group-id.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same api asked for the EMPTY group id.",
+            "hex": "00000022004500000000214700136b61666b612d636c69656e742d74332d3834380002010000",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 69,
+                "apiVersion": 0,
+                "correlationId": 8519,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    ""
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.empty-group-id.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Which is refused with its own code, before any coordinator is asked.",
+            "hex": "0000001f00002147000000000002ffff00010100000000000000000101800000000000",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 8519,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "": {
+                        "errorCode": -1,
+                        "errorMessage": null,
+                        "groupId": "",
+                        "groupState": "",
+                        "groupEpoch": 0,
+                        "assignmentEpoch": 0,
+                        "assignorName": "",
+                        "members": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.unauthorized.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "And the same principal describing that group, with the authorized operations asked for.",
+            "hex": "00000036004500000000214900136b61666b612d636c69656e742d74332d38343800021574332d3834382d766563746f72732d67726f75700100",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 69,
+                "apiVersion": 0,
+                "correlationId": 8521,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-848-vectors-group"
+                ],
+                "includeAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.unauthorized.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The refusal, which this api reports per ENTRY and not at the top level.",
+            "hex": "0000003300002149000000000002001e001574332d3834382d766563746f72732d67726f75700100000000000000000101800000000000",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 8521,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-848-vectors-group": {
+                        "errorCode": 30,
+                        "errorMessage": null,
+                        "groupId": "t3-848-vectors-group",
+                        "groupState": "",
+                        "groupEpoch": 0,
+                        "assignmentEpoch": 0,
+                        "assignorName": "",
+                        "members": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        }
+    ]
+}

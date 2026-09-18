@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\AlterClientQuotasRequestEntry;
  * **The version 0 is a plain frame**, like the one of its describing half, and the flexible version 1 is Kafka
  * 2.8; {@see AlterClientQuotasRequestV0} sends the frame of 2.6.
  *
- * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "AlterClientQuotas API (key 49, v0 and v1)"
  */
 class AlterClientQuotasRequest extends AbstractRequest
 {

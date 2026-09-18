@@ -16,10 +16,12 @@ namespace Protocol\Kafka\Protocol\Request;
 /**
  * OffsetCommit response, version 7: the throttle time and the topics, plainly encoded
  *
- * Version 8 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding, see {@see OffsetCommitResponse}.
+ * Version 8 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding ({@see OffsetCommitResponseV8}),
+ * and version 9 (Kafka 3.6, KIP-848) is that answer with two more error codes it may carry, which
+ * {@see OffsetCommitResponse} decodes.
  *
- * @see docs/protocol/2.8.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 final class OffsetCommitResponseV7 extends OffsetCommitResponse
 {
