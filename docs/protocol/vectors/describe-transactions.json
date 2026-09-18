@@ -1,0 +1,248 @@
+{
+    "api": "describe-transactions",
+    "apiKey": 65,
+    "section": "DescribeTransactions API (key 65, v0)",
+    "description": "Wire vectors of the DescribeTransactions API (key 65, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describetransactions.request.v0.ongoing",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions request v0 (Kafka 3.0) for one transactional id: a compact array of one compact string, with a tag buffer after the body and after the request header v2.",
+            "hex": "0000003d0041000000001965001a6b61666b612d636c69656e742d74312d33302d766563746f727300021674312d747861646d696e2d766563746f72732d747800",
+            "fields": {
+                "messageSize": 61,
+                "apiKey": 65,
+                "apiVersion": 0,
+                "correlationId": 6501,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "transactionalIds": [
+                    "t1-txadmin-vectors-tx"
+                ]
+            }
+        },
+        {
+            "id": "describetransactions.response.v0.ongoing",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions answer v0 for a transactional id with an OPEN transaction: the state `Ongoing`, the producer id and epoch of the coordinator, the transaction timeout, the start time of the transaction and the one partition that was added to it.",
+            "hex": "0000005c0000196500000000000200001674312d747861646d696e2d766563746f72732d7478084f6e676f696e670000ea60000001a0b370eb0000000000000000550001021374312d747861646d696e2d766563746f72730200000000000000",
+            "fields": {
+                "messageSize": 92,
+                "correlationId": 6501,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "transactionStates": {
+                    "t1-txadmin-vectors-tx": {
+                        "errorCode": 0,
+                        "transactionalId": "t1-txadmin-vectors-tx",
+                        "transactionState": "Ongoing",
+                        "transactionTimeoutMs": 60000,
+                        "transactionStartTimeMs": 1789716916992,
+                        "producerId": 85,
+                        "producerEpoch": 1,
+                        "topics": {
+                            "t1-txadmin-vectors": {
+                                "topic": "t1-txadmin-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "describetransactions.request.v0.empty",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions request v0 for a transactional id that has called InitProducerId and nothing else.",
+            "hex": "000000400041000000001968001a6b61666b612d636c69656e742d74312d33302d766563746f727300021974312d747861646d696e2d766563746f72732d656d70747900",
+            "fields": {
+                "messageSize": 64,
+                "apiKey": 65,
+                "apiVersion": 0,
+                "correlationId": 6504,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "transactionalIds": [
+                    "t1-txadmin-vectors-empty"
+                ]
+            }
+        },
+        {
+            "id": "describetransactions.response.v0.empty",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions answer v0 for an id with no transaction in flight: the state `Empty`, the producer id and epoch the coordinator handed out, the transaction timeout of that producer, an empty topic array and the **-1** of `transaction_start_time_ms` - the one frame of this api in which the field is not a timestamp.",
+            "hex": "000000440000196800000000000200001974312d747861646d696e2d766563746f72732d656d70747906456d7074790000ea60ffffffffffffffff00000000000000560000010000",
+            "fields": {
+                "messageSize": 68,
+                "correlationId": 6504,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "transactionStates": {
+                    "t1-txadmin-vectors-empty": {
+                        "errorCode": 0,
+                        "transactionalId": "t1-txadmin-vectors-empty",
+                        "transactionState": "Empty",
+                        "transactionTimeoutMs": 60000,
+                        "transactionStartTimeMs": -1,
+                        "producerId": 86,
+                        "producerEpoch": 0,
+                        "topics": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describetransactions.request.v0.complete",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions request v0 that names two transactional ids in one frame: the one whose transaction was just committed and one the coordinator does not know.",
+            "hex": "000000550041000000001967001a6b61666b612d636c69656e742d74312d33302d766563746f727300031674312d747861646d696e2d766563746f72732d74781874312d747861646d696e2d766563746f72732d6e6f6e6500",
+            "fields": {
+                "messageSize": 85,
+                "apiKey": 65,
+                "apiVersion": 0,
+                "correlationId": 6503,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "transactionalIds": [
+                    "t1-txadmin-vectors-tx",
+                    "t1-txadmin-vectors-none"
+                ]
+            }
+        },
+        {
+            "id": "describetransactions.response.v0.complete",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions answer v0 after the commit: the state `CompleteCommit` with an EMPTY topic array - the markers have been written - and the start time of that transaction still in place, next to the 105 of the second id. One entry per requested id, each with its own error code.",
+            "hex": "0000007d0000196700000000000300001674312d747861646d696e2d766563746f72732d74780f436f6d706c657465436f6d6d69740000ea60000001a0b370eb0000000000000000550001010000691874312d747861646d696e2d766563746f72732d6e6f6e650100000000000000000000000000000000000000000000010000",
+            "fields": {
+                "messageSize": 125,
+                "correlationId": 6503,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "transactionStates": {
+                    "t1-txadmin-vectors-tx": {
+                        "errorCode": 0,
+                        "transactionalId": "t1-txadmin-vectors-tx",
+                        "transactionState": "CompleteCommit",
+                        "transactionTimeoutMs": 60000,
+                        "transactionStartTimeMs": 1789716916992,
+                        "producerId": 85,
+                        "producerEpoch": 1,
+                        "topics": []
+                    },
+                    "t1-txadmin-vectors-none": {
+                        "errorCode": 105,
+                        "transactionalId": "t1-txadmin-vectors-none",
+                        "transactionState": "",
+                        "transactionTimeoutMs": 0,
+                        "transactionStartTimeMs": 0,
+                        "producerId": 0,
+                        "producerEpoch": 0,
+                        "topics": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describetransactions.request.v0.unknown",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions request v0 for a transactional id that never called InitProducerId.",
+            "hex": "0000003f0041000000001966001a6b61666b612d636c69656e742d74312d33302d766563746f727300021874312d747861646d696e2d766563746f72732d6e6f6e6500",
+            "fields": {
+                "messageSize": 63,
+                "apiKey": 65,
+                "apiVersion": 0,
+                "correlationId": 6502,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "transactionalIds": [
+                    "t1-txadmin-vectors-none"
+                ]
+            }
+        },
+        {
+            "id": "describetransactions.response.v0.unknown",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions answer v0 for an id the coordinator has no state for: the error code 105 (`TransactionalIdNotFound`, the code Kafka 3.0 added) in the entry of that id, with the transactional id and the defaults of the specification behind it - there is no top-level error code.",
+            "hex": "0000003e0000196600000000000200691874312d747861646d696e2d766563746f72732d6e6f6e650100000000000000000000000000000000000000000000010000",
+            "fields": {
+                "messageSize": 62,
+                "correlationId": 6502,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "transactionStates": {
+                    "t1-txadmin-vectors-none": {
+                        "errorCode": 105,
+                        "transactionalId": "t1-txadmin-vectors-none",
+                        "transactionState": "",
+                        "transactionTimeoutMs": 0,
+                        "transactionStartTimeMs": 0,
+                        "producerId": 0,
+                        "producerEpoch": 0,
+                        "topics": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describetransactions.request.v0.no-ids",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions request v0 with an EMPTY id array, the shortest frame of the api: the compact length 1 of an empty array and a tag buffer.",
+            "hex": "000000270041000000001969001a6b61666b612d636c69656e742d74312d33302d766563746f7273000100",
+            "fields": {
+                "messageSize": 39,
+                "apiKey": 65,
+                "apiVersion": 0,
+                "correlationId": 6505,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "transactionalIds": []
+            }
+        },
+        {
+            "id": "describetransactions.response.v0.no-ids",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeTransactionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeTransactions answer v0 to a request about nothing: the throttle time, an empty entry array and a tag buffer, in 14 bytes. An empty array is \"no id\" here, never \"every id\".",
+            "hex": "0000000b0000196900000000000100",
+            "fields": {
+                "messageSize": 11,
+                "correlationId": 6505,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "transactionStates": []
+            }
+        }
+    ]
+}

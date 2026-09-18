@@ -22,6 +22,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
+use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestAlterableConfig;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsResponseResource;
@@ -97,7 +98,21 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
         self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
 
-        return $topic;
+        // A KRaft node answers the topic it has just created with 3 until the brokers have replayed its records:
+        // the first DescribeConfigs of the tests below must not be the one that meets that moment
+        $deadline = microtime(true) + 5.0;
+        while (true) {
+            try {
+                $this->admin->describeConfigs([ConfigResource::topic($topic)]);
+
+                return $topic;
+            } catch (UnknownTopicOrPartitionException $notYet) {
+                if (microtime(true) > $deadline) {
+                    throw $notYet;
+                }
+                usleep(50_000);
+            }
+        }
     }
 
     /**
