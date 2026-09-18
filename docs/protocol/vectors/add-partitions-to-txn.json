@@ -1,8 +1,8 @@
 {
     "api": "add-partitions-to-txn",
     "apiKey": 24,
-    "section": "AddPartitionsToTxn API (key 24, v0 to v3)",
-    "description": "Wire vectors of the AddPartitionsToTxn API (key 24, v0 to v3), replayed by tests/Compliance.",
+    "section": "AddPartitionsToTxn API (key 24, v0 to v4)",
+    "description": "Wire vectors of the AddPartitionsToTxn API (key 24, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addpartitionstotxn.request.v0",
@@ -215,7 +215,7 @@
         {
             "id": "addpartitionstotxn.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequestV3",
             "version": 3,
             "source": "broker",
             "description": "AddPartitionsToTxn request v3 (Kafka 2.8, KIP-482): the four fields of the version 2 in the **flexible** encoding - `\"flexibleVersions\": \"3+\"` in `AddPartitionsToTxnRequest.json` @ 2.8.2, so this is the first flexible version of the api.",
@@ -243,7 +243,7 @@
         {
             "id": "addpartitionstotxn.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponseV3",
             "version": 3,
             "source": "broker",
             "description": "AddPartitionsToTxn answer v3: the error code 0 of the one partition that joined the transaction, with a tagged-field section behind the body, the topic and the partition.",
@@ -264,6 +264,354 @@
                         ]
                     }
                 }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.request.v4.verify",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "AddPartitionsToTxn request v4 (Kafka 3.5, KIP-890) with `verify_only = true`: the version asks the coordinator whether the partitions 0 and 1 of `t4-35-vectors` are part of the open transaction of `t4-35-vectors-txn-3` instead of adding them. The four top-level fields of the versions 0 to 3 are one entry of the `transactions` array here - the transactional id, the producer id, the epoch, the flag and the topics - and the entry, every topic of it and the body each end in their own tag buffer.",
+            "hex": "000000530018000400000e7e000d74342d33352d766563746f727300021474342d33352d766563746f72732d74786e2d33000000000000003f000001020e74342d33352d766563746f7273030000000000000001000000",
+            "fields": {
+                "messageSize": 83,
+                "apiKey": 24,
+                "apiVersion": 4,
+                "correlationId": 3710,
+                "clientId": "t4-35-vectors",
+                "headerTaggedFields": [],
+                "transactions": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "producerId": 63,
+                        "producerEpoch": 0,
+                        "verifyOnly": true,
+                        "topics": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitions": [
+                                    0,
+                                    1
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.response.v4.verify",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer of the transaction coordinator: the top-level `error_code` 0 that the version 4 added, and one `results_by_transaction` entry for `t4-35-vectors-txn-3` with the two partitions it was asked about - the partition 0, which the transaction holds, with the code 0, and the partition 1, which it does not, with the **120** (`TransactionAbortable`) that `TransactionCoordinator.handleVerifyPartitionsInTransaction` @ 3.9.2 answers there. The partitions come in the order of the map the coordinator built, not in the order of the request.",
+            "hex": "0000004100000e7e00000000000000021474342d33352d766563746f72732d74786e2d33020e74342d33352d766563746f7273030000000100780000000000000000000000",
+            "fields": {
+                "messageSize": 65,
+                "correlationId": 3710,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "resultsByTransaction": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "topicResults": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitionErrors": {
+                                    "1": {
+                                        "partition": 1,
+                                        "errorCode": 120
+                                    },
+                                    "0": {
+                                        "partition": 0,
+                                        "errorCode": 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The same version 4 with `verify_only = false` (the single `00` byte behind the epoch), which is the request that really enrols the partition 1 of `t4-35-vectors` into the transaction of `t4-35-vectors-txn-3` - the work the versions 0 to 3 do, in the frame of the version 4.",
+            "hex": "0000004f0018000400000e7f000d74342d33352d766563746f727300021474342d33352d766563746f72732d74786e2d33000000000000003f000000020e74342d33352d766563746f72730200000001000000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 24,
+                "apiVersion": 4,
+                "correlationId": 3711,
+                "clientId": "t4-35-vectors",
+                "headerTaggedFields": [],
+                "transactions": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "producerId": 63,
+                        "producerEpoch": 0,
+                        "verifyOnly": false,
+                        "topics": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitions": [
+                                    1
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer: the top-level code 0 and the one transaction of the request with the code 0 for the partition that is now part of it. The frame is the shape the versions below answer, wrapped in the transactional id it belongs to.",
+            "hex": "0000003a00000e7f00000000000000021474342d33352d766563746f72732d74786e2d33020e74342d33352d766563746f72730200000001000000000000",
+            "fields": {
+                "messageSize": 58,
+                "correlationId": 3711,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "resultsByTransaction": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "topicResults": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitionErrors": {
+                                    "1": {
+                                        "partition": 1,
+                                        "errorCode": 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.request.v4.batch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The batch of the version 4: two transactions in one frame, each with its own producer id, epoch and `verify_only` flag - `t4-35-vectors-txn-3` is asked whether it holds the partitions 0 and 1, and `t4-35-vectors-txn-4` is asked to add the partition 1. This is the frame a partition leader sends to the coordinator for the producers of many transactions at once, and the reason the version exists.",
+            "hex": "000000880018000400000e80000d74342d33352d766563746f727300031474342d33352d766563746f72732d74786e2d33000000000000003f000001020e74342d33352d766563746f727303000000000000000100001474342d33352d766563746f72732d74786e2d340000000000000040000000020e74342d33352d766563746f72730200000001000000",
+            "fields": {
+                "messageSize": 136,
+                "apiKey": 24,
+                "apiVersion": 4,
+                "correlationId": 3712,
+                "clientId": "t4-35-vectors",
+                "headerTaggedFields": [],
+                "transactions": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "producerId": 63,
+                        "producerEpoch": 0,
+                        "verifyOnly": true,
+                        "topics": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitions": [
+                                    0,
+                                    1
+                                ]
+                            }
+                        }
+                    },
+                    "t4-35-vectors-txn-4": {
+                        "transactionalId": "t4-35-vectors-txn-4",
+                        "producerId": 64,
+                        "producerEpoch": 0,
+                        "verifyOnly": false,
+                        "topics": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitions": [
+                                    1
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.response.v4.batch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "Both transactions answered in one frame, each with the topics of its own request: the verification of `t4-35-vectors-txn-3` (both partitions answer the code **0** now - the request above added the partition 1 to that transaction) and the addition of `t4-35-vectors-txn-4`. `KafkaApis.handleAddPartitionsToTxnRequest` @ 3.9.2 sends the answer only when every transaction of the batch has a result, which is why an empty `transactions` array is never answered at all.",
+            "hex": "0000006e00000e8000000000000000031474342d33352d766563746f72732d74786e2d33020e74342d33352d766563746f727303000000010000000000000000000000001474342d33352d766563746f72732d74786e2d34020e74342d33352d766563746f72730200000001000000000000",
+            "fields": {
+                "messageSize": 110,
+                "correlationId": 3712,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "resultsByTransaction": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "topicResults": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitionErrors": {
+                                    "1": {
+                                        "partition": 1,
+                                        "errorCode": 0
+                                    },
+                                    "0": {
+                                        "partition": 0,
+                                        "errorCode": 0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "t4-35-vectors-txn-4": {
+                        "transactionalId": "t4-35-vectors-txn-4",
+                        "topicResults": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitionErrors": {
+                                    "1": {
+                                        "partition": 1,
+                                        "errorCode": 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.request.v4.fenced",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "A verification with the epoch of a producer that a second `InitProducerId` for the same transactional id has fenced: the coordinator holds a higher epoch for `t4-35-vectors-txn-3` while this frame still names the 0 of the producer it fenced.",
+            "hex": "0000004f0018000400000e84000d74342d33352d766563746f727300021474342d33352d766563746f72732d74786e2d33000000000000003f000001020e74342d33352d766563746f72730200000000000000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 24,
+                "apiVersion": 4,
+                "correlationId": 3716,
+                "clientId": "t4-35-vectors",
+                "headerTaggedFields": [],
+                "transactions": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "producerId": 63,
+                        "producerEpoch": 0,
+                        "verifyOnly": true,
+                        "topics": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.response.v4.fenced",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer: the top-level code 0 - the request itself was fine - and the **90** (`TransactionalProducerFenced`, `PRODUCER_FENCED` in the Java client) on every partition of the fenced transaction. It is the requesting broker that maps that code back to the **47** a producer expects (`AddPartitionsToTxnManager` @ 3.9.2, \"Producers expect to handle INVALID_PRODUCER_EPOCH in this scenario\"), which is why a client never sees the 90 of a verification.",
+            "hex": "0000003a00000e8400000000000000021474342d33352d766563746f72732d74786e2d33020e74342d33352d766563746f72730200000000005a00000000",
+            "fields": {
+                "messageSize": 58,
+                "correlationId": 3716,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "resultsByTransaction": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "topicResults": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitionErrors": [
+                                    {
+                                        "partition": 0,
+                                        "errorCode": 90
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.request.v4.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The same verification sent by the SASL user `acltest`, the one principal of the container that is not in `super.users`: the frame is the one above, only the connection is another one.",
+            "hex": "0000004f0018000400000e82000d74342d33352d766563746f727300021474342d33352d766563746f72732d74786e2d33000000000000003f000001020e74342d33352d766563746f72730200000000000000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 24,
+                "apiVersion": 4,
+                "correlationId": 3714,
+                "clientId": "t4-35-vectors",
+                "headerTaggedFields": [],
+                "transactions": {
+                    "t4-35-vectors-txn-3": {
+                        "transactionalId": "t4-35-vectors-txn-3",
+                        "producerId": 63,
+                        "producerEpoch": 0,
+                        "verifyOnly": true,
+                        "topics": {
+                            "t4-35-vectors": {
+                                "topic": "t4-35-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.response.v4.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The refusal of the whole request: the top-level error code **31** (`ClusterAuthorizationFailed`) and an EMPTY `results_by_transaction` array, 13 bytes behind the size field. `KafkaApis.handleAddPartitionsToTxnRequest` @ 3.9.2 authorizes every version from 4 on with `authorizeClusterOperation(request, CLUSTER_ACTION)` before it looks at a single transaction - the version is the one brokers use - so this is what a client is answered wherever `ANONYMOUS` is not a super user.",
+            "hex": "0000000d00000e820000000000001f0100",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 3714,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 31,
+                "resultsByTransaction": []
             }
         }
     ]
