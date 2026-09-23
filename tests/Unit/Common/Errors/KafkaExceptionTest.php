@@ -30,12 +30,16 @@ use Protocol\Kafka\Common\Errors\DelegationTokenOwnerMismatchException;
 use Protocol\Kafka\Common\Errors\DuplicateBrokerRegistrationException;
 use Protocol\Kafka\Common\Errors\DuplicateResourceException;
 use Protocol\Kafka\Common\Errors\DuplicateSequenceNumberException;
+use Protocol\Kafka\Common\Errors\DuplicateVoterException;
 use Protocol\Kafka\Common\Errors\ElectionNotNeededException;
 use Protocol\Kafka\Common\Errors\EligibleLeadersNotAvailableException;
 use Protocol\Kafka\Common\Errors\FeatureUpdateFailedException;
 use Protocol\Kafka\Common\Errors\FencedInstanceIdException;
 use Protocol\Kafka\Common\Errors\FencedLeaderEpochException;
+use Protocol\Kafka\Common\Errors\FencedMemberEpochException;
+use Protocol\Kafka\Common\Errors\FencedStateEpochException;
 use Protocol\Kafka\Common\Errors\FetchSessionIdNotFoundException;
+use Protocol\Kafka\Common\Errors\FetchSessionTopicIdException;
 use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
@@ -49,6 +53,7 @@ use Protocol\Kafka\Common\Errors\InconsistentClusterIdException;
 use Protocol\Kafka\Common\Errors\InconsistentGroupProtocolException;
 use Protocol\Kafka\Common\Errors\InconsistentTopicIdException;
 use Protocol\Kafka\Common\Errors\InconsistentVoterSetException;
+use Protocol\Kafka\Common\Errors\IneligibleReplicaException;
 use Protocol\Kafka\Common\Errors\InvalidCommitOffsetSizeException;
 use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidFetchSessionEpochException;
@@ -58,16 +63,20 @@ use Protocol\Kafka\Common\Errors\InvalidPartitionsException;
 use Protocol\Kafka\Common\Errors\InvalidPidMappingException;
 use Protocol\Kafka\Common\Errors\InvalidPrincipalTypeException;
 use Protocol\Kafka\Common\Errors\InvalidRecordException;
+use Protocol\Kafka\Common\Errors\InvalidRecordStateException;
+use Protocol\Kafka\Common\Errors\InvalidRegistrationException;
 use Protocol\Kafka\Common\Errors\InvalidReplicaAssignmentException;
 use Protocol\Kafka\Common\Errors\InvalidReplicationFactorException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\InvalidRequiredAcksException;
 use Protocol\Kafka\Common\Errors\InvalidSessionTimeoutException;
+use Protocol\Kafka\Common\Errors\InvalidShareSessionEpochException;
 use Protocol\Kafka\Common\Errors\InvalidTimestampException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\InvalidTxnStateException;
 use Protocol\Kafka\Common\Errors\InvalidTxnTimeoutException;
 use Protocol\Kafka\Common\Errors\InvalidUpdateVersionException;
+use Protocol\Kafka\Common\Errors\InvalidVoterKeyException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\KafkaStorageException;
 use Protocol\Kafka\Common\Errors\LeaderNotAvailableException;
@@ -75,7 +84,9 @@ use Protocol\Kafka\Common\Errors\ListenerNotFoundException;
 use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
 use Protocol\Kafka\Common\Errors\MemberIdRequiredException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
+use Protocol\Kafka\Common\Errors\MismatchedEndpointTypeException;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\NewLeaderElectedException;
 use Protocol\Kafka\Common\Errors\NoReassignmentInProgressException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
@@ -83,6 +94,7 @@ use Protocol\Kafka\Common\Errors\NotEnoughReplicasAfterAppendException;
 use Protocol\Kafka\Common\Errors\NotEnoughReplicasException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetMetadataTooLargeException;
+use Protocol\Kafka\Common\Errors\OffsetMovedToTieredStorageException;
 use Protocol\Kafka\Common\Errors\OffsetNotAvailableException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\OperationNotAttemptedException;
@@ -102,29 +114,40 @@ use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\Errors\SaslAuthenticationFailedException;
 use Protocol\Kafka\Common\Errors\SecurityDisabledException;
 use Protocol\Kafka\Common\Errors\ServerExceptionInterface;
+use Protocol\Kafka\Common\Errors\ShareSessionNotFoundException;
 use Protocol\Kafka\Common\Errors\SnapshotNotFoundException;
 use Protocol\Kafka\Common\Errors\StaleBrokerEpochException;
 use Protocol\Kafka\Common\Errors\StaleControllerEpochException;
+use Protocol\Kafka\Common\Errors\StaleMemberEpochException;
+use Protocol\Kafka\Common\Errors\TelemetryTooLargeException;
 use Protocol\Kafka\Common\Errors\ThrottlingQuotaExceededException;
 use Protocol\Kafka\Common\Errors\TopicAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\TopicDeletionDisabledException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
+use Protocol\Kafka\Common\Errors\TransactionAbortableException;
 use Protocol\Kafka\Common\Errors\TransactionalIdAuthorizationException;
+use Protocol\Kafka\Common\Errors\TransactionalIdNotFoundException;
 use Protocol\Kafka\Common\Errors\TransactionalProducerFencedException;
 use Protocol\Kafka\Common\Errors\TransactionCoordinatorFencedException;
 use Protocol\Kafka\Common\Errors\UnacceptableCredentialException;
+use Protocol\Kafka\Common\Errors\UnknownControllerIdException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownLeaderEpochException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
+use Protocol\Kafka\Common\Errors\UnknownSubscriptionIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnreleasedInstanceIdException;
 use Protocol\Kafka\Common\Errors\UnstableOffsetCommitException;
+use Protocol\Kafka\Common\Errors\UnsupportedAssignorException;
 use Protocol\Kafka\Common\Errors\UnsupportedByAuthenticationException;
 use Protocol\Kafka\Common\Errors\UnsupportedCompressionTypeException;
+use Protocol\Kafka\Common\Errors\UnsupportedEndpointTypeException;
 use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Common\Errors\UnsupportedSaslMechanismException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
+use Protocol\Kafka\Common\Errors\VoterNotFoundException;
 use RuntimeException;
 
 /**
@@ -145,7 +168,10 @@ use RuntimeException;
  * InvalidFetchSessionEpoch extend RetriableException in the Java client. The codes 72-104 are those of Kafka 2.0 to
  * 2.8 (Errors.java @ 2.8.2): 72 with 2.0, 73-76 with 2.1 (KIP-320 and zstd), 77-81 with 2.2, 82 with 2.3, 83-87 with
  * 2.4, 88 with 2.5, 89-96 with 2.7 and 97-104 with 2.8; of them 72, 74, 80, 83, 84, 100 and 103 are
- * InvalidMetadataExceptions and 75, 78, 88 and 89 plain RetriableExceptions in the Java client.
+ * InvalidMetadataExceptions and 75, 78, 88 and 89 plain RetriableExceptions in the Java client. The codes 105-127 are
+ * those of Kafka 3.0 to 3.9 (Errors.java @ 3.9.2, read at the release tags): 105 with 3.0, 106 with 3.1, 107-108
+ * with 3.3, 109-112 with 3.5, 113 with 3.6, 114-119 with 3.7, 120 with 3.8 and 121-127 with 3.9; of them only 106,
+ * 122 and 123 extend RetriableException in the Java client.
  */
 #[CoversClass(KafkaException::class)]
 final class KafkaExceptionTest extends TestCase
@@ -263,6 +289,29 @@ final class KafkaExceptionTest extends TestCase
             'BrokerIdNotRegistered'                  => [102, BrokerIdNotRegisteredException::class, false],
             'InconsistentTopicId'                    => [103, InconsistentTopicIdException::class, true],
             'InconsistentClusterId'                  => [104, InconsistentClusterIdException::class, false],
+            'TransactionalIdNotFound'               => [105, TransactionalIdNotFoundException::class, false],
+            'FetchSessionTopicId'                   => [106, FetchSessionTopicIdException::class, true],
+            'IneligibleReplica'                     => [107, IneligibleReplicaException::class, false],
+            'NewLeaderElected'                      => [108, NewLeaderElectedException::class, false],
+            'OffsetMovedToTieredStorage'            => [109, OffsetMovedToTieredStorageException::class, false],
+            'FencedMemberEpoch'                     => [110, FencedMemberEpochException::class, false],
+            'UnreleasedInstanceId'                  => [111, UnreleasedInstanceIdException::class, false],
+            'UnsupportedAssignor'                   => [112, UnsupportedAssignorException::class, false],
+            'StaleMemberEpoch'                      => [113, StaleMemberEpochException::class, false],
+            'MismatchedEndpointType'                => [114, MismatchedEndpointTypeException::class, false],
+            'UnsupportedEndpointType'               => [115, UnsupportedEndpointTypeException::class, false],
+            'UnknownControllerId'                   => [116, UnknownControllerIdException::class, false],
+            'UnknownSubscriptionId'                 => [117, UnknownSubscriptionIdException::class, false],
+            'TelemetryTooLarge'                     => [118, TelemetryTooLargeException::class, false],
+            'InvalidRegistration'                   => [119, InvalidRegistrationException::class, false],
+            'TransactionAbortable'                  => [120, TransactionAbortableException::class, false],
+            'InvalidRecordState'                    => [121, InvalidRecordStateException::class, false],
+            'ShareSessionNotFound'                  => [122, ShareSessionNotFoundException::class, true],
+            'InvalidShareSessionEpoch'              => [123, InvalidShareSessionEpochException::class, true],
+            'FencedStateEpoch'                      => [124, FencedStateEpochException::class, false],
+            'InvalidVoterKey'                       => [125, InvalidVoterKeyException::class, false],
+            'DuplicateVoter'                        => [126, DuplicateVoterException::class, false],
+            'VoterNotFound'                         => [127, VoterNotFoundException::class, false],
         ];
     }
 
@@ -316,7 +365,7 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Codes above 104 do not exist in Kafka 2.8.2 (105 is Kafka 3.0), a 2.8.2 broker never sends them
+     * Codes above 127 do not exist in Kafka 3.9.2 (Kafka 4.0 continues at 128), a 3.9.2 node never sends them
      *
      * @return array<string, array{int}>
      */
@@ -324,8 +373,8 @@ final class KafkaExceptionTest extends TestCase
     {
         return [
             'NoError'                       => [0],
-            'above the table (105)'         => [105],
-            'above the table (106)'         => [106],
+            'above the table (128)'         => [128],
+            'above the table (129)'         => [129],
             'out of range'                  => [4242],
             'negative out of range'         => [-999],
         ];
@@ -353,19 +402,19 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Guards against a post-2.8 error class sneaking into the mapping
+     * Guards against a post-3.9 error class sneaking into the mapping
      */
-    public function testOnlyTheErrorCodesOfKafka282AreMapped(): void
+    public function testOnlyTheErrorCodesOfKafka392AreMapped(): void
     {
         $mappedCodes = [];
-        foreach (range(-10, 120) as $errorCode) {
+        foreach (range(-10, 140) as $errorCode) {
             $exception = KafkaException::fromCode($errorCode, []);
             if (!$exception instanceof UnknownErrorException || $errorCode === KafkaException::UNKNOWN) {
                 $mappedCodes[] = $errorCode;
             }
         }
 
-        self::assertSame(array_merge([-1], range(1, 104)), $mappedCodes);
+        self::assertSame(array_merge([-1], range(1, 127)), $mappedCodes);
     }
 
     /**

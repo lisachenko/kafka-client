@@ -18,6 +18,7 @@ use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\OffsetNotAvailableException;
 use Protocol\Kafka\Common\Errors\RetriableException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
@@ -39,6 +40,9 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV5;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV7;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV8;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
@@ -46,6 +50,9 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV7;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
 
 /**
  * Byte-exact tests for the Offsets (ListOffset) API, versions 0, 1 and 2.
@@ -59,14 +66,20 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
  *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]
 #[CoversClass(OffsetsRequestV1::class)]
+#[CoversClass(OffsetsRequestV6::class)]
+#[CoversClass(OffsetsRequestV7::class)]
+#[CoversClass(OffsetsRequestV8::class)]
 #[CoversClass(OffsetsResponse::class)]
 #[CoversClass(OffsetsResponseV0::class)]
 #[CoversClass(OffsetsResponseV1::class)]
+#[CoversClass(OffsetsResponseV6::class)]
+#[CoversClass(OffsetsResponseV7::class)]
+#[CoversClass(OffsetsResponseV8::class)]
 #[CoversClass(OffsetsRequestTopic::class)]
 #[CoversClass(OffsetsRequestTopicV0::class)]
 #[CoversClass(OffsetsRequestPartition::class)]
@@ -82,7 +95,7 @@ final class OffsetsApiTest extends TestCase
      *
      *   Size            => 00 00 00 2f (47 bytes)
      *   ApiKey          => 00 02
-     *   ApiVersion      => 00 06 (the FLEXIBLE version of KIP-482)
+     *   ApiVersion      => 00 08 (the version Kafka 3.5 added; the frame is the flexible one of KIP-482, v6)
      *   CorrelationId   => 00 00 00 07
      *   ClientId        => 00 04 "test" (an int16 length, never compact), then the tag buffer of the header
      *   ReplicaId       => ff ff ff ff (-1, an ordinary consumer)
@@ -96,7 +109,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string LATEST_REQUEST_HEX = '0000002f'
         . '0002'
-        . '0006'
+        . '0009'
         . '00000007'
         . '0004' . '74657374'
         . '00'
@@ -114,7 +127,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string LATEST_COMMITTED_REQUEST_HEX = '0000002f'
         . '0002'
-        . '0006'
+        . '0009'
         . '00000007'
         . '0004' . '74657374'
         . '00'
@@ -132,7 +145,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string EARLIEST_REQUEST_HEX = '0000002f'
         . '0002'
-        . '0006'
+        . '0009'
         . '00000007'
         . '0004' . '74657374'
         . '00'
@@ -245,7 +258,7 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(self::LATEST_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(47, $request->getMessageSize(), 'the compact encoding of KIP-482 is three bytes shorter');
-        self::assertSame(6, $request->getApiVersion(), 'the client sends the version Kafka 2.8 added');
+        self::assertSame(9, $request->getApiVersion(), 'the client sends the version Kafka 3.9 added');
     }
 
     public function testTheVersionsTwoAndThreeSendOneAndTheSameFrame(): void
@@ -314,8 +327,8 @@ final class OffsetsApiTest extends TestCase
         self::assertSame(-1, OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH);
         self::assertSame(4, OffsetsRequestV4::VERSION);
         self::assertSame(4, OffsetsResponseV4::VERSION);
-        self::assertSame(6, OffsetsRequest::VERSION);
-        self::assertSame(6, OffsetsResponse::VERSION);
+        self::assertSame(9, OffsetsRequest::VERSION);
+        self::assertSame(9, OffsetsResponse::VERSION);
     }
 
     public function testVersionFiveIsTheVersionFourFrameAndOneMoreErrorCode(): void
@@ -353,6 +366,246 @@ final class OffsetsApiTest extends TestCase
         );
     }
 
+    public function testVersionSevenIsTheVersionSixFrameAndOneMoreTargetTime(): void
+    {
+        // `ListOffsetsRequest.json` @ 3.0.2 says "Version 7 enables listing offsets by max timestamp (KIP-734)"
+        // and `ListOffsetsResponse.json` "Version 7 is the same as version 6 (KIP-734)": not a field was added on
+        // either side, and what the version buys is the third special target time -3, "the offset of the record
+        // with the largest timestamp of this partition"
+        $arguments = [
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7,
+        ];
+        $seven = bin2hex((string) new OffsetsRequestV7(...$arguments));
+        $six   = bin2hex((string) new OffsetsRequestV6(...$arguments));
+
+        self::assertSame(substr($six, 2 * 8), substr($seven, 2 * 8), 'the bodies are the same bytes');
+        self::assertSame('0006', substr($six, 2 * 6, 4), 'only the api version of the header differs');
+        self::assertSame('0007', substr($seven, 2 * 6, 4));
+        self::assertSame(OffsetsRequestV6::getScheme(), OffsetsRequestV7::getScheme());
+        self::assertSame(OffsetsResponseV6::getScheme(), OffsetsResponseV7::getScheme());
+        self::assertSame(6, OffsetsRequestV6::VERSION);
+        self::assertSame(6, OffsetsResponseV6::VERSION);
+        self::assertSame(7, OffsetsRequestV7::VERSION);
+        self::assertSame(7, OffsetsResponseV7::VERSION);
+        self::assertTrue(OffsetsRequestV6::isFlexible(), 'version 6 is the first flexible one, and 7 stays flexible');
+        self::assertTrue(OffsetsRequestV7::isFlexible());
+    }
+
+    public function testVersionEightIsTheSameFrameOnceMoreAndTheLocalLogStartOffset(): void
+    {
+        // `ListOffsetsRequest.json` @ 3.5.2 says "Version 8 enables listing offsets by local log start offset
+        // (KIP-405)" and declares no field of it either: the version 8 this client sends is the version 7 frame
+        // with another number in its header, and what it buys is the fourth special target time -4
+        $arguments = [
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7,
+        ];
+        $eight = bin2hex((string) new OffsetsRequestV8(...$arguments));
+        $seven = bin2hex((string) new OffsetsRequestV7(...$arguments));
+
+        self::assertSame(substr($seven, 2 * 8), substr($eight, 2 * 8), 'the bodies are the same bytes');
+        self::assertSame('0008', substr($eight, 2 * 6, 4), 'only the api version of the header differs');
+        self::assertSame(
+            substr_replace(self::LATEST_REQUEST_HEX, '0008', 2 * 6, 4),
+            $eight,
+            'and the body is the one of the version 9 this client sends'
+        );
+        self::assertSame(OffsetsRequestV7::getScheme(), OffsetsRequestV8::getScheme());
+        self::assertSame(OffsetsResponseV7::getScheme(), OffsetsResponseV8::getScheme());
+        self::assertSame(8, OffsetsRequestV8::VERSION);
+        self::assertSame(8, OffsetsResponseV8::VERSION);
+        self::assertTrue(OffsetsRequestV8::isFlexible());
+    }
+
+    public function testVersionNineIsTheSameFrameAgainAndTheLastTieredOffset(): void
+    {
+        // `ListOffsetsRequest.json` @ 3.9.2 says "Version 9 enables listing offsets by last tiered offset
+        // (KIP-1005)" and declares no field of it either: the version 9 this client sends is the version 8 frame
+        // with another number in its header, and what it buys is the fifth special target time -5
+        $arguments = [
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7,
+        ];
+        $nine  = bin2hex((string) new OffsetsRequest(...$arguments));
+        $eight = bin2hex((string) new OffsetsRequestV8(...$arguments));
+
+        self::assertSame(substr($eight, 2 * 8), substr($nine, 2 * 8), 'the bodies are the same bytes');
+        self::assertSame('0009', substr($nine, 2 * 6, 4), 'only the api version of the header differs');
+        self::assertSame(self::LATEST_REQUEST_HEX, $nine);
+        self::assertSame(OffsetsRequestV8::getScheme(), OffsetsRequest::getScheme());
+        self::assertSame(OffsetsResponseV8::getScheme(), OffsetsResponse::getScheme());
+        self::assertSame(8, OffsetsRequestV8::VERSION);
+        self::assertSame(8, OffsetsResponseV8::VERSION);
+        self::assertSame(9, OffsetsRequest::VERSION);
+        self::assertSame(9, OffsetsResponse::VERSION);
+        self::assertTrue(OffsetsRequest::isFlexible());
+    }
+
+    public function testTheLastTieredOffsetOfKip1005IsTheTargetTimeMinusFive(): void
+    {
+        $request = new OffsetsRequest(
+            ['topic' => [0 => OffsetsRequest::LATEST_TIERED_TIMESTAMP]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        );
+
+        self::assertSame(-5, OffsetsRequest::LATEST_TIERED_TIMESTAMP);
+        self::assertSame(
+            substr_replace(self::LATEST_REQUEST_HEX, 'fffffffffffffffb', 2 * 36 + 8, 16),
+            bin2hex((string) $request),
+            'the target time is the only byte range that differs from the -1 of the latest offset'
+        );
+    }
+
+    public function testAVersionBelowNineIsAnsweredThirtyFiveForTheLastTieredOffset(): void
+    {
+        // What the 3.9.2 node answers a -5 that was asked with version 8: the code 35 for that PARTITION, with
+        // the timestamp, the offset and the leader epoch -1, exactly as it answers a -4 below version 8
+        // (`offsets.response.v8.latest-tiered-unsupported`)
+        $frame = hex2bin(
+            '00000036' . '00000f70' . '00'
+            . '00000000'
+            . '02' . '0e' . '74322d33392d766563746f7273'
+            . '02' . '00000000' . '0023' . 'ffffffffffffffff' . 'ffffffffffffffff' . 'ffffffff' . '00'
+            . '00' . '00'
+        );
+        self::assertIsString($frame);
+
+        $response = OffsetsResponseV8::unpack(new StringStream($frame));
+        $partition = $response->topics['t2-39-vectors']->partitions[0];
+
+        self::assertSame(35, $partition->errorCode, 'the 35 is per partition, and the connection stays open');
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+        self::assertSame(-1, $partition->leaderEpoch);
+        self::assertSame($frame, (string) $response, 'the answer has to survive a round trip');
+    }
+
+    public function testAnAnswerOfTheLastTieredOffsetWithoutRemoteStorageIsTheOffsetMinusOne(): void
+    {
+        // `UnifiedLog.fetchOffsetByTimestamp` @ 3.9.2 answers `TimestampAndOffset(NO_TIMESTAMP, -1L,
+        // Optional.of(-1))` for -5 unless `remoteLogEnabled()`, which is the answer of every topic of this node -
+        // the code 0 of a question that is valid and has nothing to report (`offsets.response.v9.latest-tiered`)
+        $frame = hex2bin(
+            '00000036' . '00000f66' . '00'
+            . '00000000'
+            . '02' . '0e' . '74322d33392d766563746f7273'
+            . '02' . '00000000' . '0000' . 'ffffffffffffffff' . 'ffffffffffffffff' . 'ffffffff' . '00'
+            . '00' . '00'
+        );
+        self::assertIsString($frame);
+
+        $response = OffsetsResponse::unpack(new StringStream($frame));
+        $partition = $response->topics['t2-39-vectors']->partitions[0];
+
+        self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, 'nothing is tiered, and that is no error');
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+        self::assertSame($frame, (string) $response, 'the answer has to survive a round trip');
+    }
+
+    public function testTheMaxTimestampOfKip734IsTheTargetTimeMinusThree(): void
+    {
+        $request = new OffsetsRequest(
+            ['topic' => [0 => OffsetsRequest::MAX_TIMESTAMP]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        );
+
+        self::assertSame(-3, OffsetsRequest::MAX_TIMESTAMP);
+        self::assertSame(
+            substr_replace(self::LATEST_REQUEST_HEX, 'fffffffffffffffd', 2 * 36 + 8, 16),
+            bin2hex((string) $request),
+            'the target time is the only byte range that differs from the -1 of the latest offset'
+        );
+    }
+
+    public function testTheLocalLogStartOffsetOfKip405IsTheTargetTimeMinusFour(): void
+    {
+        $request = new OffsetsRequest(
+            ['topic' => [0 => OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        );
+
+        self::assertSame(-4, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+        self::assertSame(
+            substr_replace(self::LATEST_REQUEST_HEX, 'fffffffffffffffc', 2 * 36 + 8, 16),
+            bin2hex((string) $request),
+            'the target time is the only byte range that differs from the -1 of the latest offset'
+        );
+    }
+
+    public function testAVersionBelowEightIsAnsweredThirtyFiveForTheLocalLogStartOffset(): void
+    {
+        // What the 3.9.2 node answers a -4 that was asked with version 7: the code 35 for that PARTITION, with
+        // the timestamp, the offset and the leader epoch -1, exactly as it answers a -3 below version 7
+        // (`offsets.response.v7.earliest-local-unsupported`)
+        $frame = hex2bin(
+            '00000036' . '00000390' . '00'
+            . '00000000'
+            . '02' . '0e' . '74322d33352d766563746f7273'
+            . '02' . '00000000' . '0023' . 'ffffffffffffffff' . 'ffffffffffffffff' . 'ffffffff' . '00'
+            . '00' . '00'
+        );
+        self::assertIsString($frame);
+
+        $response = OffsetsResponseV7::unpack(new StringStream($frame));
+
+        $partition = $response->topics['t2-35-vectors']->partitions[0];
+        self::assertSame(KafkaException::UNSUPPORTED_VERSION, $partition->errorCode);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH, $partition->leaderEpoch);
+        self::assertInstanceOf(
+            UnsupportedVersionException::class,
+            KafkaException::fromCode($partition->errorCode, ['topic' => 't2-35-vectors'])
+        );
+    }
+
+    public function testAVersionBelowSevenIsAnsweredThirtyFiveForTheMaxTimestamp(): void
+    {
+        // What the 3.9.2 node answers a -3 that was asked with version 6: the code 35 for that PARTITION, with
+        // the timestamp, the offset and the leader epoch -1 - the connection stays open and the other partitions
+        // of the same request are served (`KafkaApis.handleListOffsetRequestV1AndAbove` @ 3.9.2)
+        $frame = hex2bin(
+            '00000036' . '000002e1' . '00'
+            . '00000000'
+            . '02' . '0e' . '74322d33302d766563746f7273'
+            . '02' . '00000000' . '0023' . 'ffffffffffffffff' . 'ffffffffffffffff' . 'ffffffff' . '00'
+            . '00' . '00'
+        );
+        self::assertIsString($frame);
+
+        $response = OffsetsResponseV6::unpack(new StringStream($frame));
+
+        $partition = $response->topics['t2-30-vectors']->partitions[0];
+        self::assertSame(KafkaException::UNSUPPORTED_VERSION, $partition->errorCode);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH, $partition->leaderEpoch);
+        self::assertInstanceOf(
+            UnsupportedVersionException::class,
+            KafkaException::fromCode($partition->errorCode, ['topic' => 't2-30-vectors'])
+        );
+    }
+
     public function testEarliestOffsetRequestIsPackedAccordingToTheSpec(): void
     {
         $request = new OffsetsRequest(
@@ -378,6 +631,8 @@ final class OffsetsApiTest extends TestCase
     {
         self::assertSame(-1, OffsetsRequest::LATEST);
         self::assertSame(-2, OffsetsRequest::EARLIEST);
+        self::assertSame(-3, OffsetsRequest::MAX_TIMESTAMP);
+        self::assertSame(-4, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
         self::assertSame(-1, OffsetsRequest::CONSUMER_REPLICA_ID);
         self::assertSame(-2, OffsetsRequest::DEBUGGING_REPLICA_ID);
         self::assertSame(-1, OffsetsResponsePartition::UNKNOWN_TIMESTAMP);
@@ -459,7 +714,7 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(
             '00000040'
-            . '0002' . '0006' . '00000007' . '0004' . '74657374' . '00'
+            . '0002' . '0009' . '00000007' . '0004' . '74657374' . '00'
             . 'ffffffff'
             . '00'
             . '02'

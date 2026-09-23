@@ -49,8 +49,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ids: Metadata **v10** (KIP-516) puts the id of a topic into every entry of the request and of the answer, and
  * Metadata **v11** (KIP-700) takes `cluster_authorized_operations` out again.
  *
- * @see docs/protocol/2.8.md, sections "Topic ids (v10, KIP-516)", "Metadata API (key 3, v0 to v11)",
- *      "Produce API (key 0, v0 to v9)" and "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, sections "Topic ids (v10, KIP-516)", "Metadata API (key 3, v0 to v12)",
+ *      "Produce API (key 0, v0 to v11)" and "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
@@ -114,14 +114,14 @@ final class TopicIdsApiTest extends IntegrationTestCase
     {
         // This is what KIP-516 is for: the id belongs to the topic, not to its name, so a broker that missed a
         // deletion can tell the two apart
-        $first = $this->topicIdOf($this->topic, 1001);
+        $first = $this->topicIdFromMetadata($this->topic, 1001);
 
         self::deleteTopic($this->topic);
         self::createTopic($this->topic);
         new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, self::CLIENT_ID)
             ->awaitTopicWithLeaders($this->topic);
 
-        $second = $this->topicIdOf($this->topic, 1002);
+        $second = $this->topicIdFromMetadata($this->topic, 1002);
 
         self::assertNotSame(
             Uuid::toString($first),
@@ -235,9 +235,9 @@ final class TopicIdsApiTest extends IntegrationTestCase
     }
 
     /**
-     * Returns the topic id a Metadata v11 answer names for the given topic
+     * Returns the topic id a Metadata v12 answer names for the given topic
      */
-    private function topicIdOf(string $topic, int $correlationId): string
+    private function topicIdFromMetadata(string $topic, int $correlationId): string
     {
         $stream = $this->connect();
         new MetadataRequest([$topic], false, self::CLIENT_ID, $correlationId)->writeTo($stream);
@@ -294,6 +294,6 @@ final class TopicIdsApiTest extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
 
-        return $container === false || trim($container) === '' ? 'kafka-2-8-2' : trim($container);
+        return $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
     }
 }

@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the transport: that the handshake succeeds against the certificate of the broker, that it fails against any other
  * trust anchor, and above all *which endpoint the broker advertises* to a client that reached it over TLS.
  *
- * @see docs/protocol/2.8.md, section "Transport security (SSL)"
+ * @see docs/protocol/3.9.md, section "Transport security (SSL)"
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(SecurityProtocol::class)]
@@ -137,7 +137,7 @@ final class SslTransportTest extends IntegrationTestCase
         $records = [[null, 'encrypted'], ['key', 'and authenticated']];
 
         // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/2.8.md
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/3.9.md
         new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,
@@ -151,9 +151,19 @@ final class SslTransportTest extends IntegrationTestCase
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->baseOffset);
 
-        new FetchRequest([$topic => [0 => 0]], 1000, 1, 65536, -1, self::CLIENT_ID, 202)->writeTo($stream);
+        new FetchRequest(
+            [$topic => [0 => 0]],
+            1000,
+            1,
+            65536,
+            -1,
+            self::CLIENT_ID,
+            202,
+            // Version 13 names the topic by its id and by nothing else (KIP-516)
+            topicIds: [$topic => self::topicIdOf($topic)]
+        )->writeTo($stream);
 
-        $fetched   = FetchResponse::unpack($stream)->topics[$topic]->partitions[0];
+        $fetched   = self::fetchedTopic(FetchResponse::unpack($stream), $topic)->partitions[0];
         $messages  = $fetched->getRecords()->getRecords();
         $delivered = [];
         foreach ($messages as $message) {

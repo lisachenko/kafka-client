@@ -47,7 +47,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the SASL/PLAIN authentication against the SASL listeners of a real Kafka 1.1.1 broker.
+ * Verifies the SASL/PLAIN authentication against the SASL listeners of the 3.9.2 KRaft node.
  *
  * Kafka 0.10.0 (KIP-43) put the mechanism negotiation into the protocol - `SaslHandshake`, api key 17 - and added
  * the PLAIN mechanism, whose token is a user name and a password rather than a Kerberos ticket. Kafka 1.0
@@ -57,7 +57,13 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * afterwards, and every way a broker can refuse - the 58 with a message after a v1 handshake, and the connection
  * that simply goes away after a v0 one.
  *
- * @see docs/protocol/2.8.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
+ * The node answers every one of those exactly as the 2.8.2 broker did, down to the wording of the refusals and
+ * the `session_lifetime_ms` 0 of a listener without a `connections.max.reauth.ms`. What it adds is the
+ * `StandardAuthorizer` behind the authentication: the credentials this class uses belong to `kafkatest`, one of
+ * the `super.users` of the node, while the SASL user `acltest` authenticates just as well and is then refused by
+ * every api it asks for. Authentication is what this suite measures; authorization belongs to the ACL apis.
+ *
+ * @see docs/protocol/3.9.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]
@@ -80,7 +86,7 @@ final class SaslTransportTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t8-sasl';
 
     /**
-     * Credentials of `docker/kafka-2.8.2/jaas.conf`
+     * Credentials of `docker/kafka-3.9.2/jaas.conf`
      */
     private const string USERNAME = 'kafkatest';
 
@@ -147,7 +153,7 @@ final class SaslTransportTest extends IntegrationTestCase
         $records = [[null, 'authenticated'], ['key', 'with SASL/PLAIN']];
 
         // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/2.8.md
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/3.9.md
         new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,
@@ -161,9 +167,19 @@ final class SaslTransportTest extends IntegrationTestCase
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->baseOffset);
 
-        new FetchRequest([$topic => [0 => 0]], 1000, 1, 65536, -1, self::CLIENT_ID, 202)->writeTo($stream);
+        new FetchRequest(
+            [$topic => [0 => 0]],
+            1000,
+            1,
+            65536,
+            -1,
+            self::CLIENT_ID,
+            202,
+            // Version 13 names the topic by its id and by nothing else (KIP-516)
+            topicIds: [$topic => self::topicIdOf($topic)]
+        )->writeTo($stream);
 
-        $fetched   = FetchResponse::unpack($stream)->topics[$topic]->partitions[0];
+        $fetched   = self::fetchedTopic(FetchResponse::unpack($stream), $topic)->partitions[0];
         $delivered = [];
         foreach ($fetched->getRecords()->getRecords() as $message) {
             $delivered[] = [$message->key, $message->value];
@@ -698,11 +714,11 @@ final class SaslTransportTest extends IntegrationTestCase
     }
 
     /**
-     * The certificate the 0.10.2.2 test broker presents on its SSL and SASL_SSL listeners
+     * The certificate the test broker of this branch presents on its SSL and SASL_SSL listeners
      */
     private static function saslBrokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-2.8.2/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-3.9.2/ssl/broker.crt';
     }
 
     /**

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * another version number, and version 5 (KIP-482) is that frame in the flexible encoding, which
  * {@see DescribeGroupsRequest} sends.
  *
- * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 final class DescribeGroupsRequestV3 extends DescribeGroupsRequest
 {

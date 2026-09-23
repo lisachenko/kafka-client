@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  *
  * Each vector is a frame that a Kafka broker really sent or really accepted - 0.10.2.2 for everything the 0.10 line
  * added, 0.9.0.1 and 0.8.2.2 for the api versions whose frames the later lines do not change - stored as hex in
- * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/2.8.md`. For every one of them
+ * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/3.9.md`. For every one of them
  * this suite checks four things:
  *
  * 1. the frame decodes into the class that the vector names;
@@ -256,6 +256,30 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function describeAclsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function createAclsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteAclsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function createPartitionsVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -416,6 +440,14 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function describeQuorumVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function describeClusterVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -425,6 +457,70 @@ final class ProtocolVectorTest extends TestCase
      * @return iterable<string, array{0: array<string, mixed>}>
      */
     public static function describeProducersVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeTransactionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function listTransactionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function getTelemetrySubscriptionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function pushTelemetryVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function listClientMetricsResourcesVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeTopicPartitionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function consumerGroupHeartbeatVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function consumerGroupDescribeVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
     }
@@ -775,6 +871,33 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @param array<string, mixed> $vector
      */
+    #[DataProvider('describeAclsVectors')]
+    public function testDescribeAclsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('createAclsVectors')]
+    public function testCreateAclsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteAclsVectors')]
+    public function testDeleteAclsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
     #[DataProvider('createPartitionsVectors')]
     public function testCreatePartitionsApi(array $vector): void
     {
@@ -958,6 +1081,15 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @param array<string, mixed> $vector
      */
+    #[DataProvider('describeQuorumVectors')]
+    public function testDescribeQuorumApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
     #[DataProvider('describeClusterVectors')]
     public function testDescribeClusterApi(array $vector): void
     {
@@ -969,6 +1101,78 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('describeProducersVectors')]
     public function testDescribeProducersApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeTransactionsVectors')]
+    public function testDescribeTransactionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('listTransactionsVectors')]
+    public function testListTransactionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('getTelemetrySubscriptionsVectors')]
+    public function testGetTelemetrySubscriptionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('pushTelemetryVectors')]
+    public function testPushTelemetryApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('listClientMetricsResourcesVectors')]
+    public function testListClientMetricsResourcesApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeTopicPartitionsVectors')]
+    public function testDescribeTopicPartitionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('consumerGroupHeartbeatVectors')]
+    public function testConsumerGroupHeartbeatApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('consumerGroupDescribeVectors')]
+    public function testConsumerGroupDescribeApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

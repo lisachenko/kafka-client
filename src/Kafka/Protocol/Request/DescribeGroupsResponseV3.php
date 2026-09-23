@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 4 (Kafka 2.4, KIP-345) gave every member entry a nullable `group_instance_id` behind its member id,
  * see {@see DescribeGroupsResponseV4}; this is the answer of version 3 alone.
  *
- * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 final class DescribeGroupsResponseV3 extends DescribeGroupsResponse
 {

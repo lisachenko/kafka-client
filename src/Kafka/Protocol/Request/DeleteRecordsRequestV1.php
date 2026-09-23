@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The class inherits {@see DeleteRecordsRequest::FLEXIBLE_VERSION} (2) and is therefore **not** flexible: the
  * engine asks `VERSION >= FLEXIBLE_VERSION`, and 1 is not.
  *
- * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 to v2)" and
+ * @see docs/protocol/3.9.md, sections "DeleteRecords API (key 21, v0 to v2)" and
  *      "Flexible versions in the engine (KIP-482)"
  */
 final class DeleteRecordsRequestV1 extends DeleteRecordsRequest

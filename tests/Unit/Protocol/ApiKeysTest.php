@@ -36,7 +36,7 @@ final class ApiKeysTest extends TestCase
      *
      * @var array<string, int>
      */
-    private const array KEYS_OF_KAFKA_2_8_2 = [
+    private const array KEYS_OF_KAFKA_3_9_2 = [
         'PRODUCE'                 => 0,
         'FETCH'                   => 1,
         'OFFSETS'                 => 2,
@@ -102,14 +102,37 @@ final class ApiKeysTest extends TestCase
         'BROKER_REGISTRATION'             => 62,
         'BROKER_HEARTBEAT'                => 63,
         'UNREGISTER_BROKER'               => 64,
+        'DESCRIBE_TRANSACTIONS'           => 65,
+        'LIST_TRANSACTIONS'               => 66,
+        'ALLOCATE_PRODUCER_IDS'           => 67,
+        'CONSUMER_GROUP_HEARTBEAT'        => 68,
+        'CONSUMER_GROUP_DESCRIBE'         => 69,
+        'CONTROLLER_REGISTRATION'         => 70,
+        'GET_TELEMETRY_SUBSCRIPTIONS'     => 71,
+        'PUSH_TELEMETRY'                  => 72,
+        'ASSIGN_REPLICAS_TO_DIRS'         => 73,
+        'LIST_CLIENT_METRICS_RESOURCES'   => 74,
+        'DESCRIBE_TOPIC_PARTITIONS'       => 75,
+        'SHARE_GROUP_HEARTBEAT'           => 76,
+        'SHARE_GROUP_DESCRIBE'            => 77,
+        'SHARE_FETCH'                     => 78,
+        'SHARE_ACKNOWLEDGE'               => 79,
+        'ADD_RAFT_VOTER'                  => 80,
+        'REMOVE_RAFT_VOTER'               => 81,
+        'UPDATE_RAFT_VOTER'               => 82,
+        'INITIALIZE_SHARE_GROUP_STATE'    => 83,
+        'READ_SHARE_GROUP_STATE'          => 84,
+        'WRITE_SHARE_GROUP_STATE'         => 85,
+        'DELETE_SHARE_GROUP_STATE'        => 86,
+        'READ_SHARE_GROUP_STATE_SUMMARY'  => 87,
     ];
 
-    public function testTheApiKeysAreExactlyTheOnesOfKafka282(): void
+    public function testTheApiKeysAreExactlyTheOnesOfKafka392(): void
     {
         self::assertSame(
-            self::KEYS_OF_KAFKA_2_8_2,
+            self::KEYS_OF_KAFKA_3_9_2,
             new ReflectionClass(ApiKeys::class)->getConstants(),
-            'The branch declares an api key that Kafka 2.8.2 does not have, or misses one that it has'
+            'The branch declares an api key that Kafka 3.9.2 does not have, or misses one that it has'
         );
     }
 
@@ -191,15 +214,41 @@ final class ApiKeysTest extends TestCase
     }
 
     /**
-     * DescribeTransactions (65) and ListTransactions (66) arrived with Kafka 3.0 and must not appear on this branch;
-     * ElectPreferredLeaders is the 2.2 name of ElectLeaders (43) and is not a key of its own
+     * The keys 65 to 87 of `ApiKeys.java` @ 3.9.2, read at the release tags: 65-67 with Kafka 3.0, 68 with 3.5, 69-74
+     * with 3.7, 75 with 3.8 and 76-87 with 3.9
+     */
+    public function testTheKeysOfKafka3AreDeclared(): void
+    {
+        self::assertSame(65, ApiKeys::DESCRIBE_TRANSACTIONS);
+        self::assertSame(66, ApiKeys::LIST_TRANSACTIONS);
+        self::assertSame(67, ApiKeys::ALLOCATE_PRODUCER_IDS);
+        self::assertSame(68, ApiKeys::CONSUMER_GROUP_HEARTBEAT);
+        self::assertSame(69, ApiKeys::CONSUMER_GROUP_DESCRIBE);
+        self::assertSame(70, ApiKeys::CONTROLLER_REGISTRATION);
+        self::assertSame(71, ApiKeys::GET_TELEMETRY_SUBSCRIPTIONS);
+        self::assertSame(72, ApiKeys::PUSH_TELEMETRY);
+        self::assertSame(73, ApiKeys::ASSIGN_REPLICAS_TO_DIRS);
+        self::assertSame(74, ApiKeys::LIST_CLIENT_METRICS_RESOURCES);
+        self::assertSame(75, ApiKeys::DESCRIBE_TOPIC_PARTITIONS);
+        self::assertSame(76, ApiKeys::SHARE_GROUP_HEARTBEAT);
+        self::assertSame(79, ApiKeys::SHARE_ACKNOWLEDGE);
+        self::assertSame(80, ApiKeys::ADD_RAFT_VOTER);
+        self::assertSame(82, ApiKeys::UPDATE_RAFT_VOTER);
+        self::assertSame(83, ApiKeys::INITIALIZE_SHARE_GROUP_STATE);
+        self::assertSame(87, ApiKeys::READ_SHARE_GROUP_STATE_SUMMARY);
+    }
+
+    /**
+     * `ApiKeys.java` @ 3.9.2 ends at ReadShareGroupStateSummary (87); the keys Kafka 4.x adds must not appear on this
+     * branch. ElectPreferredLeaders is the 2.2 name of ElectLeaders (43), AlterIsr the published name of key 56 (the
+     * Java client renamed it AlterPartition in 3.2), and neither is a key of its own
      */
     public function testNoApiKeyOfALaterKafkaIsDeclared(): void
     {
         $keys = new ReflectionClass(ApiKeys::class)->getConstants();
 
-        self::assertSame(range(0, 64), array_values($keys));
+        self::assertSame(range(0, 87), array_values($keys));
         self::assertNotContains('ELECT_PREFERRED_LEADERS', array_keys($keys));
-        self::assertNotContains('DESCRIBE_TRANSACTIONS', array_keys($keys));
+        self::assertNotContains('ALTER_PARTITION', array_keys($keys));
     }
 }

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises DescribeProducers (key 61, v0) of KIP-664 against a real Kafka 2.8.2 broker.
+ * Exercises DescribeProducers (key 61, v0) of KIP-664 against the 3.9.2 KRaft node.
  *
  * The api reads out the `ProducerStateManager` of a partition - the table that makes the idempotent producer of
  * KIP-98 work - and it is the first api of this protocol that does so: until Kafka 2.8 the only way to see which
@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * The request is routed **per leader**, not to any node and not to a coordinator: a partition's producer state
  * lives in its log, so only the broker that holds the leader replica can answer for it.
  *
- * @see docs/protocol/2.8.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeProducersRequest::class)]
@@ -285,8 +285,11 @@ final class DescribeProducersApiTest extends IntegrationTestCase
      * A partition that has no leader here is reported per partition, and the other partitions of the request answer
      *
      * The client cannot route a request about a partition the cluster does not have, so this is the raw frame: the
-     * answer carries one entry per requested partition, and the unknown one is the error code **3** with the
-     * message of `KafkaApis.handleDescribeProducersRequest`.
+     * answer carries one entry per requested partition, and the unknown one is the error code **3**. Its message
+     * is **null** here, because `handleDescribeProducersRequest` @ 3.9.2 only builds a message for the errors it
+     * raises per topic - a topic the cluster does not know at all is answered with the default sentence of the
+     * code, `This server does not host this topic-partition.`, and an illegal topic name with the 17 and the
+     * sentence of `Topic.validate`.
      */
     public function testAnUnknownPartitionIsReportedInItsOwnEntry(): void
     {
@@ -303,6 +306,7 @@ final class DescribeProducersApiTest extends IntegrationTestCase
         self::assertNull($partitions[0]->errorMessage);
         self::assertSame([], $partitions[0]->activeProducers);
         self::assertSame(KafkaException::UNKNOWN_TOPIC_OR_PARTITION, $partitions[7]->errorCode);
+        self::assertNull($partitions[7]->errorMessage, 'the partition-level error carries no message of its own');
         self::assertSame([], $partitions[7]->activeProducers);
     }
 

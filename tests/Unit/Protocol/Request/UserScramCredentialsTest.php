@@ -33,14 +33,14 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
 
 /**
  * Byte-exact tests for the three apis Kafka 2.7 added: the two SCRAM credential apis of KIP-554 (keys 50 and 51)
- * and UpdateFeatures of KIP-584 (key 57).
+ * and UpdateFeatures of KIP-584 (key 57), whose version 1 of KIP-778 has a test class of its own.
  *
  * All three are flexible from their version 0 - Kafka 2.7 is well past KIP-482 - so every frame here is a compact
  * one. What makes the pair of KIP-554 interesting is that the **client** does a computation before it sends
  * anything: the salted password of RFC 5802, which is the reason the broker never learns a password.
  *
- * @see docs/protocol/2.8.md, sections "DescribeUserScramCredentials API (key 50, v0)",
- *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0)"
+ * @see docs/protocol/3.9.md, sections "DescribeUserScramCredentials API (key 50, v0)",
+ *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0 and v1)"
  */
 #[CoversClass(DescribeUserScramCredentialsRequest::class)]
 #[CoversClass(DescribeUserScramCredentialsResponse::class)]
@@ -244,7 +244,11 @@ final class UserScramCredentialsTest extends TestCase
     }
 
     /**
-     * A max version level below 1 is the deletion of a finalized feature, and it needs the downgrade flag
+     * A max version level below 1 is the deletion of a finalized feature, and it needs a downgrade
+     *
+     * The client sends the **version 1** of the api since Kafka 3.3 (KIP-778), so the downgrade travels as the
+     * `upgrade_type` **2** (`SAFE_DOWNGRADE`) where the version 0 had the boolean, and the frame ends in the
+     * `validate_only` this call leaves false - see {@see UpdateFeaturesTest} for the whole of that version.
      */
     public function testAFeatureUpdateBelowOneIsADeletion(): void
     {
@@ -263,9 +267,10 @@ final class UserScramCredentialsTest extends TestCase
         self::assertSame(ApiKeys::UPDATE_FEATURES, $request->getApiKey());
         self::assertSame(60000, $request->getTimeoutMs());
         self::assertStringEndsWith(
-            '0000' . '01' . '00' . '00',
+            '0000' . '02' . '00' . '00' . '00',
             bin2hex((string) $request),
-            'the version level 0, the downgrade flag and the two tag buffers'
+            'the version level 0, the safe downgrade, the tag buffer of the entry, the validate_only and the tag'
+            . ' buffer of the body'
         );
     }
 

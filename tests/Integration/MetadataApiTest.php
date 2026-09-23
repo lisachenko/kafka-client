@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 /**
  * Verifies the Metadata API v0 to v4 against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
+ * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -102,15 +102,21 @@ final class MetadataApiTest extends IntegrationTestCase
 
         self::assertSame(1, $response->getCorrelationId());
         self::assertArrayHasKey($topic, $response->topics);
+
+        // **3 UNKNOWN_TOPIC_OR_PARTITION, not the 5 LEADER_NOT_AVAILABLE of a ZooKeeper-backed broker.** On a
+        // KRaft node `AutoTopicCreationManager` sends a CreateTopics record to the controller and answers the
+        // Metadata request from the image it has *now*, in which the topic does not exist yet; the ZooKeeper
+        // broker of the line below wrote the topic into ZooKeeper itself and could already answer 5 for it.
         self::assertSame(
-            5,
+            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
             $response->topics[$topic]->topicErrorCode,
-            'a broker with auto.create.topics.enable answers LeaderNotAvailable for a topic it has just created'
+            'a KRaft node answers UnknownTopicOrPartition while the controller is still creating the topic'
         );
         self::assertSame([], $response->topics[$topic]->partitions);
         self::assertFalse($response->topics[$topic]->isInternal, 'a topic of an application is never internal');
 
-        // ... and once the controller has elected the leaders, every partition of the topic is announced
+        // ... and the next answer is the complete one: the controller elects the leader of every partition with
+        // the creation, so there is no LeaderNotAvailable window in between at all
         $topicMetadata = $this->awaitTopicWithLeaders($topic);
 
         self::assertSame(0, $topicMetadata->topicErrorCode);
@@ -311,9 +317,14 @@ final class MetadataApiTest extends IntegrationTestCase
             'the only difference is the empty offline_replicas array of every partition'
         );
 
+        // The one broker of the container is the KRaft node, whose `node.id` is **1** - a ZooKeeper-backed broker
+        // of the line below was the broker 0 - so the replica lists are read off the answer, never written down
+        $nodeIds = array_keys($versionFive->brokers);
+        self::assertCount(1, $nodeIds, 'the container is a one-node cluster');
+
         foreach ($versionFive->topics[$topic]->partitions as $partitionId => $partition) {
-            self::assertSame([0], $partition->replicas, "partition {$partitionId} lives on the only broker");
-            self::assertSame([0], $partition->isr);
+            self::assertSame($nodeIds, $partition->replicas, "partition {$partitionId} lives on the only broker");
+            self::assertSame($nodeIds, $partition->isr);
             self::assertSame(
                 [],
                 $partition->offlineReplicas,
@@ -344,7 +355,7 @@ final class MetadataApiTest extends IntegrationTestCase
         $versionSix = MetadataResponseV6::unpack($stream);
 
         self::assertSame(6, MetadataRequestV6::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(11, MetadataRequest::VERSION, 'and the client sends the version Kafka 2.8 added');
+        self::assertSame(12, MetadataRequest::VERSION, 'and the client sends the version Kafka 3.1 added');
         self::assertSame($versionFive->getMessageSize(), $versionSix->getMessageSize());
         self::assertSame($versionFive->clusterId, $versionSix->clusterId);
         self::assertSame($versionFive->controllerId, $versionSix->controllerId);
@@ -403,19 +414,23 @@ final class MetadataApiTest extends IntegrationTestCase
         new MetadataRequest(null, false, self::CLIENT_ID, 34)->writeTo($stream);
         self::assertArrayNotHasKey($absent, MetadataResponse::unpack($stream)->topics);
 
-        // The same request with the flag TRUE creates it, and that first answer is the code 5 without partitions
+        // The same request with the flag TRUE creates it - but on a KRaft node the creation is a record the
+        // controller has to commit first, so the answer that triggers it still carries the code 3 and no
+        // partitions. The topic exists a moment later, which is what tells the two cases apart.
         new MetadataRequest([$absent], true, self::CLIENT_ID, 35)->writeTo($stream);
         $created = MetadataResponse::unpack($stream);
 
-        self::assertContains(
-            $created->topics[$absent]->topicErrorCode,
-            [KafkaException::NO_ERROR, KafkaException::LEADER_NOT_AVAILABLE],
-            'the topic springs into existence, with no leader elected yet'
-        );
-        self::assertNotSame(
+        self::assertSame(
             KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
-            $created->topics[$absent]->topicErrorCode
+            $created->topics[$absent]->topicErrorCode,
+            'the request asks the controller to create it and is answered from the image of this instant'
         );
+        self::assertSame([], $created->topics[$absent]->partitions);
+
+        $announced = $this->awaitTopicWithLeaders($absent);
+
+        self::assertSame(KafkaException::NO_ERROR, $announced->topicErrorCode);
+        self::assertCount(3, $announced->partitions, 'and it springs into existence with its leaders elected');
     }
 
     public function testVersionTwoAnswersAClusterIdThatEveryRequestRepeats(): void

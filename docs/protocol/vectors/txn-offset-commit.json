@@ -1,8 +1,8 @@
 {
     "api": "txn-offset-commit",
     "apiKey": 28,
-    "section": "TxnOffsetCommit API (key 28, v0 to v3)",
-    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v3), replayed by tests/Compliance.",
+    "section": "TxnOffsetCommit API (key 28, v0 to v4)",
+    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "txnoffsetcommit.request.v0",
@@ -179,7 +179,7 @@
         {
             "id": "txnoffsetcommit.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV3",
             "version": 3,
             "source": "broker",
             "description": "TxnOffsetCommit request v3 (KIP-447), the first flexible version of the api: the `generation_id`, the `member_id` and the `group_instance_id` the version added name the consumer whose offsets the transaction commits, and the coordinator refuses the commit of a member that has been rebalanced away.",
@@ -216,7 +216,7 @@
         {
             "id": "txnoffsetcommit.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV3",
             "version": 3,
             "source": "broker",
             "description": "TxnOffsetCommit answer v3: the error code 0 of the one partition, in the compact encoding.",
@@ -242,7 +242,7 @@
         {
             "id": "txnoffsetcommit.response.v3.illegal-generation",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV3",
             "version": 3,
             "source": "broker",
             "description": "TxnOffsetCommit answer v3 to a commit whose `generation_id` is not the one the group is in: the error code 22 (IllegalGeneration) per partition, which is what KIP-447 added the three fields for.",
@@ -268,7 +268,7 @@
         {
             "id": "txnoffsetcommit.response.v3.unknown-member",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV3",
             "version": 3,
             "source": "broker",
             "description": "TxnOffsetCommit answer v3 to a commit with a `member_id` the group does not have: the error code 25 (UnknownMemberId) per partition.",
@@ -285,6 +285,258 @@
                             {
                                 "partition": 0,
                                 "errorCode": 25
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "TxnOffsetCommit request v4 (Kafka 3.8, KIP-890): the version 3 frame of KIP-447 field for field - the generation -1 and the empty member id of a producer that is not a member of the group, a null `group_instance_id`, and the offset 42 of `t4-38-vectors-0` with the leader epoch -1 and a null metadata. \"Version 4 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\" is all the version says (`TxnOffsetCommitRequest.json` @ 3.8.1). This frame goes to the **group** coordinator, not to the transaction coordinator.",
+            "hex": "00000076001c000400000ee900126b61666b612d636c69656e742d74342d3338001174342d33382d766563746f72732d74781474342d33382d766563746f72732d67726f757000000000000000440001ffffffff0100020e74342d33382d766563746f72730200000000000000000000002affffffff00000000",
+            "fields": {
+                "messageSize": 118,
+                "apiKey": 28,
+                "apiVersion": 4,
+                "correlationId": 3817,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-tx",
+                "groupId": "t4-38-vectors-group",
+                "producerId": 68,
+                "producerEpoch": 1,
+                "generationId": -1,
+                "memberId": "",
+                "groupInstanceId": null,
+                "topics": {
+                    "t4-38-vectors": {
+                        "topic": "t4-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 42,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "TxnOffsetCommit answer v4: the per-partition code 0 of the group coordinator, which wrote the offset as a transactional record that stays invisible until the COMMIT marker.",
+            "hex": "0000002200000ee90000000000020e74342d33382d766563746f727302000000000000000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 3817,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-38-vectors": {
+                        "topic": "t4-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v4.unknown-member",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The same version 4 with the membership of KIP-447 filled in: the generation 99 and the member id `t4-38-no-such-member` of a group that has no member at all.",
+            "hex": "0000008a001c000400000eea00126b61666b612d636c69656e742d74342d3338001174342d33382d766563746f72732d74781474342d33382d766563746f72732d67726f757000000000000000440001000000631574342d33382d6e6f2d737563682d6d656d62657200020e74342d33382d766563746f72730200000000000000000000002bffffffff00000000",
+            "fields": {
+                "messageSize": 138,
+                "apiKey": 28,
+                "apiVersion": 4,
+                "correlationId": 3818,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-tx",
+                "groupId": "t4-38-vectors-group",
+                "producerId": 68,
+                "producerEpoch": 1,
+                "generationId": 99,
+                "memberId": "t4-38-no-such-member",
+                "groupInstanceId": null,
+                "topics": {
+                    "t4-38-vectors": {
+                        "topic": "t4-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 43,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v4.unknown-member",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The refusal: **25** `UnknownMemberId` per partition, one of the three codes the version 3 added, at the version 4 unchanged - the member id is checked before the generation, so the 22 of an illegal generation needs a member the group really holds.",
+            "hex": "0000002200000eea0000000000020e74342d33382d766563746f727302000000000019000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 3818,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-38-vectors": {
+                        "topic": "t4-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 25
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v4.not-in-transaction",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "TxnOffsetCommit request v4 of a transaction that holds a partition of `t4-38-vectors` but **not** the `__consumer_offsets` partition of `t4-38-vectors-group`, because no AddOffsetsToTxn preceded it. The group coordinator verifies that partition against the transaction coordinator before it writes the offset - the partition verification of KIP-890 part 1, `transaction.partition.verification.enable` - and this is the one client-facing frame of the wave whose refusal the version really changes.",
+            "hex": "00000080001c000400000f2000126b61666b612d636c69656e742d74342d3338001b74342d33382d766563746f72732d61626f727461626c652d74781474342d33382d766563746f72732d67726f757000000000000003500000ffffffff0100020e74342d33382d766563746f727302000000000000000000000007ffffffff00000000",
+            "fields": {
+                "messageSize": 128,
+                "apiKey": 28,
+                "apiVersion": 4,
+                "correlationId": 3872,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-abortable-tx",
+                "groupId": "t4-38-vectors-group",
+                "producerId": 848,
+                "producerEpoch": 0,
+                "generationId": -1,
+                "memberId": "",
+                "groupInstanceId": null,
+                "topics": {
+                    "t4-38-vectors": {
+                        "topic": "t4-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 7,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v4.not-in-transaction",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The **120** `TransactionAbortable` per partition, the code Kafka 3.8 declared, answered to a client because its version says it understands it: `GroupCoordinator.handleTxnCommitOffsets` @ 3.9.2 chooses `transactionSupportedOperation = if (apiVersion >= 4) genericError else defaultError`, and `AddPartitionsToTxnManager` passes the code through instead of folding it into the 48.",
+            "hex": "0000002200000f200000000000020e74342d33382d766563746f727302000000000078000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 3872,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-38-vectors": {
+                        "topic": "t4-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 120
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v3.not-in-transaction",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV3",
+            "version": 3,
+            "source": "broker",
+            "description": "The very same commit at the **version 3**, three bytes longer only because the transactional id of the second transaction is: the frames are otherwise identical, and the version field is what decides the answer.",
+            "hex": "00000083001c000300000f2300126b61666b612d636c69656e742d74342d3338001e74342d33382d766563746f72732d61626f727461626c652d76332d74781474342d33382d766563746f72732d67726f757000000000000003510000ffffffff0100020e74342d33382d766563746f727302000000000000000000000007ffffffff00000000",
+            "fields": {
+                "messageSize": 131,
+                "apiKey": 28,
+                "apiVersion": 3,
+                "correlationId": 3875,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-abortable-v3-tx",
+                "groupId": "t4-38-vectors-group",
+                "producerId": 849,
+                "producerEpoch": 0,
+                "generationId": -1,
+                "memberId": "",
+                "groupInstanceId": null,
+                "topics": {
+                    "t4-38-vectors": {
+                        "topic": "t4-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 7,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v3.not-in-transaction",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV3",
+            "version": 3,
+            "source": "broker",
+            "description": "The **48** `InvalidTxnState` a version 3 is answered for the same situation - `AddPartitionsToTxnManager` @ 3.9.2 maps the 120 back \"for backward compatibility with clients\" whose version does not promise to understand it. The two frames next to each other are the whole content of KIP-890 part 2 on this node.",
+            "hex": "0000002200000f230000000000020e74342d33382d766563746f727302000000000030000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 3875,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-38-vectors": {
+                        "topic": "t4-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 48
                             }
                         ]
                     }

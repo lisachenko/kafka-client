@@ -23,6 +23,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMemberV0;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMemberV3;
 use Protocol\Kafka\Protocol\Data\LeaveGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
@@ -43,6 +44,8 @@ use Protocol\Kafka\Protocol\Request\JoinGroupRequestV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV5;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV6;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequestV7;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequestV8;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV1;
@@ -51,16 +54,20 @@ use Protocol\Kafka\Protocol\Request\JoinGroupResponseV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV5;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV6;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponseV7;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponseV8;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV1;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV2;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV3;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV1;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV2;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV3;
+use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV1;
@@ -91,8 +98,8 @@ use Protocol\Kafka\Tests\Fixture\ResponseFrame;
  * byte, and only checks that they survive the round trip untouched. A real `consumer` group is a different matter:
  * a 2.x coordinator does parse the metadata of such a group, see the integration suite.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v7)", "SyncGroup API (key 14, v0 to v5)",
- *      "Heartbeat API (key 12, v0 to v4)" and "LeaveGroup API (key 13, v0 to v4)"
+ * @see docs/protocol/3.9.md, sections "JoinGroup API (key 11, v0 to v9)", "SyncGroup API (key 14, v0 to v5)",
+ *      "Heartbeat API (key 12, v0 to v4)" and "LeaveGroup API (key 13, v0 to v5)"
  */
 #[CoversClass(JoinGroupRequest::class)]
 #[CoversClass(JoinGroupRequestV0::class)]
@@ -101,6 +108,9 @@ use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 #[CoversClass(JoinGroupRequestV3::class)]
 #[CoversClass(JoinGroupRequestV4::class)]
 #[CoversClass(JoinGroupRequestV5::class)]
+#[CoversClass(JoinGroupRequestV6::class)]
+#[CoversClass(JoinGroupRequestV7::class)]
+#[CoversClass(JoinGroupRequestV8::class)]
 #[CoversClass(JoinGroupResponse::class)]
 #[CoversClass(JoinGroupResponseV0::class)]
 #[CoversClass(JoinGroupResponseV1::class)]
@@ -108,6 +118,9 @@ use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 #[CoversClass(JoinGroupResponseV3::class)]
 #[CoversClass(JoinGroupResponseV4::class)]
 #[CoversClass(JoinGroupResponseV5::class)]
+#[CoversClass(JoinGroupResponseV6::class)]
+#[CoversClass(JoinGroupResponseV7::class)]
+#[CoversClass(JoinGroupResponseV8::class)]
 #[CoversClass(JoinGroupResponseMemberV0::class)]
 #[CoversClass(SyncGroupRequest::class)]
 #[CoversClass(SyncGroupRequestV0::class)]
@@ -134,12 +147,15 @@ use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 #[CoversClass(LeaveGroupRequestV1::class)]
 #[CoversClass(LeaveGroupRequestV2::class)]
 #[CoversClass(LeaveGroupRequestV3::class)]
+#[CoversClass(LeaveGroupRequestV4::class)]
 #[CoversClass(LeaveGroupRequestMember::class)]
+#[CoversClass(LeaveGroupRequestMemberV3::class)]
 #[CoversClass(LeaveGroupResponse::class)]
 #[CoversClass(LeaveGroupResponseV0::class)]
 #[CoversClass(LeaveGroupResponseV1::class)]
 #[CoversClass(LeaveGroupResponseV2::class)]
 #[CoversClass(LeaveGroupResponseV3::class)]
+#[CoversClass(LeaveGroupResponseV4::class)]
 #[CoversClass(LeaveGroupResponseMember::class)]
 #[CoversClass(JoinGroupRequestProtocol::class)]
 #[CoversClass(JoinGroupResponseMember::class)]
@@ -679,10 +695,10 @@ final class GroupMembershipTest extends TestCase
     {
         $arguments = ['my-group', 30000, 300000, JoinGroupRequest::DEFAULT_MEMBER_ID, 'consumer', ['range' => self::METADATA], 'test', 1];
 
-        $request = new JoinGroupRequest(...$arguments);
+        $request = new JoinGroupRequestV7(...$arguments);
         $below   = new JoinGroupRequestV6(...$arguments);
 
-        self::assertSame(7, $request->getApiVersion(), 'KIP-559 makes the version this client sends 7');
+        self::assertSame(7, $request->getApiVersion(), 'KIP-559 raised the api to 7');
         self::assertSame(
             str_replace('000b' . '0006', '000b' . '0007', self::JOIN_REQUEST_V6_HEX),
             bin2hex((string) $request),
@@ -1380,11 +1396,11 @@ final class GroupMembershipTest extends TestCase
      */
     public function testLeaveGroupRequestOfVersionFourIsFlexible(): void
     {
-        $request = new LeaveGroupRequest('my-group', 'one-1', 'test', 4);
+        $request = new LeaveGroupRequestV4('my-group', 'one-1', 'test', 4);
         $frame   = bin2hex((string) $request);
 
-        self::assertSame(4, $request->getApiVersion(), 'KIP-482 makes the version this client sends 4');
-        self::assertTrue(LeaveGroupRequest::isFlexible());
+        self::assertSame(4, $request->getApiVersion(), 'KIP-482 made the batch of KIP-345 flexible at version 4');
+        self::assertTrue(LeaveGroupRequestV4::isFlexible());
         self::assertStringEndsWith(
             '02' . '06' . bin2hex('one-1') . '00' . '00' . '00',
             $frame,
@@ -1500,5 +1516,245 @@ final class GroupMembershipTest extends TestCase
         self::assertSame('two', $response->members[1]->groupInstanceId);
         self::assertSame(25, $response->members[1]->errorCode, 'and the group does not have that instance');
         self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
+    }
+
+    /**
+     * Version 8 (Kafka 3.2, KIP-800) appended the nullable `reason` behind the protocol array and nothing else
+     */
+    public function testJoinGroupRequestOfVersionEightAppendsTheReasonOfKipEightHundred(): void
+    {
+        $arguments = [
+            'my-group',
+            30000,
+            300000,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => self::METADATA],
+            'test',
+            1,
+        ];
+
+        $withoutReason = new JoinGroupRequestV8(...$arguments);
+        $withReason    = new JoinGroupRequestV8(...[...$arguments, null, 'a reason']);
+        $below         = new JoinGroupRequestV7(...[...$arguments, null, 'a reason']);
+
+        self::assertSame(8, $withoutReason->getApiVersion());
+        self::assertSame(
+            '00000038' . substr(str_replace('000b' . '0006', '000b' . '0008', self::JOIN_REQUEST_V6_HEX), 8) . '00',
+            bin2hex((string) $withoutReason),
+            'a member that names no reason writes the compact null, one byte, behind the protocol array'
+        );
+        self::assertSame(
+            substr(bin2hex((string) $withoutReason), 8, -4) . '09' . bin2hex('a reason') . '00',
+            substr(bin2hex((string) $withReason), 8),
+            'and a member that names one writes it as a compact string in that very place'
+        );
+        self::assertSame(
+            str_replace('000b' . '0006', '000b' . '0007', self::JOIN_REQUEST_V6_HEX),
+            bin2hex((string) $below),
+            'while the version 7 frame never carries the reason, whatever the caller named'
+        );
+    }
+
+    /**
+     * Version 9 (Kafka 3.2, KIP-814) sends the very bytes of version 8: what it adds is in the answer
+     */
+    public function testJoinGroupRequestOfVersionNineIsTheVersionEightFrame(): void
+    {
+        $arguments = [
+            'my-group',
+            30000,
+            300000,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => self::METADATA],
+            'test',
+            1,
+            null,
+            'a reason',
+        ];
+
+        $request = new JoinGroupRequest(...$arguments);
+        $below   = new JoinGroupRequestV8(...$arguments);
+
+        self::assertSame(9, $request->getApiVersion(), 'KIP-814 makes the version this client sends 9');
+        self::assertSame(
+            str_replace('000b' . '0008', '000b' . '0009', bin2hex((string) $below)),
+            bin2hex((string) $request),
+            'the two frames differ in the api version of the header and in nothing else'
+        );
+    }
+
+    /**
+     * `JoinGroupRequest.maybeTruncateReason` @ 3.2.3 cuts the text at 255 characters before it reaches the broker
+     */
+    public function testTheReasonOfAJoinIsTruncatedAtTheLengthTheJavaClientSends(): void
+    {
+        $reason  = str_repeat('x', JoinGroupRequest::MAX_REASON_LENGTH + 10);
+        $request = new JoinGroupRequest(
+            'my-group',
+            30000,
+            300000,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => self::METADATA],
+            'test',
+            1,
+            null,
+            $reason
+        );
+
+        self::assertStringEndsWith(
+            bin2hex(str_repeat('x', JoinGroupRequest::MAX_REASON_LENGTH)) . '00',
+            bin2hex((string) $request),
+            'only the first 255 characters reach the wire, in front of the tag buffer of the body'
+        );
+        self::assertSame(
+            JoinGroupRequest::MAX_REASON_LENGTH,
+            strlen(JoinGroupRequest::truncateReason($reason))
+        );
+        self::assertSame('short', JoinGroupRequest::truncateReason('short'), 'a short reason is left alone');
+    }
+
+    /**
+     * The `skip_assignment` of KIP-814 sits between the leader id and the member id of the version 9 answer
+     */
+    public function testJoinGroupResponseOfVersionNineReadsTheSkipAssignmentFlag(): void
+    {
+        $body = '00000000'
+            . '0000'
+            . '00000007'
+            . '09' . bin2hex('consumer')
+            . '06' . bin2hex('range')
+            . '06' . bin2hex('one-1');
+        $tail = '06' . bin2hex('one-1') . '01' . '00';
+
+        $skipping = self::framed('00000002' . '00' . $body . '01' . $tail);
+        $running  = self::framed('00000002' . '00' . $body . '00' . $tail);
+
+        $leaderThatSkips = JoinGroupResponse::unpack(new StringStream((string) hex2bin($skipping)));
+        $leaderThatRuns  = JoinGroupResponse::unpack(new StringStream((string) hex2bin($running)));
+
+        self::assertTrue($leaderThatSkips->skipAssignment, 'the static leader keeps the assignment of its group');
+        self::assertFalse($leaderThatRuns->skipAssignment);
+        self::assertSame('one-1', $leaderThatSkips->leaderId);
+        self::assertSame('one-1', $leaderThatSkips->memberId);
+        self::assertSame($skipping, bin2hex((string) $leaderThatSkips), 'the answer survives the round trip');
+        self::assertSame($running, bin2hex((string) $leaderThatRuns));
+    }
+
+    /**
+     * A version 8 answer has no such byte at all, so the flag of its member stays false
+     */
+    public function testJoinGroupResponseOfVersionEightHasNoSkipAssignmentByte(): void
+    {
+        $frame = self::framed(
+            '00000002'
+            . '00'
+            . '00000000'
+            . '0000'
+            . '00000007'
+            . '09' . bin2hex('consumer')
+            . '06' . bin2hex('range')
+            . '06' . bin2hex('one-1')
+            . '06' . bin2hex('one-1')
+            . '01'
+            . '00'
+        );
+
+        foreach ([JoinGroupResponseV7::class, JoinGroupResponseV8::class] as $class) {
+            $response = $class::unpack(new StringStream((string) hex2bin($frame)));
+
+            self::assertFalse($response->skipAssignment, 'the versions below 9 never ask the leader to skip');
+            self::assertSame('consumer', $response->protocolType);
+            self::assertSame($frame, bin2hex((string) $response));
+        }
+    }
+
+    /**
+     * Version 5 (Kafka 3.2, KIP-800) gave every entry of the batch a nullable `reason` behind its instance id
+     */
+    public function testLeaveGroupRequestOfVersionFiveGivesEveryEntryAReason(): void
+    {
+        $request = new LeaveGroupRequest(
+            'my-group',
+            [new LeaveGroupRequestMember('one-1'), new LeaveGroupRequestMember('', 'two')],
+            'test',
+            4,
+            'the consumer is being closed'
+        );
+
+        self::assertSame(5, $request->getApiVersion(), 'KIP-800 makes the version this client sends 5');
+        self::assertStringEndsWith(
+            '06' . bin2hex('one-1') . '00' . '1d' . bin2hex('the consumer is being closed') . '00'
+            . '01' . '04' . bin2hex('two') . '1d' . bin2hex('the consumer is being closed') . '00'
+            . '00',
+            bin2hex((string) $request),
+            'the reason of the request is written into every entry that does not carry one of its own'
+        );
+        self::assertSame(
+            'its own reason',
+            new LeaveGroupRequest(
+                'my-group',
+                [new LeaveGroupRequestMember('one-1', null, 'its own reason')],
+                'test',
+                4,
+                'a batch reason'
+            )->getMembers()[0]->reason,
+            'an entry that names a reason keeps it'
+        );
+    }
+
+    /**
+     * The versions 3 and 4 have no such field, so a reason a caller names never reaches their wire
+     */
+    public function testTheBatchOfTheVersionsBelowFiveDropsTheReason(): void
+    {
+        $request = new LeaveGroupRequestV4(
+            'my-group',
+            [new LeaveGroupRequestMember('one-1', null, 'a reason')],
+            'test',
+            4
+        );
+
+        self::assertContainsOnlyInstancesOf(LeaveGroupRequestMemberV3::class, $request->getMembers());
+        self::assertStringEndsWith(
+            '02' . '06' . bin2hex('one-1') . '00' . '00' . '00',
+            bin2hex((string) $request),
+            'the entry ends after its null instance id, with the two tag buffers behind it'
+        );
+    }
+
+    /**
+     * Version 5 (KIP-800) left the answer alone: "Version 5 is the same as version 4"
+     */
+    public function testLeaveGroupResponseOfVersionFiveIsTheVersionFourAnswer(): void
+    {
+        $frame = self::framed(
+            '00000004'
+            . '00'
+            . '00000000'
+            . '0000'
+            . '02'
+            . '06' . bin2hex('one-1') . '00' . '0000' . '00'
+            . '00'
+        );
+
+        foreach ([LeaveGroupResponseV4::class, LeaveGroupResponse::class] as $class) {
+            $response = $class::unpack(new StringStream((string) hex2bin($frame)));
+
+            self::assertSame(0, $response->errorCode);
+            self::assertCount(1, $response->members);
+            self::assertSame('one-1', $response->members[0]->memberId);
+            self::assertSame($frame, bin2hex((string) $response), 'the two versions decode the same bytes');
+        }
+    }
+
+    /**
+     * Puts the `Size` field in front of a hex answer whose body is written out by hand
+     */
+    private static function framed(string $payloadHex): string
+    {
+        return bin2hex(pack('N', strlen($payloadHex) / 2)) . $payloadHex;
     }
 }

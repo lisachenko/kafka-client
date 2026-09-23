@@ -43,14 +43,19 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 
 /**
  * Exercises the topic administration apis - CreateTopics (19), DeleteTopics (20) and CreatePartitions (37) -
- * against a real Kafka 1.1.1 broker.
+ * against the Kafka 3.9.2 KRaft node of this line.
  *
  * The first two arrived with Kafka 0.10.1, the third with Kafka 1.0 (KIP-195), and all three are served by the
- * ACTIVE CONTROLLER only. The container of `docker-compose.yml` runs a single broker, which is therefore always the
- * controller, so the error code 41 (NotController) can not be produced here - it is exercised with a scripted
- * two-broker cluster in `tests/Unit/Admin/AdminClientTest.php`.
+ * ACTIVE CONTROLLER only. The node of `docker-compose.yml` is a single combined broker/controller, which is
+ * therefore always the controller, so the error code 41 (NotController) can not be produced here - it is exercised
+ * with a scripted two-broker cluster in `tests/Unit/Admin/AdminClientTest.php`.
  *
- * @see docs/protocol/2.8.md, sections "CreateTopics API (key 19, v0 to v7)", "DeleteTopics API (key 20, v0 to v6)"
+ * Every refusal of the three apis is worded by the KRaft controller now - `ReplicationControlManager` @ 3.9.2 for
+ * CreateTopics and CreatePartitions, `ControllerApis.deleteTopics` @ 3.9.2 for DeleteTopics - where the 2.8.2
+ * broker answered with the wording of `ZkAdminManager` and `AdminZkClient`; the messages below are the ones the
+ * node really sent, and the node id of the image is **1**, not the 0 of the ZooKeeper images of the lines below.
+ *
+ * @see docs/protocol/3.9.md, sections "CreateTopics API (key 19, v0 to v7)", "DeleteTopics API (key 20, v0 to v6)"
  *      and "CreatePartitions API (key 37, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]
@@ -112,7 +117,11 @@ final class TopicAdminApiTest extends IntegrationTestCase
         sort($partitions);
         self::assertSame([0, 1, 2], $partitions, 'three partitions were created');
         foreach ($metadata->partitions as $partition) {
-            self::assertSame([0], array_values($partition->replicas), 'the single broker hosts every partition');
+            self::assertSame(
+                [$this->brokerId()],
+                array_values($partition->replicas),
+                'the single broker hosts every partition'
+            );
         }
         self::assertContains($topic, $this->admin->listTopics());
     }
@@ -136,7 +145,11 @@ final class TopicAdminApiTest extends IntegrationTestCase
         sort($partitions);
         self::assertSame([0, 1, 2], $partitions, 'the `num.partitions=3` of the image');
         foreach ($metadata->partitions as $partition) {
-            self::assertSame([0], array_values($partition->replicas), 'and the default replication factor 1');
+            self::assertSame(
+                [$this->brokerId()],
+                array_values($partition->replicas),
+                'and the default replication factor 1'
+            );
         }
         self::assertGreaterThanOrEqual(
             4,
@@ -260,7 +273,7 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createTopics([new NewTopic($topic, 1, 1)], 30000, true);
 
         self::assertSame([$topic => null], $result, 'the request was valid');
-        self::assertNotContains($topic, $this->admin->listTopics(), 'and nothing was written to ZooKeeper');
+        self::assertNotContains($topic, $this->admin->listTopics(), 'and nothing reached the metadata log');
     }
 
     public function testCreatingATopicThatAlreadyExistsIsReportedAsTopicExists(): void
@@ -284,9 +297,15 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createTopics([new NewTopic($topic, 1, 2)]);
 
         self::assertInstanceOf(InvalidReplicationFactorException::class, $result[$topic]);
-        self::assertStringContainsString(
-            'larger than available brokers',
-            (string) ($result[$topic]->getContext()['error'] ?? '')
+        // The code (38) is the one of every line below; the sentence is the KRaft one. `createTopic()` of
+        // `ReplicationControlManager` @ 3.9.2 wraps whatever the replica placer throws into "Unable to replicate
+        // the partition <n> time(s): <reason>", and the reason of `StripedReplicaPlacer.
+        // throwInvalidReplicationFactorIfTooFewBrokers()` names the registered brokers - where `AdminUtils.
+        // assignReplicasToBrokers` @ 2.8.2 said "replication factor: 2 larger than available brokers: 1"
+        self::assertSame(
+            'Unable to replicate the partition 2 time(s): The target replication factor of 2 cannot be reached '
+            . 'because only 1 broker(s) are registered.',
+            $result[$topic]->getContext()['error'] ?? null
         );
         self::assertNotContains($topic, $this->admin->listTopics());
     }
@@ -297,11 +316,12 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createTopics([new NewTopic($topic, 0, 1)]);
 
         self::assertInstanceOf(InvalidPartitionsException::class, $result[$topic]);
-        // The text changed with Kafka 1.0, the code (37) did not: `AdminUtils.assignReplicasToBrokers` @ 0.11.0.3
-        // threw "number of partitions must be larger than 0" and `AdminUtils`/`AdminZkClient` @ 1.1.1 throws
-        // "Number of partitions must be larger than 0." - a capital N and a trailing dot
+        // The text changed with every controller, the code (37) never did: `AdminUtils.assignReplicasToBrokers`
+        // @ 0.11.0.3 threw "number of partitions must be larger than 0", `AdminZkClient` @ 1.1.1 and @ 2.8.2
+        // "Number of partitions must be larger than 0." - and `ReplicationControlManager.createTopic()` @ 3.9.2
+        // refuses the 0 itself, before any placement, with a sentence that says nothing about a lower bound
         self::assertSame(
-            'Number of partitions must be larger than 0.',
+            'Number of partitions was set to an invalid non-positive value.',
             $result[$topic]->getContext()['error'] ?? null
         );
     }
@@ -322,19 +342,26 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertNotContains($topic, $this->admin->listTopics());
     }
 
-    public function testAnUnparsableOptionValueIsReportedAsAnUnknownError(): void
+    /**
+     * A value the `ConfigDef` cannot parse is the code **40** on a KRaft node, where 2.8.2 answered -1
+     *
+     * `LogConfig.validate()` @ 2.8.2 threw Kafka's own `InvalidConfigurationException` (an `ApiException`, code 40)
+     * for an unknown option NAME, but the plain `ConfigException` of the config framework for a value it could not
+     * parse - and `Errors.forException()` has no code for that one, so it reached the wire as -1.
+     * `ConfigurationControlManager.validateAlterConfig()` @ 3.9.2 catches the `ConfigException` by its type and
+     * answers `new ApiError(INVALID_CONFIG, e.getMessage())`, i.e. the same 40 as the unknown name.
+     */
+    public function testAnUnparsableOptionValueIsRefusedWithForty(): void
     {
-        // LogConfig.validate() @ 0.10.2.2 throws Kafka's own InvalidConfigurationException (an ApiException, code
-        // 40) for an unknown option NAME, but the plain ConfigException of the config framework for a value it can
-        // not parse - and Errors.forException() has no code for that one, so it reaches the wire as -1
         $topic  = $this->topicName('config-value');
         $result = $this->admin->createTopics([new NewTopic($topic, 1, 1, configs: ['retention.ms' => 'soon'])]);
 
-        self::assertNotNull($result[$topic]);
-        self::assertStringContainsString(
-            'Not a number of type LONG',
-            (string) ($result[$topic]->getContext()['error'] ?? '')
+        self::assertInstanceOf(InvalidConfigException::class, $result[$topic]);
+        self::assertSame(
+            'Invalid value soon for configuration retention.ms: Not a number of type LONG',
+            $result[$topic]->getContext()['error'] ?? null
         );
+        self::assertNotContains($topic, $this->admin->listTopics());
     }
 
     public function testCombiningPartitionsWithAnExplicitAssignmentIsRefused(): void
@@ -343,9 +370,13 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createTopics([new NewTopic($topic, 1, 1, [0 => [0]])]);
 
         self::assertInstanceOf(InvalidRequestException::class, $result[$topic]);
-        self::assertStringContainsString(
-            'Both cannot be used at the same time',
-            (string) ($result[$topic]->getContext()['error'] ?? '')
+        // The KRaft controller reads the assignment first and then demands the -1/-1 of KIP-464 next to it, one
+        // field at a time, instead of the "Both cannot be used at the same time." of `ZkAdminManager` @ 2.8.2:
+        // the replication factor is checked before the partition count, so this is the only sentence of the two
+        // that a request carrying 1/1 and an assignment can get
+        self::assertSame(
+            'A manual partition assignment was specified, but replication factor was not set to -1.',
+            $result[$topic]->getContext()['error'] ?? null
         );
     }
 
@@ -356,7 +387,17 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertInstanceOf(InvalidTopicException::class, $result['t7 topics illegal name']);
     }
 
-    public function testATimeoutOfZeroAnswersRequestTimedOutWhileTheTopicIsCreatedAnyway(): void
+    /**
+     * A timeout of 0 is the code 7 and nothing else happens - the background creation of a ZooKeeper controller
+     * is gone
+     *
+     * `ZkAdminManager.createTopics()` @ 2.8.2 wrote the topic into ZooKeeper and only THEN waited for the timeout,
+     * so a 0 answered 7 for a topic that appeared a moment later. `ControllerApis` @ 3.9.2 turns the `timeout_ms`
+     * into a DEADLINE (`requestTimeoutMsToDeadlineNs`) that it hands to the `QuorumController` with the event: a
+     * deadline that has already passed expires the event before its records are written, so the answer is the same
+     * code 7 and the metadata log never sees the topic.
+     */
+    public function testATimeoutOfZeroAnswersRequestTimedOutAndCreatesNothing(): void
     {
         $topic = $this->topicName('async');
 
@@ -365,9 +406,10 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertInstanceOf(
             RequestTimedOutException::class,
             $result[$topic],
-            'a timeout of 0 answers before the controller is done, with the code 7'
+            'a timeout of 0 expires the controller event, with the code 7'
         );
-        $this->awaitTopic($topic);
+        self::assertNull($result[$topic]->getContext()['error'] ?? null, 'and the answer carries no message');
+        $this->assertTopicStaysAway($topic);
     }
 
     /**
@@ -444,7 +486,17 @@ final class TopicAdminApiTest extends IntegrationTestCase
         );
     }
 
-    public function testATopicThatIsNamedByItsNameAndItsIdAtOnceFailsTheWholeRequest(): void
+    /**
+     * A name and an id in one entry is refused per ENTRY on a KRaft node, and the rest of the request is carried out
+     *
+     * `ZkAdminManager` @ 2.8.2 let the `InvalidRequestException` of the malformed entry escape
+     * `handleDeleteTopicsRequest`, which answered the whole request with the code 42 and deleted nothing.
+     * `ControllerApis.deleteTopics()` @ 3.9.2 collects the entries first and appends a response of its own for
+     * every one it cannot read - "You may not specify both topic name and topic id.", and "Neither topic name nor
+     * id were specified." / "Duplicate topic name." / "Duplicate topic id." for the other three shapes - while the
+     * entries it CAN read are deleted.
+     */
+    public function testATopicThatIsNamedByItsNameAndItsIdAtOnceIsRefusedPerEntry(): void
     {
         $topic = $this->topicName('kip516-both');
         self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
@@ -461,15 +513,17 @@ final class TopicAdminApiTest extends IntegrationTestCase
             7104
         )->writeTo($stream);
         $response = DeleteTopicsResponse::unpack($stream);
+        $this->createdTopics = [];
 
-        foreach ($response->topics as $result) {
-            self::assertSame(
-                KafkaException::INVALID_REQUEST,
-                $result->errorCode,
-                'the exception of the malformed entry fails every topic of the request'
-            );
-        }
-        self::assertContains($topic, $this->admin->listTopics(), 'so the topic that was named properly is still there');
+        $malformed = $response->topics['t7-topics-never-created'];
+        self::assertSame(KafkaException::INVALID_REQUEST, $malformed->errorCode);
+        self::assertSame('You may not specify both topic name and topic id.', $malformed->errorMessage);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $response->topics[$topic]->errorCode,
+            'and the entry that named its topic properly was deleted all the same'
+        );
+        $this->awaitTopicIsGone($topic);
     }
 
     public function testADeletedTopicDisappearsFromTheMetadataOfTheCluster(): void
@@ -524,13 +578,20 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertSame([], $response->topics, 'no entry at all, not an error code');
     }
 
+    /**
+     * The controller probe of a client without Metadata v1: an illegal topic name, answered with 3
+     *
+     * The probe of the lines below sent it with `timeout_ms = 0`, because nothing has to be deleted for the answer
+     * to say who the controller is. On a KRaft node that timeout is a deadline that has already passed, so the
+     * whole request is answered with the code **7** before any name is looked at - the probe needs a real timeout
+     * here, and the answer of the node to the name itself is the 3 with the message of
+     * `UnknownTopicOrPartitionException` (there is no follower to answer 41 on a one-node cluster).
+     */
     public function testADeleteTopicsProbeWithAnIllegalTopicNameIsAnsweredWithoutSideEffects(): void
     {
-        // The probe a client without Metadata v1 has to use to find the controller: an illegal topic name, which
-        // the controller answers with 3 while every other broker answers 41
         $probe  = '#kafka-client-controller-probe#';
         $stream = $this->connect();
-        new DeleteTopicsRequest([$probe], 0, 't7-topics', 7101)->writeTo($stream);
+        new DeleteTopicsRequest([$probe], 30000, 't7-topics', 7101)->writeTo($stream);
 
         $response = DeleteTopicsResponse::unpack($stream);
 
@@ -539,7 +600,18 @@ final class TopicAdminApiTest extends IntegrationTestCase
             $response->topics[$probe]->errorCode,
             'the controller answers 3 for a topic name that can not exist; a follower would answer 41'
         );
+        self::assertSame('This server does not host this topic-partition.', $response->topics[$probe]->errorMessage);
         self::assertNotContains($probe, $this->admin->listTopics());
+
+        $stream = $this->connect();
+        new DeleteTopicsRequest([$probe], 0, 't7-topics', 7105)->writeTo($stream);
+        $expired = DeleteTopicsResponse::unpack($stream);
+
+        self::assertSame(
+            KafkaException::REQUEST_TIMED_OUT,
+            $expired->topics[$probe]->errorCode,
+            'while the timeout of 0 the lines below used never gets as far as the name'
+        );
     }
 
     public function testThePartitionCountOfATopicIsRaised(): void
@@ -562,12 +634,13 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
         $this->awaitTopic($topic);
 
-        // One entry per ADDED partition, one broker id per replica - the container has the broker 0 alone
-        $result = $this->admin->createPartitions([$topic => NewPartitions::increaseTo(2, [[0]])]);
+        // One entry per ADDED partition, one broker id per replica - the node of this line is the broker 1 alone
+        $brokerId = $this->brokerId();
+        $result   = $this->admin->createPartitions([$topic => NewPartitions::increaseTo(2, [[$brokerId]])]);
 
         self::assertSame([$topic => null], $result);
         $metadata = $this->awaitPartitionCount($topic, 2);
-        self::assertSame([0], array_values($metadata->partitions[1]->replicas));
+        self::assertSame([$brokerId], array_values($metadata->partitions[1]->replicas));
     }
 
     public function testAValidatedCreatePartitionsAddsNothing(): void
@@ -595,13 +668,16 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $fewer = $this->admin->createPartitions([$topic => 2]);
         $same  = $this->admin->createPartitions([$topic => 3]);
 
+        // `ReplicationControlManager.createPartitions()` @ 3.9.2 names the topic in the shrink sentence and counts
+        // in "partition(s)" in both, where `ZkAdminManager` @ 2.8.2 said "Topic currently has 3 partitions, which
+        // is higher than the requested 2." and "Topic already has 3 partitions."
         self::assertInstanceOf(InvalidPartitionsException::class, $fewer[$topic]);
-        self::assertStringContainsString(
-            'Topic currently has 3 partitions, which is higher than the requested 2.',
-            $fewer[$topic]->getMessage()
+        self::assertSame(
+            "The topic {$topic} currently has 3 partition(s); 2 would not be an increase.",
+            $fewer[$topic]->getContext()['error'] ?? null
         );
         self::assertInstanceOf(InvalidPartitionsException::class, $same[$topic]);
-        self::assertStringContainsString('Topic already has 3 partitions.', $same[$topic]->getMessage());
+        self::assertSame('Topic already has 3 partition(s).', $same[$topic]->getContext()['error'] ?? null);
         self::assertCount(3, $this->admin->describeTopics([$topic])[$topic]->partitions, 'and nothing changed');
     }
 
@@ -612,7 +688,19 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createPartitions([$topic => 3]);
 
         self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[$topic]);
-        self::assertStringContainsString("The topic '{$topic}' does not exist.", $result[$topic]->getMessage());
+        // `ReplicationControlManager.createPartitions()` @ 3.9.2 throws the bare
+        // `new UnknownTopicOrPartitionException()` for a name it does not find, so `ApiError.fromThrowable` sends
+        // the DEFAULT message of the error code and the answer carries no sentence about the topic at all - where
+        // `ZkAdminManager` @ 2.8.2 built "The topic '<name>' does not exist."
+        self::assertNull(
+            $result[$topic]->getContext()['error'] ?? null,
+            'the controller sends the default message of the code 3, which this client does not repeat'
+        );
+        self::assertStringStartsWith(
+            'This server does not host this topic-partition.',
+            $result[$topic]->getMessage(),
+            'so the exception carries nothing but the sentence of its own code'
+        );
         self::assertNotContains($topic, $this->admin->listTopics(), 'and the request did not create it either');
     }
 
@@ -622,23 +710,32 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
         $this->awaitTopic($topic);
 
-        $tooFew  = $this->admin->createPartitions([$topic => NewPartitions::increaseTo(3, [[0]])]);
+        $tooFew  = $this->admin->createPartitions([$topic => NewPartitions::increaseTo(3, [[$this->brokerId()]])]);
         $unknown = $this->admin->createPartitions([$topic => NewPartitions::increaseTo(2, [[7]])]);
 
+        // Both sentences are the KRaft controller's: `createPartitions()` @ 3.9.2 counts the ADDED partitions
+        // against the assignments it was given, and `validateManualPartitionAssignment()` names the one broker id
+        // it could not resolve - where `ZkAdminManager` @ 2.8.2 said "Increasing the number of partitions by 2 but
+        // 1 assignments provided." and "Unknown broker(s) in replica assignment: 7."
         self::assertInstanceOf(InvalidReplicaAssignmentException::class, $tooFew[$topic]);
-        self::assertStringContainsString(
-            'Increasing the number of partitions by 2 but 1 assignments provided.',
-            $tooFew[$topic]->getMessage()
+        self::assertSame(
+            'Attempted to add 2 additional partition(s), but only 1 assignment(s) were specified.',
+            $tooFew[$topic]->getContext()['error'] ?? null
         );
         self::assertInstanceOf(InvalidReplicaAssignmentException::class, $unknown[$topic]);
-        self::assertStringContainsString(
-            'Unknown broker(s) in replica assignment: 7.',
-            $unknown[$topic]->getMessage()
+        self::assertSame(
+            'The manual partition assignment includes broker 7, but no such broker is registered.',
+            $unknown[$topic]->getContext()['error'] ?? null
         );
         self::assertCount(1, $this->admin->describeTopics([$topic])[$topic]->partitions);
     }
 
-    public function testACreatePartitionsTimeoutOfZeroAnswersRequestTimedOutWhileThePartitionsAreAddedAnyway(): void
+    /**
+     * The same deadline as for CreateTopics: a timeout of 0 is the code 7 and the topic keeps its partitions
+     *
+     * @see self::testATimeoutOfZeroAnswersRequestTimedOutAndCreatesNothing()
+     */
+    public function testACreatePartitionsTimeoutOfZeroAnswersRequestTimedOutAndAddsNothing(): void
     {
         $topic = $this->topicName('partitions-timeout');
         self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
@@ -647,11 +744,25 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createPartitions([$topic => 2], 0);
 
         self::assertInstanceOf(RequestTimedOutException::class, $result[$topic]);
-        self::assertCount(
-            2,
-            $this->awaitPartitionCount($topic, 2)->partitions,
-            'the answer only says that the controller was not done yet'
-        );
+        self::assertNull($result[$topic]->getContext()['error'] ?? null, 'and the answer carries no message');
+        // A fresh topic is answered with 3, 5 or 6 for a moment, so only an answer that really describes the topic
+        // says anything about its partition count - and at least one of them has to arrive inside the window
+        $deadline = microtime(true) + 3.0;
+        $seen     = 0;
+        do {
+            $metadata = $this->admin->describeTopics([$topic])[$topic] ?? null;
+            if ($metadata !== null && $metadata->topicErrorCode === KafkaException::NO_ERROR) {
+                ++$seen;
+                self::assertCount(
+                    1,
+                    $metadata->partitions,
+                    'the expired event wrote nothing, so the topic still has the partition it was created with'
+                );
+            }
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+
+        self::assertGreaterThan(0, $seen, 'the topic was described at least once inside the window');
     }
 
     public function testCreatePartitionsWithoutATopicIsAnsweredWithAnEmptyResult(): void
@@ -674,6 +785,32 @@ final class TopicAdminApiTest extends IntegrationTestCase
     }
 
     /**
+     * Returns the id of the one broker of the node, which is the `node.id=1` of the image and not the 0 of the
+     * ZooKeeper images of the lines below
+     */
+    private function brokerId(): int
+    {
+        return (int) array_key_first($this->admin->findAllBrokers());
+    }
+
+    /**
+     * Asserts that a topic the controller refused does not appear in the metadata within the next few seconds
+     *
+     * A ZooKeeper controller wrote the topic BEFORE it waited for the timeout, so a refusal with the code 7 was
+     * followed by the topic showing up; a KRaft controller expires the event with its records unwritten. Proving
+     * that nothing happens needs a window rather than a moment, and three seconds are two orders of magnitude more
+     * than the node takes to publish a topic it really did create (measured: ~40 ms).
+     */
+    private function assertTopicStaysAway(string $topic): void
+    {
+        $deadline = microtime(true) + 3.0;
+        do {
+            self::assertNotContains($topic, $this->admin->listTopics(), 'and the controller created nothing');
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+    }
+
+    /**
      * Returns a topic name that is unique for this run and remembers it for the cleanup
      */
     private function topicName(string $purpose): string
@@ -686,6 +823,10 @@ final class TopicAdminApiTest extends IntegrationTestCase
 
     /**
      * Waits until the topic is in the metadata of the cluster with a leader for each of its partitions
+     *
+     * Any answer that is not the topic itself is simply retried, which covers the whole window a fresh topic has:
+     * the KRaft node elects the leader WITH the creation, so there is no `LeaderNotAvailable` (5) window any more,
+     * but a broker whose metadata cache has not replayed the `TopicRecord` yet answers **3** for a moment.
      */
     private function awaitTopic(string $topic): TopicMetadata
     {
@@ -706,7 +847,8 @@ final class TopicAdminApiTest extends IntegrationTestCase
      * Waits until the topic has the expected number of partitions in the metadata of the cluster
      *
      * The controller answers a CreatePartitions as soon as IT has the new partitions; the other brokers - and the
-     * metadata cache of the one that answers a Metadata request - learn about them a moment later.
+     * metadata cache of the one that answers a Metadata request - learn about them a moment later. Every other
+     * answer, the 3 of a cache that has not caught up included, is retried.
      */
     private function awaitPartitionCount(string $topic, int $expected): TopicMetadata
     {

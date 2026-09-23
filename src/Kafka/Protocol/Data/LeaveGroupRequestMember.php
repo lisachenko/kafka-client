@@ -15,14 +15,16 @@ namespace Protocol\Kafka\Protocol\Data;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 
 /**
- * One member of the batch that a LeaveGroup v3 request removes from its group (KIP-345, Kafka 2.4)
+ * One member of the batch that a LeaveGroup request removes from its group (KIP-345, Kafka 2.4)
  *
  * <pre>
- *   MemberIdentity => MemberId GroupInstanceId
+ *   MemberIdentity => MemberId GroupInstanceId Reason
  *     MemberId        => string
  *     GroupInstanceId => nullable_string
+ *     Reason          => nullable_string   -- since version 5
  * </pre>
  *
  * A member can be named in two ways, and `GroupCoordinator.handleLeaveGroup` @ 2.8.2 resolves them in this order:
@@ -37,10 +39,23 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * id really belongs to that instance and answers **82** (`FencedInstanceId`) when another consumer has taken the
  * instance over.
  *
- * @see docs/protocol/2.8.md, section "The batch leave of KIP-345 (v3)"
+ * **Version 5 of the api (KIP-800, Kafka 3.2) appended the nullable `reason`** to every entry, "the reason why
+ * the member left the group" - `LeaveGroupRequest.json` @ 3.2.3 - which the coordinator writes into the log line
+ * of the member it removes and nowhere else. It is cut off at
+ * {@see \Protocol\Kafka\Protocol\Request\JoinGroupRequest::MAX_REASON_LENGTH} characters, the same bound the
+ * join reason of the same KIP has. {@see LeaveGroupRequestMemberV3} is the entry of the versions 3 and 4, which
+ * have no such field.
+ *
+ * @see docs/protocol/3.9.md, section "The leave reason of KIP-800 (v5)"
+ * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
  */
-final class LeaveGroupRequestMember implements BinarySchemaInterface
+class LeaveGroupRequestMember implements BinarySchemaInterface
 {
+    /**
+     * Version of the LeaveGroup API that this DTO encodes an entry of
+     */
+    public const int VERSION = 5;
+
     /**
      * Member id of an entry that names its member by the `group.instance.id` alone
      *
@@ -58,10 +73,21 @@ final class LeaveGroupRequestMember implements BinarySchemaInterface
      */
     public ?string $groupInstanceId;
 
-    public function __construct(string $memberId = self::UNKNOWN_MEMBER_ID, ?string $groupInstanceId = null)
-    {
+    /**
+     * Why this member left the group, null when the caller names no reason
+     *
+     * @since Version 5 of protocol
+     */
+    public ?string $reason = null;
+
+    public function __construct(
+        string $memberId = self::UNKNOWN_MEMBER_ID,
+        ?string $groupInstanceId = null,
+        ?string $reason = null
+    ) {
         $this->memberId        = $memberId;
         $this->groupInstanceId = $groupInstanceId;
+        $this->reason          = $reason === null ? null : JoinGroupRequest::truncateReason($reason);
     }
 
     /**
@@ -69,9 +95,14 @@ final class LeaveGroupRequestMember implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'memberId'        => BinarySchema::TYPE_STRING,
             'groupInstanceId' => BinarySchema::TYPE_NULLABLE_STRING,
         ];
+        if (static::VERSION >= 5) {
+            $scheme['reason'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+
+        return $scheme;
     }
 }

@@ -53,6 +53,7 @@ use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV5;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
@@ -69,8 +70,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * container: the value the broker reports, the fencing of an epoch the leader is not on, and the fields the lower
  * version of each api does not have.
  *
- * @see docs/protocol/2.8.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v11)" and
- *      "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v12)" and
+ *      "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
@@ -263,7 +264,8 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         self::assertSame($four->getMessageSize(), $five->getMessageSize());
         self::assertSame(4, OffsetsRequestV4::VERSION, 'the version Kafka 2.1 added');
         self::assertSame(5, OffsetsRequestV5::VERSION, 'the version Kafka 2.2 added');
-        self::assertSame(6, OffsetsRequest::VERSION, 'and the client sends the flexible version Kafka 2.8 added');
+        self::assertSame(6, OffsetsRequestV6::VERSION, 'the flexible version Kafka 2.8 added');
+        self::assertSame(9, OffsetsRequest::VERSION, 'and the client sends the version Kafka 3.9 added');
 
         $partitionFour = $four->topics[$this->topic]->partitions[0];
         $partitionFive = $five->topics[$this->topic]->partitions[0];
@@ -355,9 +357,10 @@ final class LeaderEpochApiTest extends IntegrationTestCase
                 FetchRequest::READ_UNCOMMITTED,
                 null,
                 [],
-                $rack
+                $rack,
+                topicIds: [$this->topic => self::topicIdOf($this->topic)]
             )->writeTo($stream);
-            $partition = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[0];
+            $partition = self::fetchedTopic(FetchResponse::unpack($stream), $this->topic)->partitions[0];
 
             self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, "a fetch with {$label} is served");
             self::assertSame(
@@ -379,7 +382,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             $flexible,
             'the empty compact rack, and the tag buffer of the body behind it'
         );
-        self::assertSame(12, FetchRequest::VERSION);
+        self::assertSame(17, FetchRequest::VERSION, 'the version the directory id of KIP-853 reached');
         self::assertSame(11, FetchRequestV11::VERSION, 'the version the Kafka 2.3 part of this line sent');
         self::assertSame(10, FetchRequestV10::VERSION, 'and the version the Kafka 2.1 part sent');
     }
@@ -501,7 +504,9 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             65536,
             -1,
             self::CLIENT_ID,
-            $correlationId
+            $correlationId,
+            // Version 13 names the topic by its id (KIP-516); every lower version ignores the map
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         );
     }
 
@@ -518,7 +523,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         $stream = $this->connect();
         $this->fetchRequest($requestClass, $correlationId, $epoch)->writeTo($stream);
 
-        return $responseClass::unpack($stream)->topics[$this->topic]->partitions[0];
+        return self::fetchedTopic($responseClass::unpack($stream), $this->topic)->partitions[0];
     }
 
     /**
@@ -561,7 +566,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
     private static function deleteTopic(string $topic): void
     {
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-2-8-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
 
         $output   = [];
         $exitCode = 0;
@@ -590,7 +595,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         }
 
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-2-8-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
         $command   = sprintf(
             'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create'
             . ' --if-not-exists --topic %s --partitions 1 --replication-factor 1%s 2>&1',

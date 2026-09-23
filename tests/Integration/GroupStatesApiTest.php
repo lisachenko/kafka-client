@@ -38,8 +38,8 @@ use Protocol\Kafka\Tests\Fixture\RawGroupMember;
  * group of this class is named `t3-26-…`. The broker is shared with the other suites and coordinates hundreds of
  * their groups, so every assertion is about the group of the test and never about the whole answer.
  *
- * @see docs/protocol/2.8.md, sections "The group states of KIP-518 (Kafka 2.6)" and "ListGroups API (key 16, v0 to
- *      v4)"
+ * @see docs/protocol/3.9.md, section "The group states of KIP-518 (Kafka 2.6)"
+ * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
  */
 #[CoversClass(ListGroupsRequest::class)]
 #[CoversClass(ListGroupsResponse::class)]
@@ -144,23 +144,31 @@ final class GroupStatesApiTest extends IntegrationTestCase
     }
 
     /**
-     * A name that is not a state is not an error: the coordinator compares strings and finds no match
+     * The filter is matched without regard to case or surrounding space, and a name that is no state is no error
+     *
+     * `GroupMetadataManager.listGroups` @ 3.9.2 lower-cases and trims every entry of the filter and compares it
+     * against the lower-cased state of the group, so `stable` and ` STABLE ` name the same state as `Stable`.
      */
-    public function testAStateThatIsSpelledDifferentlyIsSimplyNoMatch(): void
+    public function testTheStatesFilterIsMatchedWithoutRegardToCaseOrSpace(): void
     {
         $groupId     = $this->uniqueGroupId();
         $coordinator = $this->admin->findCoordinator($groupId);
         $this->joinGroup($groupId);
 
-        self::assertArrayNotHasKey(
+        self::assertArrayHasKey(
             $groupId,
             $this->admin->listGroups($coordinator, ['stable']),
-            'the comparison is case sensitive'
+            'the comparison is case insensitive'
+        );
+        self::assertArrayHasKey(
+            $groupId,
+            $this->admin->listGroups($coordinator, ['  STABLE  ']),
+            'and the entry of the filter is trimmed before it is compared'
         );
         self::assertSame(
             [],
             $this->admin->listGroups($coordinator, ['NotAState']),
-            'and a name no group can ever be in answers an empty list with the error code 0'
+            'a name no group can ever be in answers an empty list with the error code 0'
         );
     }
 

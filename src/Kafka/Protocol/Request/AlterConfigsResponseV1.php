@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `AlterConfigsResponse.json` @ 2.8.2) and changed no field, so this class only lowers the version constant: the version
  * 1 is the frame a broker below Kafka 2.8 speaks.
  *
- * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "AlterConfigs API (key 33, v0 to v2)"
  */
 final class AlterConfigsResponseV1 extends AlterConfigsResponse
 {

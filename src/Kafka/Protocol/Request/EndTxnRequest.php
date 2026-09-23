@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * EndTxn, version 1: commits or aborts the open transaction (ApiKey 26, Kafka 0.11, KIP-98)
+ * EndTxn, version 4: commits or aborts the open transaction (ApiKey 26, Kafka 0.11, KIP-98)
  *
  * <pre>
  *   EndTxn Request (Version: 0 and 1) => transactional_id producer_id producer_epoch transaction_result
@@ -53,7 +53,11 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see EndTxnRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0 to v3)"
+ * **Kafka 3.8 added the version 4** (KIP-890): *"Version 4 adds support for new error code TRANSACTION_ABORTABLE"*
+ * (`EndTxnRequest.json` @ 3.8.1), no field, the flexible encoding of the version 3. It is the version this client
+ * sends; {@see EndTxnRequestV3} is the same frame with the version field of Kafka 2.8.
+ *
+ * @see docs/protocol/3.9.md, section "EndTxn API (key 26, v0 to v4)"
  */
 class EndTxnRequest extends AbstractRequest
 {
@@ -75,7 +79,7 @@ class EndTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)

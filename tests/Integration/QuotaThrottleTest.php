@@ -43,15 +43,14 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Metadata v6 are how a client *states* that it knows, not a switch of the broker - so these tests measure the
  * behaviour, not the version.
  *
- * Quotas are the only thing that makes a broker report a throttle time, and there is no api to configure them:
- * they are written into ZooKeeper with the `kafka-configs.sh` tool of the distribution, which {@see ClientQuota}
- * runs inside the broker container. These tests are therefore skipped when Docker is not available, exactly like
- * the whole suite is skipped without a broker.
+ * Quotas are the only thing that makes a broker report a throttle time. The lines up to 2.x wrote them into
+ * ZooKeeper with the `kafka-configs.sh` tool of the distribution; the KRaft node of this line has no ZooKeeper, so
+ * {@see ClientQuota} writes them with the quota apis of KIP-546 (AlterClientQuotas, key 49) instead.
  *
  * Every test uses a client id of its own - the broker enforces a quota for whoever sends that id, and this broker
  * is shared with the other suites - and removes its quota in a `finally` block, also when it fails.
  *
- * @see docs/protocol/2.8.md, section "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, section "Quotas and throttle time"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(KafkaProducer::class)]
@@ -119,8 +118,7 @@ final class QuotaThrottleTest extends IntegrationTestCase
 
         if (!ClientQuota::isSupported()) {
             $this->markTestSkipped(
-                'The quotas of the broker can not be configured from here: the container '
-                . '(' . ClientQuota::CONTAINER_ENV . ') is not reachable with `docker exec`'
+                'The quotas of the broker can not be configured from here: no broker in ' . ClientQuota::BOOTSTRAP_ENV
             );
         }
 
@@ -170,8 +168,8 @@ final class QuotaThrottleTest extends IntegrationTestCase
                 }
             }
 
-            // `$quota->describe()` runs a `docker exec` of about a second, which would spend the very mute the
-            // measurement below is about, so it is only called when the test is failing anyway
+            // `$quota->describe()` is a request of its own, which would spend the very mute the measurement below
+            // is about, so it is only called when the test is failing anyway
             if (!$throttled instanceof RecordMetadata) {
                 self::fail(sprintf(
                     'The broker did not throttle %d records of %d bytes with %s',
@@ -293,7 +291,9 @@ final class QuotaThrottleTest extends IntegrationTestCase
                     -1,
                     $this->clientId,
                     500 + $attempt,
-                    2 * self::RECORD_SIZE
+                    2 * self::RECORD_SIZE,
+                    // Version 13 names the topic by its id and by nothing else (KIP-516)
+                    topicIds: [$this->topic => self::topicIdOf($this->topic)]
                 )->writeTo($stream);
                 $response    = FetchResponse::unpack($stream);
                 $roundTripMs = (microtime(true) - $started) * 1000;

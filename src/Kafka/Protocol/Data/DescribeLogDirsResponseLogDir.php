@@ -20,10 +20,12 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * One log directory of a DescribeLogDirs answer, i.e. one entry of the `log_dirs` array
  *
  * <pre>
- *   DescribeLogDirsResponseLogDir => error_code log_dir [topics]
- *     error_code => INT16
- *     log_dir    => STRING
- *     topics     => DescribeLogDirsResponseTopic
+ *   DescribeLogDirsResponseLogDir => error_code log_dir [topics] total_bytes usable_bytes
+ *     error_code   => INT16
+ *     log_dir      => STRING
+ *     topics       => DescribeLogDirsResponseTopic
+ *     total_bytes  => INT64                        -- since version 4 (KIP-827)
+ *     usable_bytes => INT64                        -- since version 4 (KIP-827)
  * </pre>
  *
  * `DESCRIBE_LOG_DIRS_RESPONSE_V0` in `DescribeLogDirsResponse.schemaVersions()` @ 1.1.1. The answer holds one entry
@@ -43,10 +45,29 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * A directory that is offline is therefore still reported, with the code 56 and no replica - which is how a client
  * tells "this disk holds nothing of yours" from "this disk is broken".
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * **Kafka 3.3 appended the two sizes of KIP-827** to this entry, behind its topic array: "Version 4 adds the
+ * TotalBytes and UsableBytes fields" of `DescribeLogDirsResponse.json` @ 3.3.2, two `int64` that are
+ * `"ignorable": true` with the default `-1` and describe the **volume** the directory sits on - not the directory
+ * itself and not the replicas in it. `LogManager.describeLogDirs` @ 3.9.2 reads them from `File.getTotalSpace`
+ * and `File.getUsableSpace` of the directory, so two directories of the same filesystem answer the same two
+ * numbers, and a directory the broker cannot measure - an offline one, or one whose volume the jvm cannot stat -
+ * keeps the {@see self::UNKNOWN_BYTES} of the default. {@see DescribeLogDirsResponseLogDirV3} is the entry of
+ * every version below 4.
+ *
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 class DescribeLogDirsResponseLogDir implements BinarySchemaInterface
 {
+    /**
+     * Version of the answer this entry belongs to; the version 4 of Kafka 3.3 is the first one with the two sizes
+     */
+    public const int VERSION = 4;
+
+    /**
+     * The two sizes of a directory the broker did not measure, the default of the fields of KIP-827
+     */
+    public const int UNKNOWN_BYTES = -1;
+
     /**
      * Error code of this directory, 0 when it is online
      */
@@ -65,14 +86,35 @@ class DescribeLogDirsResponseLogDir implements BinarySchemaInterface
     public array $topics;
 
     /**
+     * Size in bytes of the volume this directory sits on, {@see self::UNKNOWN_BYTES} below version 4
+     *
+     * @since Version 4 of protocol (Kafka 3.3, KIP-827)
+     */
+    public int $totalBytes = self::UNKNOWN_BYTES;
+
+    /**
+     * Free bytes of the volume this directory sits on, {@see self::UNKNOWN_BYTES} below version 4
+     *
+     * @since Version 4 of protocol (Kafka 3.3, KIP-827)
+     */
+    public int $usableBytes = self::UNKNOWN_BYTES;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'errorCode' => BinarySchema::TYPE_INT16,
             'logDir'    => BinarySchema::TYPE_STRING,
             'topics'    => ['topic' => DescribeLogDirsResponseTopic::class],
         ];
+        // The two sizes of KIP-827 are the LAST fields of the entry, behind the topics it holds
+        if (static::VERSION >= 4) {
+            $scheme['totalBytes']  = BinarySchema::TYPE_INT64;
+            $scheme['usableBytes'] = BinarySchema::TYPE_INT64;
+        }
+
+        return $scheme;
     }
 }

@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * A topic without a reassignment in progress is **not** in the answer at all, whether the request named it or not:
  * the api answers what is going on, not what was asked for.
  *
- * @see docs/protocol/2.8.md, section "ListPartitionReassignments API (key 46, v0)"
+ * @see docs/protocol/3.9.md, section "ListPartitionReassignments API (key 46, v0)"
  */
 class OngoingTopicReassignment implements BinarySchemaInterface
 {

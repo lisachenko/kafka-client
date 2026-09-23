@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * every structure of such a version, and nothing else. **Version 10 (Kafka 2.8, KIP-516)** put a `topic_id` in
  * front of the name and made the name nullable, see {@see MetadataRequestTopic::$topicId}.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
+ * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
  */
 final class MetadataRequestTopicV9 extends MetadataRequestTopic
 {

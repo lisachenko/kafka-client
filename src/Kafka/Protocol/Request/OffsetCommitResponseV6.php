@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 7 (KIP-345, Kafka 2.3) added the `group_instance_id` to the **request** alone, so the five versions
  * decode the same bytes.
  *
- * @see docs/protocol/2.8.md, section "Static membership (KIP-345)"
+ * @see docs/protocol/3.9.md, section "Static membership (KIP-345)"
  */
 final class OffsetCommitResponseV6 extends OffsetCommitResponse
 {

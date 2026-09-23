@@ -14,25 +14,29 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\FetchResponseNodeEndpoint;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV11;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV12;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Fetch response object (key 1), version 12
+ * Fetch response object (key 1), version 17
  *
  * <pre>
- *   FetchResponse (Version: 12) => ThrottleTimeMs ErrorCode SessionId
- *                                 [TopicName [Partition ErrorCode HighwaterMarkOffset
+ *   FetchResponse (Version: 16) => ThrottleTimeMs ErrorCode SessionId
+ *                                 [TopicId [Partition ErrorCode HighwaterMarkOffset
  *                                             LastStableOffset LogStartOffset
  *                                             [AbortedTransactions] PreferredReadReplica
  *                                             RecordSetSize RecordSet TAG_BUFFER] TAG_BUFFER] TAG_BUFFER
  *     ThrottleTimeMs      => int32
  *     ErrorCode           => int16      -- since version 7
  *     SessionId           => int32      -- since version 7
- *     TopicName           => string
+ *     TopicName           => string    -- versions 0 to 12 only
+ *     TopicId             => uuid      -- since version 13
  *     Partition           => int32
  *     ErrorCode           => int16
  *     HighwaterMarkOffset => int64
@@ -44,6 +48,8 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
  *     DivergingEpoch      => tag 0, [Epoch int32 EndOffset int64] -- since version 12
  *     CurrentLeader       => tag 1, [LeaderId int32 LeaderEpoch int32] -- since version 12
  *     SnapshotId          => tag 2, [EndOffset int64 Epoch int32] -- since version 12
+ *     NodeEndpoints       => tag 0 of the BODY, [NodeId int32 Host compact string Port int32
+ *                            Rack compact nullable string] -- since version 16
  * </pre>
  *
  * Version 1 of the API added `ThrottleTimeMs` **before** the topics array - the opposite end of the response from
@@ -90,25 +96,60 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
  * (KIP-630). A ZooKeeper-backed broker fills none of them in for an ordinary consumer: they carry the answers of
  * the raft replication and of a leader that detected a divergence from the `last_fetched_epoch` of the request.
  *
+ * **Version 13 (Kafka 3.1, KIP-516) replaces the topic name of every topic entry with the `topic_id`** the
+ * request named it by, and nothing else: `FetchResponse.json` @ 3.1.2 declares `Topic` as `versions 0-12` and
+ * `TopicId` as `13+`. The answer therefore never carries a topic name, and the two errors of the ids are the
+ * per-partition **100** `UnknownTopicId` of an id the broker does not host and the top-level **106**
+ * `FetchSessionTopicIdError` of a session that was started with the other kind of name, see {@see self::$errorCode}.
+ * {@see FetchResponseV12} keeps the answer that names its topics.
+ *
+ * **The versions 14 and 15 (Kafka 3.5) leave the frame alone again.** `FetchResponse.json` @ 3.5.2 declares no
+ * field of either - "Version 14 is the same as version 13 but it also receives a new error called
+ * OffsetMovedToTieredStorageException (KIP-405)" and "Version 15 is the same as version 14 (KIP-903)" - so
+ * {@see FetchResponseV14} and {@see FetchResponseV13} decode the very same bytes as this class. What version 14
+ * states is that the client understands the error code **109** `OFFSET_MOVED_TO_TIERED_STORAGE` in a partition
+ * entry, which a broker with remote storage answers for a fetch offset that is no longer on its local disk and
+ * which it turns into **1** `OffsetOutOfRange` for a request below that version
+ * (`ReplicaManager.handleOffsetMovedToTieredStorage` @ 3.9.2); what version 15 states is what the *request*
+ * carries, the `replica_state` of KIP-903, see {@see FetchRequest::$replicaState}.
+ *
+ * **Version 16 (Kafka 3.7, KIP-951) puts the endpoints of those leaders into the body.** `FetchResponse.json`
+ * @ 3.7.2 declares a top-level `NodeEndpoints` array, `"versions": "16+", "taggedVersions": "16+", "tag": 0`, with
+ * "Endpoints for all current-leaders enumerated in PartitionData, with errors NOT_LEADER_OR_FOLLOWER &
+ * FENCED_LEADER_EPOCH": the node id, the host, the port and the nullable rack of every node that a
+ * `current_leader` of this answer points at, see {@see self::$nodeEndpoints}. The partition entry is unchanged -
+ * the `current_leader` it names them with has been there since version 12 - and the request of version 16 is the
+ * request of version 15, so an answer that refused nothing is the version 15 answer with another correlation of
+ * versions and an empty tagged section ({@see FetchResponseV15} decodes those very bytes).
+ *
+ * **Version 17 (Kafka 3.9, KIP-853) declares nothing at all here**: `FetchResponse.json` @ 3.9.2 adds no field
+ * and its whole comment is "Version 17 no changes to the response (KIP-853)", so this class decodes the very
+ * bytes {@see FetchResponseV16} decodes. What the version added is in the *request*, the tagged
+ * `replica_directory_id` of every partition entry, see
+ * {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$replicaDirectoryId}.
+ *
  * What the answer of every version has to match is the *version of the request it belongs to*, which is why
- * {@see FetchResponseV11}, {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
+ * {@see FetchResponseV16}, {@see FetchResponseV15}, {@see FetchResponseV14}, {@see FetchResponseV13}, {@see FetchResponseV12}, {@see FetchResponseV11},
+ * {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
  * {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4},
  * {@see FetchResponseV3}, {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
+ *      "The topic ids of the fetch path (v13, KIP-516)", "The tiered-storage error of KIP-405 (v14)",
+ *      "The leader discovery of KIP-951 (v16)" and "The replica directory id of KIP-853 (v17)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 12;
+    public const int VERSION = 17;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
      *
-     * `FetchResponse.json` @ 2.8.2 declares `"flexibleVersions": "12+"`: the answer carries the response header
+     * `FetchResponse.json` @ 3.1.2 declares `"flexibleVersions": "12+"`: the answer carries the response header
      * **v1**, compact strings, compact arrays and a **compact record set**, and a tagged-field section at the
      * end of the body, of every topic entry and of every partition entry - the section the three fields of
      * version 12 travel in, see {@see \Protocol\Kafka\Protocol\Data\FetchResponsePartition::$divergingEpoch}.
@@ -126,10 +167,12 @@ class FetchResponse extends AbstractResponse
      * Error code of the fetch **session**, zero when the request had none or the session is intact.
      *
      * This is the only top-level error code the Fetch api has, and it is about the session alone: 70
-     * `FetchSessionIdNotFoundException` for an incremental request whose session id the broker does not know, and
-     * 71 `InvalidFetchSessionEpochException` for one whose epoch does not match the one the broker expects. Both
-     * are retriable and both are answered with an **empty topics array**, so a client that receives one has to
-     * start over with a full fetch, {@see FetchMetadata::nextCloseExisting()}.
+     * `FetchSessionIdNotFoundException` for an incremental request whose session id the broker does not know,
+     * 71 `InvalidFetchSessionEpochException` for one whose epoch does not match the one the broker expects, and,
+     * since Kafka 3.1, **106** `FetchSessionTopicIdError` for a session whose topics are named by id in one
+     * request and by name in another (KIP-516). All three are retriable and all three are answered with an
+     * **empty topics array**, so a client that receives one has to start over with a full fetch,
+     * {@see FetchMetadata::nextCloseExisting()}.
      *
      * An answer below version 7 does not carry the field and leaves the 0, which is also what a version 7 answer
      * to a session-less request reports.
@@ -152,11 +195,34 @@ class FetchResponse extends AbstractResponse
     public int $sessionId = FetchMetadata::INVALID_SESSION_ID;
 
     /**
-     * Fetch result for each of the requested topics, indexed by the topic name
+     * Fetch result of each requested topic, indexed by the topic name below version 13, a plain list above it
      *
-     * @var array<string, FetchResponseTopic>
+     * A version 13 answer names its topics by the 16 raw bytes of their id and by nothing else, which is no
+     * usable array key, so such an answer decodes into a list; the client resolves the ids against the map it
+     * built the request from, see {@see \Protocol\Kafka\Common\Cluster::topicNameById()}.
+     *
+     * @var array<array-key, FetchResponseTopic>
      */
     public array $topics = [];
+
+    /**
+     * Where the leaders this answer named can be reached, as node id => endpoint (KIP-951)
+     *
+     * The top-level **tagged** field (tag 0) that version 16 added, the other half of the
+     * {@see \Protocol\Kafka\Protocol\Data\FetchResponseCurrentLeader} a partition entry has carried since
+     * version 12: that structure names the node id and the epoch of the real leader, this array the host and the
+     * port they belong to, so that a consumer can follow the hint **without** a Metadata round trip.
+     *
+     * The broker writes it for a partition it refused with **6** `NotLeaderForPartition` or **74**
+     * `FencedLeaderEpoch` and whose leader it knows (`KafkaApis.handleFetchRequest` @ 3.9.2, the
+     * `versionId >= 16` branch), each node once. Its default is the **empty array**, so every ordinary answer
+     * leaves it off the wire, and an answer below version 16 has no room for it at all.
+     *
+     * @since Version 16 of protocol (Kafka 3.7, KIP-951)
+     *
+     * @var array<int, FetchResponseNodeEndpoint>
+     */
+    public array $nodeEndpoints = [];
 
     /**
      * @inheritdoc
@@ -172,7 +238,15 @@ class FetchResponse extends AbstractResponse
             $body['errorCode'] = BinarySchema::TYPE_INT16;
             $body['sessionId'] = BinarySchema::TYPE_INT32;
         }
-        $body['topics'] = ['topic' => static::topicClass()];
+        // From version 13 the entries carry no name, so there is no field to index the array by
+        $body['topics'] = static::VERSION >= 13
+            ? [static::topicClass()]
+            : ['topic' => static::topicClass()];
+        // The `node_endpoints` of version 16 is a TAGGED field (tag 0): it travels at the end of the body and
+        // only when the broker really named a leader in one of the partition entries
+        if (static::VERSION >= 16) {
+            $body['nodeEndpoints'] = new TaggedField(0, ['nodeId' => FetchResponseNodeEndpoint::class], []);
+        }
 
         return $header + $body;
     }
@@ -185,7 +259,8 @@ class FetchResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 12 => FetchResponseTopic::class,
+            static::VERSION >= 13 => FetchResponseTopic::class,
+            static::VERSION >= 12 => FetchResponseTopicV12::class,
             static::VERSION >= 11 => FetchResponseTopicV11::class,
             static::VERSION >= 5  => FetchResponseTopicV5::class,
             static::VERSION >= 4  => FetchResponseTopicV4::class,

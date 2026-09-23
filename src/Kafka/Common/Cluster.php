@@ -146,7 +146,7 @@ final class Cluster
      *
      * @throws AllBrokersNotAvailableException If the cluster did not advertise a single broker in time
      *
-     * @see docs/protocol/2.8.md, section "Cluster readiness"
+     * @see docs/protocol/3.9.md, section "Cluster readiness"
      */
     public static function bootstrap(array $configuration, ?string $topic = null): Cluster
     {
@@ -304,6 +304,79 @@ final class Cluster
         }
 
         return $metadata->partitions;
+    }
+
+    /**
+     * Returns the id of a topic as the 16 raw bytes of its `uuid`, `null` while this cluster has none for it
+     *
+     * The map is the one half of KIP-516 a client has to keep: a Metadata answer of version 10 and above names
+     * the id of every topic it reports ({@see TopicMetadata::$topicId}), and **Fetch v13** (Kafka 3.1) can only
+     * name a topic by that id. A topic the cluster does not know yet, and a topic whose answer carried the zero
+     * id, are both `null` here - the caller reloads the metadata and asks again, it never falls back to the name.
+     *
+     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     */
+    public function topicIdOf(string $topic): ?string
+    {
+        $this->refreshIfStale();
+
+        if (!isset($this->topicPartitions[$topic])) {
+            $this->reloadQuietly();
+        }
+
+        $topicId = $this->topicPartitions[$topic]->topicId ?? Uuid::ZERO;
+
+        return Uuid::isZero($topicId) ? null : $topicId;
+    }
+
+    /**
+     * Returns the ids of the given topics, as topic name => the 16 raw bytes of its uuid
+     *
+     * A topic this cluster has no id for is left out of the result, so that the caller sees which ones it may
+     * name in a version 13 frame; {@see self::topicIdOf()} is the single-topic form.
+     *
+     * @param iterable<string> $topics Names of the topics to resolve
+     *
+     * @return array<string, string>
+     */
+    public function topicIdsOf(iterable $topics): array
+    {
+        $ids = [];
+        foreach ($topics as $topic) {
+            $topicId = $this->topicIdOf($topic);
+            if ($topicId !== null) {
+                $ids[$topic] = $topicId;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Returns the name of the topic with this id, `null` while this cluster knows no topic of it
+     *
+     * The inverse of {@see self::topicIdOf()}, which is what an answer of an api that names its topics by id
+     * alone - a **Fetch v13** answer - is read back with.
+     *
+     * @param string $topicId The 16 raw bytes of the topic id
+     *
+     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     */
+    public function topicNameById(string $topicId): ?string
+    {
+        if (Uuid::isZero($topicId)) {
+            return null;
+        }
+
+        $this->refreshIfStale();
+
+        foreach ($this->topicPartitions as $name => $metadata) {
+            if ($metadata->topicId === $topicId) {
+                return (string) $name;
+            }
+        }
+
+        return null;
     }
 
     /**

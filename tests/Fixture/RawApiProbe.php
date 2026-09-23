@@ -122,6 +122,10 @@ final class RawApiProbe
      * @param int    $correlationId Correlation id to send and to expect back
      * @param int    $headerVersion Version of the request header: {@see self::HEADER_V0} without a client id,
      *                              {@see self::HEADER_V1} with one, {@see self::HEADER_V2} with a tag buffer on top
+     * @param float  $timeout       How long to wait for the answer before calling the request unanswered, in
+     *        seconds; {@see self::SILENCE_TIMEOUT} is enough for every api the broker answers straight away, and a
+     *        request the broker holds back on purpose - a JoinGroup that opens the rebalance of a new group waits
+     *        `group.initial.rebalance.delay.ms` for it - needs its own bound
      *
      * @return array{status: string, correlationId: int|null, body: string}
      */
@@ -130,7 +134,8 @@ final class RawApiProbe
         int $apiVersion,
         string $body,
         int $correlationId,
-        int $headerVersion = self::HEADER_V1
+        int $headerVersion = self::HEADER_V1,
+        float $timeout = self::SILENCE_TIMEOUT
     ): array {
         $header = pack('nnN', $apiKey, $apiVersion, $correlationId);
         if ($headerVersion >= self::HEADER_V1) {
@@ -142,7 +147,7 @@ final class RawApiProbe
         $frame = $header . $body;
         fwrite($this->socket, pack('N', strlen($frame)) . $frame);
 
-        return $this->receive();
+        return $this->receive($timeout);
     }
 
     /**
@@ -255,6 +260,19 @@ final class RawApiProbe
     }
 
     /**
+     * Encodes a **null nullable struct**: the single byte `ff`
+     *
+     * A nullable struct field - `"type": "Cursor", "nullableVersions": "0+"` in `DescribeTopicPartitionsRequest.json`
+     * @ 3.9.2, the first such field a client sends - is not a compact type: the generated message class writes
+     * an int8 **-1** for `null` and an int8 **1** followed by the fields of the struct otherwise, and reads
+     * it back as "negative means null". There is no length in front of the struct and no varint anywhere.
+     */
+    public static function nullStruct(): string
+    {
+        return "\xff";
+    }
+
+    /**
      * Closes the connection to the broker
      */
     public function close(): void
@@ -267,11 +285,13 @@ final class RawApiProbe
     /**
      * Reads one complete response frame, or reports that none came
      *
+     * @param float $timeout How long to wait for the frame, in seconds
+     *
      * @return array{status: string, correlationId: int|null, body: string}
      */
-    private function receive(): array
+    private function receive(float $timeout): array
     {
-        $deadline = microtime(true) + self::SILENCE_TIMEOUT;
+        $deadline = microtime(true) + $timeout;
         $buffer   = '';
 
         while (microtime(true) < $deadline) {

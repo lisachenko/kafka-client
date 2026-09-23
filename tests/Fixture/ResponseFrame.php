@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Tests\Fixture;
  * The correlation id given here is only a placeholder: {@see BrokerConnection} replaces it with the one of the
  * request it answers, the same way a broker echoes it back.
  *
- * @see docs/protocol/2.8.md
+ * @see docs/protocol/3.9.md
  */
 final class ResponseFrame
 {
@@ -177,9 +177,10 @@ final class ResponseFrame
         $body .= self::compactArrayLength(count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= pack('n', $topicErrorCodes[$topic] ?? 0) . self::compactString((string) $topic);
-            // The topic id of KIP-516: the zero uuid unless the caller named one, which is what a broker
-            // answers for a topic it has no id for
-            $body .= str_pad($topicIds[$topic] ?? '', 16 /* Uuid::SIZE */, "\x00", STR_PAD_LEFT);
+            // The topic id of KIP-516. Every topic of a broker from Kafka 2.8 on has one, so a caller that
+            // names none gets a stable id derived from the topic name - the fetch path of Fetch v13 (Kafka 3.1)
+            // can not name a topic without it. A caller that wants the zero id passes it explicitly.
+            $body .= str_pad($topicIds[$topic] ?? self::topicIdOf((string) $topic), 16 /* Uuid::SIZE */, "\x00", STR_PAD_LEFT);
             $body .= pack('C', in_array((string) $topic, $internalTopics, true) ? 1 : 0);
             $body .= self::compactArrayLength(count($partitions));
             foreach ($partitions as $partitionId => $leader) {
@@ -427,6 +428,11 @@ final class ResponseFrame
      *        partition => [lastStableOffset, logStartOffset, aborted transactions as [producerId, firstOffset]]
      * @param int                                                $sessionErrorCode Top-level error code of version 7
      * @param int                                                $sessionId        Fetch session id of version 7
+     * @param array<string, array<int, array{int, int}>>          $currentLeaders   The leader hint of KIP-951
+     *        (version 16), as topic => partition => [leaderId, leaderEpoch]: the tagged `current_leader` of a
+     *        partition entry, which a broker writes for a partition it refused 6 or 74
+     * @param array<int, array{string, int, string|null}>         $nodeEndpoints    The other half of the same
+     *        hint, as node id => [host, port, rack]: the tagged `node_endpoints` of the body
      */
     public static function fetch(
         int $correlationId,
@@ -435,17 +441,22 @@ final class ResponseFrame
         array $transactionState = [],
         int $sessionErrorCode = 0,
         int $sessionId = 0,
-        array $preferredReadReplicas = []
+        array $preferredReadReplicas = [],
+        array $currentLeaders = [],
+        array $nodeEndpoints = []
     ): string {
         // Version 12 (Kafka 2.7) is the first FLEXIBLE version of this api (KIP-482): compact strings, compact
         // arrays, a COMPACT record set and a tagged-field section at the end of every structure - which is also
-        // where the three fields of version 12 would travel, none of which a ZooKeeper-backed broker sends
+        // where the three fields of version 12 would travel, none of which a ZooKeeper-backed broker sends.
+        // Version 13 (Kafka 3.1, KIP-516) replaced the topic NAME of every entry with the 16 raw bytes of its
+        // id, so this fixture answers with the id {@see self::topicIdOf()} derives from the name - the very one
+        // {@see self::metadata()} reports for it, which is how the client resolves it back.
         $body = pack('N', $throttleTimeMs)
             . pack('n', $sessionErrorCode)
             . pack('N', $sessionId)
             . self::compactCount(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
+            $body .= self::topicIdOf((string) $topic) . self::compactCount(count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $highWaterMark, $messageSet]) {
                 [$lastStableOffset, $logStartOffset, $aborted] =
                     $transactionState[$topic][$partitionId] ?? [$highWaterMark, 0, null];
@@ -461,12 +472,68 @@ final class ResponseFrame
                     // without a `replica.selector.class` answers
                     . pack('N', $preferredReadReplicas[$topic][$partitionId] ?? 0xFFFFFFFF)
                     . self::compactBytes($messageSet)
-                    . self::tagBuffer();
+                    // The tagged `current_leader` of version 12 (tag 1), which a 3.9.2 node fills in from
+                    // version 16 on (KIP-951): the node and the epoch the partition is really led with
+                    . self::currentLeaderTag($currentLeaders[$topic][$partitionId] ?? null);
             }
             $body .= self::tagBuffer();
         }
-        // The `forgotten_topics_data` of a request has no counterpart here; what closes the body is its section
-        return self::flexible($correlationId, $body);
+        // The `forgotten_topics_data` of a request has no counterpart here; what closes the body is its section -
+        // which is where the `node_endpoints` of version 16 travels, as the tag 0 of the body (KIP-951)
+        return self::flexible($correlationId, $body . self::nodeEndpointsTag($nodeEndpoints));
+    }
+
+    /**
+     * Encodes the tagged-field section of a partition entry that carries the `current_leader` of KIP-951
+     *
+     * @param array{int, int}|null $currentLeader The leader id and the leader epoch, or null for the empty
+     *        section every partition entry that names no leader ends in
+     */
+    private static function currentLeaderTag(?array $currentLeader): string
+    {
+        if ($currentLeader === null) {
+            return self::tagBuffer();
+        }
+
+        [$leaderId, $leaderEpoch] = $currentLeader;
+        $value = pack('N', $leaderId) . pack('N', $leaderEpoch) . self::tagBuffer();
+
+        return self::unsignedVarint(1) . self::unsignedVarint(1) . self::unsignedVarint(strlen($value)) . $value;
+    }
+
+    /**
+     * Encodes the tagged-field section of the body that carries the `node_endpoints` of KIP-951 (Fetch v16)
+     *
+     * @param array<int, array{string, int, string|null}> $nodeEndpoints node id => [host, port, rack]
+     */
+    private static function nodeEndpointsTag(array $nodeEndpoints): string
+    {
+        if ($nodeEndpoints === []) {
+            return self::tagBuffer();
+        }
+
+        $value = self::compactCount(count($nodeEndpoints));
+        foreach ($nodeEndpoints as $nodeId => [$host, $port, $rack]) {
+            $value .= pack('N', $nodeId)
+                . self::compactString($host)
+                . pack('N', $port)
+                . ($rack === null ? self::unsignedVarint(0) : self::compactString($rack))
+                . self::tagBuffer();
+        }
+
+        return self::unsignedVarint(1) . self::unsignedVarint(0) . self::unsignedVarint(strlen($value)) . $value;
+    }
+
+    /**
+     * Returns the topic id this fixture gives a topic: 16 stable bytes derived from its name (KIP-516)
+     *
+     * A broker from Kafka 2.8 on has a real id for every topic, and from **Fetch v13** (Kafka 3.1) an api may
+     * name a topic by nothing else, so the metadata answer and the fetch answer of this fixture have to agree on
+     * one - this is it.
+     */
+    public static function topicIdOf(string $topic): string
+    {
+        return substr(md5($topic, true), 0, 16);
     }
 
     /**
@@ -567,76 +634,103 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9, v5 - the version this client sends)
+     * Builds an OffsetFetch response (api key 9, v8 - the version this client sends)
      *
      * v0 and v1 share the response format, v2 appended the group-level error code, v3 (KIP-124) put the throttle
-     * time in front of the topics - the answer therefore carries a number at each of its ends - and v5 (KIP-320)
-     * inserted the `committed_leader_epoch` of every partition between its offset and its metadata.
+     * time in front of the topics - the answer therefore carries a number at each of its ends - v5 (KIP-320)
+     * inserted the `committed_leader_epoch` of every partition between its offset and its metadata, and **v8**
+     * (Kafka 3.0) moved the topics and the group-level error code into a `groups` array, one entry per group of
+     * the request. This fixture answers the one group it is given, which is what a single-group request gets.
      *
      * @param array<string, array<int, array{int, int, string}|array{int, int, string, int}>> $topics topic =>
      *        partition => [errorCode, offset, metadata] with an optional fourth element, the committed leader
      *        epoch, which defaults to the -1 of an offset that was committed without one
-     * @param int|null $groupErrorCode The group-level error code of version 2 and above, null for v0 or v1
+     * @param int    $groupErrorCode The group-level error code, inside the group entry since version 8
+     * @param string $groupId        The group this entry answers for (version 8 and above)
      */
-    public static function offsetFetch(int $correlationId, array $topics, ?int $groupErrorCode = 0): string
+    public static function offsetFetch(
+        int $correlationId,
+        array $topics,
+        int $groupErrorCode = 0,
+        string $groupId = ''
+    ): string {
+        return self::offsetFetchOfGroups($correlationId, [$groupId => [$topics, $groupErrorCode]]);
+    }
+
+    /**
+     * Builds a batched OffsetFetch response (api key 9, v8): one entry per group of the request
+     *
+     * @param array<string, array{array<string, array<int, array{int, int, string}|array{int, int, string, int}>>,
+     *         int}> $groups group id => [topics as {@see self::offsetFetch()} takes them, group-level error code]
+     */
+    public static function offsetFetchOfGroups(int $correlationId, array $groups): string
     {
-        $body = pack('N', 0) . self::compactCount(count($topics));
-        foreach ($topics as $topic => $partitions) {
-            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
-            foreach ($partitions as $partitionId => $partition) {
-                [$errorCode, $offset, $metadata] = $partition;
-                $body .= pack('N', $partitionId)
-                    . pack('J', $offset)
-                    . pack('N', $partition[3] ?? -1)
-                    . self::compactString($metadata)
-                    . pack('n', $errorCode)
-                    . self::tagBuffer();
+        $body = pack('N', 0) . self::compactCount(count($groups));
+        foreach ($groups as $groupId => [$topics, $groupErrorCode]) {
+            $body .= self::compactString((string) $groupId) . self::compactCount(count($topics));
+            foreach ($topics as $topic => $partitions) {
+                $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
+                foreach ($partitions as $partitionId => $partition) {
+                    [$errorCode, $offset, $metadata] = $partition;
+                    $body .= pack('N', $partitionId)
+                        . pack('J', $offset)
+                        . pack('N', $partition[3] ?? -1)
+                        . self::compactString($metadata)
+                        . pack('n', $errorCode)
+                        . self::tagBuffer();
+                }
+                $body .= self::tagBuffer();
             }
-            $body .= self::tagBuffer();
-        }
-        if ($groupErrorCode !== null) {
-            $body .= pack('n', $groupErrorCode);
+            $body .= pack('n', $groupErrorCode) . self::tagBuffer();
         }
 
         return self::flexible($correlationId, $body);
     }
 
     /**
-     * Builds a GroupCoordinator response (api key 10, v1 - FindCoordinator in the 0.11 sources)
+     * Builds a GroupCoordinator response (api key 10, v4 - FindCoordinator in the 0.11 sources)
      *
-     * Version 1 surrounds the error code with the `ThrottleTimeMs` of KIP-124 and a nullable `ErrorMessage`; a
-     * 0.11.0.3 broker leaves that message null in every answer, which is what this fixture reproduces.
+     * Version 1 surrounded the error code with the `ThrottleTimeMs` of KIP-124 and a nullable `ErrorMessage`, and
+     * **version 4** (KIP-699, Kafka 3.0) moved that error code, that message and the three fields of the
+     * coordinator into a `coordinators` array with one entry per key of the request. The entry of this fixture
+     * carries the empty `error_message` that a 3.9.2 node writes into every version 4 answer, successful or not.
      */
     public static function groupCoordinator(
         int $correlationId,
         int $errorCode,
         int $nodeId = 0,
         string $host = '127.0.0.1',
-        int $port = 9092
+        int $port = 9092,
+        string $key = ''
     ): string {
         $body = pack('N', 0)
-            . pack('n', $errorCode)
-            . self::compactString(null)
+            . self::compactCount(1)
+            . self::compactString($key)
             . pack('N', $nodeId)
             . self::compactString($host)
-            . pack('N', $port);
+            . pack('N', $port)
+            . pack('n', $errorCode)
+            . self::compactString('')
+            . self::tagBuffer();
 
         return self::flexible($correlationId, $body);
     }
 
     /**
-     * Builds a JoinGroup response (api key 11, v7 - the version this client sends)
+     * Builds a JoinGroup response (api key 11, v9 - the version this client sends)
      *
      * <pre>
-     *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId ProtocolType GroupProtocol LeaderId MemberId
-     *                          [Member]
+     *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId ProtocolType GroupProtocol LeaderId
+     *                          SkipAssignment MemberId [Member]
      *     Member => MemberId GroupInstanceId MemberMetadata
      * </pre>
      *
      * Every member entry carries the nullable `group_instance_id` that version 5 added (KIP-345, Kafka 2.3); the
      * `null` of a dynamic member is written, which is what every member of these fixtures is. Version 7 (KIP-559,
      * Kafka 2.5) put the nullable `protocol_type` in front of the protocol name and made the name nullable as
-     * well: an answer that reports an error carries `null` in both.
+     * well: an answer that reports an error carries `null` in both. **Version 9 (KIP-814, Kafka 3.2) put the
+     * single byte of `skip_assignment` between the leader id and the member id**, which is `false` for every
+     * answer but the one of a static leader that came back to a group the coordinator did not rebalance.
      *
      * @param array<string, string> $members Metadata of every member, by member id; filled for the leader only
      */
@@ -648,7 +742,8 @@ final class ResponseFrame
         string $leaderId = '',
         string $memberId = '',
         array $members = [],
-        ?string $protocolType = 'consumer'
+        ?string $protocolType = 'consumer',
+        bool $skipAssignment = false
     ): string {
         $body = pack('N', 0)
             . pack('n', $errorCode)
@@ -656,6 +751,7 @@ final class ResponseFrame
             . self::compactString($protocolType)
             . self::compactString($groupProtocol)
             . self::compactString($leaderId)
+            . pack('C', $skipAssignment ? 1 : 0)
             . self::compactString($memberId)
             . self::compactCount(count($members));
         foreach ($members as $member => $metadata) {
@@ -768,19 +864,44 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a ListGroups response (api key 16, v4 - the version this client sends)
+     * Builds a ListGroups response (api key 16, v5 - the version this client sends)
      *
      * <pre>
-     *   ListGroupsResponse => ThrottleTimeMs ErrorCode [GroupId ProtocolType GroupState]
+     *   ListGroupsResponse => ThrottleTimeMs ErrorCode [GroupId ProtocolType GroupState GroupType]
      * </pre>
      *
-     * Version 4 (KIP-518, Kafka 2.6) appended the state of the group to every entry; a protocol type given as a
-     * plain string is answered with the state `Stable`, and the pair `[protocolType, state]` names both.
+     * Version 4 (KIP-518, Kafka 2.6) appended the state of the group to every entry and version 5 (KIP-848,
+     * Kafka 3.8) its type; a protocol type given as a plain string is answered with the state `Stable` and the
+     * type `classic`, the pair `[protocolType, state]` names the first two and the triple
+     * `[protocolType, state, type]` all three.
+     *
+     * @param array<string, string|array{string, string}|array{string, string, string}> $groups Protocol type -
+     *        or protocol type and state, or all three - of every group the answering broker coordinates, by
+     *        group id
+     */
+    public static function listGroups(int $correlationId, array $groups, int $errorCode = 0): string
+    {
+        $body = pack('N', 0) . pack('n', $errorCode) . self::compactCount(count($groups));
+        foreach ($groups as $groupId => $group) {
+            $entry = is_array($group) ? $group : [$group, 'Stable'];
+            [$protocolType, $groupState] = $entry;
+            $body .= self::compactString((string) $groupId)
+                . self::compactString($protocolType)
+                . self::compactString($groupState)
+                . self::compactString($entry[2] ?? 'classic')
+                . self::tagBuffer();
+        }
+
+        return self::flexible($correlationId, $body);
+    }
+
+    /**
+     * Builds a ListGroups response of version 4, the frame whose entries carry a state and no type (below KIP-848)
      *
      * @param array<string, string|array{string, string}> $groups Protocol type - or protocol type and state - of
      *        every group the answering broker coordinates, by group id
      */
-    public static function listGroups(int $correlationId, array $groups, int $errorCode = 0): string
+    public static function listGroupsV4(int $correlationId, array $groups, int $errorCode = 0): string
     {
         $body = pack('N', 0) . pack('n', $errorCode) . self::compactCount(count($groups));
         foreach ($groups as $groupId => $group) {
@@ -846,6 +967,52 @@ final class ResponseFrame
             // `authorized_operations` of version 3 (KIP-430, Kafka 2.3): Integer.MIN_VALUE, the value of an answer
             // whose request left `include_authorized_operations` at false
             $body .= pack('N', 0x80000000) . self::tagBuffer();
+        }
+
+        return self::flexible($correlationId, $body);
+    }
+
+    /**
+     * Builds a ConsumerGroupHeartbeat response (api key 68, v0 - the new consumer protocol of KIP-848)
+     *
+     * <pre>
+     *   ConsumerGroupHeartbeatResponse => ThrottleTimeMs ErrorCode ErrorMessage MemberId MemberEpoch
+     *                                     HeartbeatIntervalMs Assignment
+     * </pre>
+     *
+     * `$assignment` is the field that carries the whole reconciliation: **null** is the `ff` of "nothing changed
+     * since the last answer" and an array - even an empty one - is the `01` of a structure that follows, i.e. the
+     * partitions this member may own now. The map is `raw topic id => list of partitions`, exactly as
+     * {@see \Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatAssignment::partitionsByTopicId()} answers it.
+     *
+     * @param array<string, list<int>>|null $assignment Partitions of the member, null for "unchanged"
+     */
+    public static function consumerGroupHeartbeat(
+        int $correlationId,
+        int $errorCode = 0,
+        ?string $memberId = null,
+        int $memberEpoch = 1,
+        int $heartbeatIntervalMs = 5000,
+        ?array $assignment = null,
+        ?string $errorMessage = null
+    ): string {
+        $body = pack('N', 0)
+            . pack('n', $errorCode)
+            . self::compactString($errorMessage)
+            . self::compactString($memberId)
+            . pack('N', $memberEpoch)
+            . pack('N', $heartbeatIntervalMs);
+
+        if ($assignment === null) {
+            $body .= pack('c', -1);
+        } else {
+            $body .= pack('c', 1) . self::compactCount(count($assignment));
+            foreach ($assignment as $topicId => $partitions) {
+                $body .= (string) $topicId
+                    . self::compactInt32Array($partitions)
+                    . self::tagBuffer();
+            }
+            $body .= self::tagBuffer();
         }
 
         return self::flexible($correlationId, $body);

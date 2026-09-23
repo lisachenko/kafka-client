@@ -23,7 +23,7 @@
  *   docker compose up -d
  *   php examples/admin.php [topic] [groupId]
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v11)", "ListGroups API (key 16, v0 to v4)",
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)", "ListGroups API (key 16, v0 to v5)",
  *      "DescribeGroups API (key 15, v0 to v5)" and "DeleteGroups API (key 42, v0 to v2)"
  */
 
@@ -44,8 +44,6 @@ $groupId = $argv[2] ?? 'example-group';
 $configuration = [
     ClientConfig::BOOTSTRAP_SERVERS => ['tcp://' . (getenv('KAFKA_BOOTSTRAP_SERVERS') ?: '127.0.0.1:9092')],
     ClientConfig::CLIENT_ID         => 'admin-example',
-    // Where the group offsets live: `kafka` uses OffsetFetch v2, `zookeeper` the ZooKeeper-backed v0
-    ClientConfig::OFFSETS_STORAGE   => ClientConfig::OFFSETS_STORAGE_KAFKA,
 ];
 
 $cluster = Cluster::bootstrap($configuration);
@@ -157,7 +155,7 @@ foreach ($admin->deleteConsumerGroups([$groupId]) as $deletedGroupId => $error) 
         : 'error ' . $error->getCode() . ' - ' . $error->getMessage()) . "\n";
 }
 
-// The remaining admin call, controlledShutdown(), asks the controller to move every leader off a broker. It is what
-// kafka-server-stop.sh triggers, and it really does stop serving that broker - only send it to a broker you want to
-// shut down. Creating and deleting topics is in examples/create-topic.php, the offsets by timestamp of Kafka 0.10.1
-// in examples/offsets-for-times.php.
+// The admin client of this line has no controlledShutdown() any more: ControlledShutdown (key 7) is a zkBroker api,
+// and a KRaft node does not serve it on a client listener at all - it closes the connection for every version of it.
+// Creating and deleting topics is in examples/create-topic.php, the offsets by timestamp of Kafka 0.10.1 in
+// examples/offsets-for-times.php.

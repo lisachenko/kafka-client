@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `AddOffsetsToTxnResponse.json` @ 2.8.2) and changed no field, so this class only lowers the version constant: the version
  * 2 is the frame a broker below Kafka 2.8 speaks.
  *
- * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
  */
 final class AddOffsetsToTxnResponseV2 extends AddOffsetsToTxnResponse
 {

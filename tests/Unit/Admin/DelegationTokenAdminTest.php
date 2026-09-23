@@ -20,6 +20,7 @@ use Protocol\Kafka\Admin\DelegationToken;
 use Protocol\Kafka\Admin\TokenInformation;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\DelegationTokenAuthorizationException;
 use Protocol\Kafka\Common\Errors\DelegationTokenExpiredException;
 use Protocol\Kafka\Common\Errors\DelegationTokenNotFoundException;
 use Protocol\Kafka\Common\Errors\DelegationTokenOwnerMismatchException;
@@ -46,7 +47,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * mapping alone: which request the client builds, what it makes of the answer, and which exception each error
  * code becomes.
  *
- * @see docs/protocol/2.8.md, section "Delegation tokens (KIP-48)"
+ * @see docs/protocol/3.9.md, section "Delegation tokens (KIP-48)"
  * @see \Protocol\Kafka\Tests\Integration\DelegationTokenApiTest for the same calls against a real broker
  */
 #[CoversClass(AdminClient::class)]
@@ -80,6 +81,17 @@ final class DelegationTokenAdminTest extends TestCase
      */
     private const string DESCRIBED_TOKEN_ID_V2 = 'wG0KYNS6REW0U9AN8r_Bnw';
 
+    /**
+     * Token id of the **version 3** answer, the frame this client reads since Kafka 3.3 (KIP-373): a token that
+     * `User:kafkatest` asked for and owns, with the renewer `User:admin`
+     */
+    private const string TOKEN_ID_V3 = 'U8Ouyn6DQs2kyQ-TRoFUpw';
+
+    /**
+     * Token id of the version 3 answer of a token that `kafkatest` asked for and `User:acltest` owns
+     */
+    private const string OTHER_OWNER_TOKEN_ID_V3 = '8he7AEz-Rw6TOQ2yr7MaYw';
+
     private ScriptedConnections $brokers;
 
     protected function setUp(): void
@@ -94,17 +106,22 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testCreateDelegationTokenReturnsTheTokenOfTheAnswerWithTheRenewersOfTheRequest(): void
     {
-        $broker = $this->scriptBroker(self::vector('createdelegationtoken.response.v2'));
+        $broker = $this->scriptBroker(self::vector('createdelegationtoken.response.v3'));
 
         $token = $this->adminClient()->createDelegationToken([KafkaPrincipal::user('admin')], 3600000);
 
-        self::assertSame(self::TOKEN_ID_V2, $token->tokenId());
+        self::assertSame(self::TOKEN_ID_V3, $token->tokenId());
         self::assertSame('User:kafkatest', $token->tokenInformation->ownerAsString());
+        self::assertSame(
+            'User:kafkatest',
+            $token->tokenInformation->tokenRequesterAsString(),
+            'a token a principal asks for itself names the same principal twice since the version 3 of Kafka 3.3'
+        );
+        self::assertFalse($token->tokenInformation->isIssuedForAnotherPrincipal());
         self::assertSame(64, strlen($token->hmac), 'the HmacSHA512 of the token id is 64 bytes');
-        self::assertStringEndsWith('==', $token->hmacAsBase64String());
-        self::assertSame(1789141554021, $token->tokenInformation->issueTimestamp);
-        self::assertSame(1789145154021, $token->tokenInformation->expiryTimestamp);
-        self::assertSame(1789145154021, $token->tokenInformation->maxTimestamp);
+        self::assertSame(1789735351794, $token->tokenInformation->issueTimestamp);
+        self::assertSame(1789738951794, $token->tokenInformation->expiryTimestamp);
+        self::assertSame(1789738951794, $token->tokenInformation->maxTimestamp);
         self::assertSame(
             ['User:admin'],
             $token->tokenInformation->renewersAsString(),
@@ -125,18 +142,56 @@ final class DelegationTokenAdminTest extends TestCase
         );
     }
 
+    public function testCreateDelegationTokenAsksForATokenOfAnotherPrincipal(): void
+    {
+        $broker = $this->scriptBroker(self::vector('createdelegationtoken.response.v3.other-owner'));
+
+        $token = $this->adminClient()->createDelegationToken([], 3600000, KafkaPrincipal::user('acltest'));
+
+        self::assertSame(self::OTHER_OWNER_TOKEN_ID_V3, $token->tokenId());
+        self::assertSame('User:acltest', $token->tokenInformation->ownerAsString(), 'the owner of KIP-373');
+        self::assertSame('User:kafkatest', $token->tokenInformation->tokenRequesterAsString(), 'and the caller');
+        self::assertTrue($token->tokenInformation->isIssuedForAnotherPrincipal());
+        self::assertTrue(
+            $token->tokenInformation->ownerOrRenewer(KafkaPrincipal::user('kafkatest')),
+            'the requester counts as an owner for the describe filter of the broker'
+        );
+
+        self::assertSame(
+            [self::requestFrame(new CreateDelegationTokenRequest(
+                [],
+                3600000,
+                't7',
+                $broker->getReceivedCorrelationIds()[0],
+                KafkaPrincipal::user('acltest')
+            ))],
+            $broker->getReceivedFrames(),
+            'the two owner strings of the version 3 stand in front of the renewer array'
+        );
+    }
+
     public function testACreateAnswerWithAnErrorCodeBecomesTheExceptionOfThatCode(): void
     {
-        $this->scriptBroker(self::vector('createdelegationtoken.response.v2.invalid-principal-type'));
+        $this->scriptBroker(self::createAnswer(KafkaException::INVALID_PRINCIPAL_TYPE));
 
         $this->expectException(InvalidPrincipalTypeException::class);
 
         $this->adminClient()->createDelegationToken([new KafkaPrincipal('Group', 'analytics')]);
     }
 
+    public function testAnOwnerTheCallerMayNotAskForBecomesTheAuthorizationException(): void
+    {
+        // The refusal of KIP-373, measured on the node: 65, not the 31 of the other apis of this line
+        $this->scriptBroker(self::vector('createdelegationtoken.response.v3.unauthorized'));
+
+        $this->expectException(DelegationTokenAuthorizationException::class);
+
+        $this->adminClient()->createDelegationToken([], 3600000, KafkaPrincipal::user('admin'));
+    }
+
     public function testACreateOnAnUnauthenticatedChannelBecomesTheUnsupportedByAuthenticationException(): void
     {
-        $this->scriptBroker(self::vector('createdelegationtoken.response.v2.not-allowed'));
+        $this->scriptBroker(self::createAnswer(KafkaException::DELEGATION_TOKEN_REQUEST_NOT_ALLOWED));
 
         $this->expectException(UnsupportedByAuthenticationException::class);
 
@@ -212,20 +267,25 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testDescribeDelegationTokenIndexesTheTokensByTheirId(): void
     {
-        $broker = $this->scriptBroker(self::vector('describedelegationtoken.response.v2'));
+        $broker = $this->scriptBroker(self::vector('describedelegationtoken.response.v3.by-owner'));
 
-        $tokens = $this->adminClient()->describeDelegationToken([KafkaPrincipal::user('admin')]);
+        $tokens = $this->adminClient()->describeDelegationToken([KafkaPrincipal::user('acltest')]);
 
-        self::assertSame([self::DESCRIBED_TOKEN_ID_V2], array_keys($tokens));
+        self::assertSame([self::OTHER_OWNER_TOKEN_ID_V3], array_keys($tokens));
 
-        $token = $tokens[self::DESCRIBED_TOKEN_ID_V2];
-        self::assertSame('User:admin', $token->tokenInformation->ownerAsString());
-        self::assertSame(['User:kafkatest'], $token->tokenInformation->renewersAsString());
+        $token = $tokens[self::OTHER_OWNER_TOKEN_ID_V3];
+        self::assertSame('User:acltest', $token->tokenInformation->ownerAsString());
+        self::assertSame(
+            'User:kafkatest',
+            $token->tokenInformation->tokenRequesterAsString(),
+            'the requester of the version 3 stands between the owner and the timestamps of an entry'
+        );
+        self::assertSame([], $token->tokenInformation->renewersAsString());
         self::assertSame(64, strlen($token->hmac), 'a described token carries its secret as well');
 
         self::assertSame(
             [self::requestFrame(new DescribeDelegationTokenRequest(
-                [KafkaPrincipal::user('admin')],
+                [KafkaPrincipal::user('acltest')],
                 't7',
                 $broker->getReceivedCorrelationIds()[0]
             ))],
@@ -233,9 +293,26 @@ final class DelegationTokenAdminTest extends TestCase
         );
     }
 
+    public function testDescribeDelegationTokenReadsTheRequesterOfEveryTokenItSees(): void
+    {
+        $this->scriptBroker(self::vector('describedelegationtoken.response.v3'));
+
+        $tokens = $this->adminClient()->describeDelegationToken();
+
+        self::assertSame([self::OTHER_OWNER_TOKEN_ID_V3, self::TOKEN_ID_V3], array_keys($tokens));
+        self::assertTrue(
+            $tokens[self::OTHER_OWNER_TOKEN_ID_V3]->tokenInformation->isIssuedForAnotherPrincipal(),
+            'the token of `User:acltest` that `User:kafkatest` asked for'
+        );
+        self::assertFalse(
+            $tokens[self::TOKEN_ID_V3]->tokenInformation->isIssuedForAnotherPrincipal(),
+            'and the one it asked for itself'
+        );
+    }
+
     public function testDescribeDelegationTokenAsksForEveryVisibleTokenByDefault(): void
     {
-        $broker = $this->scriptBroker(self::vector('describedelegationtoken.response.v2'));
+        $broker = $this->scriptBroker(self::vector('describedelegationtoken.response.v3'));
 
         $this->adminClient()->describeDelegationToken();
 
@@ -371,6 +448,33 @@ final class DelegationTokenAdminTest extends TestCase
             . pack('J', -1)                          // DelegationTokenManager.ErrorTimestamp
             . pack('N', 0)                           // throttle_time_ms, LAST in these apis
             . "\x00"                                 // the tagged-field section of the body
+        );
+    }
+
+    /**
+     * Builds the version 3 answer of CreateDelegationToken that carries an error and no token at all
+     *
+     * `CreateDelegationTokenResponse(throttleTimeMs, error, owner, requester)` @ 3.9.2: the code, the principal of
+     * the connection as both the owner and the requester, the three timestamps at -1, an empty token id and an
+     * empty hmac. The error cases of the api were captured at the version 2, whose frame this client no longer
+     * reads, so the four fields of a refusal are written here instead of re-capturing broker errors that the
+     * vectors of the versions 0 and 2 already document.
+     */
+    private static function createAnswer(int $errorCode): string
+    {
+        $principal = "\x05" . 'User' . "\x0a" . 'kafkatest';   // two compact strings, no tag buffer of their own
+
+        return ResponseFrame::of(
+            0,
+            "\x00"                                  // the tagged-field section of the response header v1
+            . pack('n', $errorCode)
+            . $principal                             // the owner
+            . $principal                             // the requester of the version 3 (KIP-373)
+            . pack('J', -1) . pack('J', -1) . pack('J', -1)
+            . "\x01"                                // the token id, an empty compact string
+            . "\x01"                                // the hmac, an empty compact byte array
+            . pack('N', 0)                           // throttle_time_ms, LAST in these apis
+            . "\x00"                                // the tagged-field section of the body
         );
     }
 

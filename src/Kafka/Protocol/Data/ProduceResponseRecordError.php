@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * partition t-0"), and it may be `null`: a record that is named without a message of its own is covered by the
  * {@see ProduceResponsePartition::$errorMessage} of the partition.
  *
- * @see docs/protocol/2.8.md, section "The record errors of a refused batch (v8, KIP-467)"
+ * @see docs/protocol/3.9.md, section "The record errors of a refused batch (v8, KIP-467)"
  */
 class ProduceResponseRecordError implements BinarySchemaInterface
 {

@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\ListPartitionReassignmentsTopics;
  * Like key 45 the api is **flexible from its version 0**, and only the **active controller** serves it; a broker
  * that is not the controller answers the top-level error code 41 (`NotController`).
  *
- * @see docs/protocol/2.8.md, section "ListPartitionReassignments API (key 46, v0)"
+ * @see docs/protocol/3.9.md, section "ListPartitionReassignments API (key 46, v0)"
  */
 class ListPartitionReassignmentsRequest extends AbstractRequest
 {

@@ -18,14 +18,18 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\ProduceResponseCurrentLeader;
+use Protocol\Kafka\Protocol\Data\ProduceResponseNodeEndpoint;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV5;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV8;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Produce response object, version 8
+ * Produce response object, version 11
  *
  * <pre>
  *   ProduceResponse (Version: 8) => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset
@@ -38,6 +42,9 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV5;
  *     LogAppendTime  => int64
  *     LogStartOffset => int64
  *     ThrottleTime   => int32
+ *     CurrentLeader  => tag 0 of a partition entry, [LeaderId int32 LeaderEpoch int32] -- since version 10
+ *     NodeEndpoints  => tag 0 of the BODY, [NodeId int32 Host compact string Port int32
+ *                       Rack compact nullable string] -- since version 10
  * </pre>
  *
  * Version 1 of the API added `ThrottleTime` **after** the topics array (`PRODUCE_RESPONSE_V1` in
@@ -80,16 +87,33 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV5;
  * {@see ProduceResponsePartition::$recordErrors}; {@see ProduceResponseV7} decodes the frame without the two
  * fields.
  *
+ * **Version 10 (Kafka 3.7, KIP-951) is the first version of this api that declares a tagged field**, and it
+ * declares two of them: the `current_leader` of a partition entry (tag 0,
+ * {@see \Protocol\Kafka\Protocol\Data\ProduceResponseCurrentLeader}) and the top-level `node_endpoints` of the
+ * body (tag 0 as well, {@see self::$nodeEndpoints}). The request of that version is the request of version 9 with
+ * another number in its header, see {@see ProduceRequest}; {@see ProduceResponseV9} keeps the answer that has
+ * neither, and {@see \Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV8} its partition entry.
+ *
+ * **Version 11 (Kafka 3.8, KIP-890) adds no field either** - `ProduceResponse.json` @ 3.8.1 comments "Version 11
+ * adds support for new error code TRANSACTION_ABORTABLE (KIP-890)" and declares nothing - so this class decodes
+ * the version 10 frame, and {@see ProduceResponseV10} the very same bytes for the version below. What changes is
+ * the **error code** a partition of a transactional produce may carry: **120** `TransactionAbortable`
+ * ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}), which says that the transaction can not
+ * be committed any more but the producer is intact, where version 10 is answered the **48** `InvalidTxnState`
+ * with the message "Partition was not added to the transaction". A broker picks between the two on the api
+ * version alone, see {@see ProduceRequest}.
+ *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)", "The leader discovery of KIP-951 (v10)"
+ *      and "The abortable transaction error of KIP-890 (v11)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
      * Version of the Produce API that this class decodes the answer of
      */
-    public const int VERSION = 9;
+    public const int VERSION = 11;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -115,6 +139,27 @@ class ProduceResponse extends AbstractResponse
     public int $throttleTime = 0;
 
     /**
+     * Where the leaders this answer named can be reached, as node id => endpoint (KIP-951)
+     *
+     * The top-level **tagged** field (tag 0) that version 10 added, the other half of the
+     * {@see ProduceResponseCurrentLeader} of a partition entry: the id, the host, the port and the rack of every
+     * node that one of those entries points at, each named once.
+     * `ProduceResponse.json` @ 3.7.2 says "Endpoints for all current-leaders enumerated in
+     * PartitionProduceResponses, with errors NOT_LEADER_OR_FOLLOWER", and its default is the **empty array**, so
+     * an answer that refused nothing carries the field not at all.
+     *
+     * A one-broker cluster can never fill it: the node is the leader of every partition it hosts, so no produce
+     * of it is ever answered 6, which is the one condition `KafkaApis.handleProduceRequest` @ 3.9.2 writes the
+     * hint for. The frames of this line therefore document the shape and not a capture, see the section of the
+     * document.
+     *
+     * @since Version 10 of protocol (Kafka 3.7, KIP-951)
+     *
+     * @var array<int, ProduceResponseNodeEndpoint>
+     */
+    public array $nodeEndpoints = [];
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -125,6 +170,11 @@ class ProduceResponse extends AbstractResponse
         ];
         if (static::VERSION >= 1) {
             $body['throttleTime'] = BinarySchema::TYPE_INT32;
+        }
+        // The `node_endpoints` of version 10 is a TAGGED field (tag 0) and therefore travels at the end of the
+        // body, behind the throttle time, and only when the broker really named a leader
+        if (static::VERSION >= 10) {
+            $body['nodeEndpoints'] = new TaggedField(0, ['nodeId' => ProduceResponseNodeEndpoint::class], []);
         }
 
         return $header + $body;
@@ -138,7 +188,8 @@ class ProduceResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 8 => ProduceResponseTopic::class,
+            static::VERSION >= 10 => ProduceResponseTopic::class,
+            static::VERSION >= 8 => ProduceResponseTopicV8::class,
             static::VERSION >= 5 => ProduceResponseTopicV5::class,
             static::VERSION >= 2 => ProduceResponseTopicV2::class,
             default              => ProduceResponseTopicV0::class,

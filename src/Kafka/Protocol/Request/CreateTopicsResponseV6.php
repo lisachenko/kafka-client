@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.8 put the **`topic_id`** of the new topic into every result with the version 7 ("Version 7 returns the
  * topic ID of the newly created topic if creation is sucessful"); the versions 5 and 6 carry the name alone.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsResponseV6 extends CreateTopicsResponse
 {

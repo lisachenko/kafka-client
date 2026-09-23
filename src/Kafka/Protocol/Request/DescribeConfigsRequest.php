@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeConfigsRequestV1} is the same frame with the version field of Kafka 1.1.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 class DescribeConfigsRequest extends AbstractRequest
 {

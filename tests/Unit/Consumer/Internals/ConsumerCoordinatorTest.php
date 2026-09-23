@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * sends it in every request of the protocol and must not leave its group when it is closed, which is what keeps
  * its partitions across a restart.
  *
- * @see docs/protocol/2.8.md, sections "The member id of a first join (v4, KIP-394)" and
+ * @see docs/protocol/3.9.md, sections "The member id of a first join (v4, KIP-394)" and
  *      "Static membership (KIP-345)"
  */
 #[CoversClass(ConsumerCoordinator::class)]
@@ -112,7 +112,7 @@ final class ConsumerCoordinatorTest extends TestCase
         $first  = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[1]))));
         $second = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[2]))));
 
-        self::assertSame(7, $first['apiVersion'], 'the client sends JoinGroup v7');
+        self::assertSame(9, $first['apiVersion'], 'the client sends JoinGroup v9');
         self::assertSame(JoinGroupRequest::DEFAULT_MEMBER_ID, $first['memberId']);
         self::assertSame(self::MEMBER_ID, $second['memberId'], 'the second join carries the assigned id');
         self::assertSame(

@@ -17,6 +17,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 
 /**
@@ -35,7 +36,7 @@ final class ProtocolMessageFramingTest extends TestCase
     public function testAMessageIsWrittenToTheStreamInOneCall(): void
     {
         $stream  = new WriteCountingStream();
-        $request = new MetadataRequest(['test'], true, 'kafka-client-test', 42);
+        $request = new ApiVersionsRequest('kafka-client-test', 42);
 
         $request->writeTo($stream);
 
@@ -43,16 +44,19 @@ final class ProtocolMessageFramingTest extends TestCase
         self::assertSame((string) $request, $stream->getBuffer(), 'and the bytes are the ones of the message');
     }
 
-    public function testTheSizeFieldCountsEveryByteBehindIt(): void
+    public function testAFlexibleAndAPlainMessageAreFramedTheSameWay(): void
     {
-        $stream = new WriteCountingStream();
+        $flexible = new WriteCountingStream();
+        $plain    = new WriteCountingStream();
 
-        new MetadataRequest(['one', 'two'], true, 'kafka-client-test', 1)->writeTo($stream);
+        new ApiVersionsRequest('kafka-client-test', 1)->writeTo($flexible);
+        new MetadataRequest(['test'], true, 'kafka-client-test', 2)->writeTo($plain);
 
-        self::assertSame(1, $stream->writes);
+        self::assertSame(1, $flexible->writes);
+        self::assertSame(1, $plain->writes);
         self::assertSame(
-            strlen($stream->getBuffer()) - 4,
-            (int) unpack('N', substr($stream->getBuffer(), 0, 4))[1],
+            strlen($flexible->getBuffer()) - 4,
+            (int) unpack('N', substr($flexible->getBuffer(), 0, 4))[1],
             'the size field counts every byte behind it'
         );
     }

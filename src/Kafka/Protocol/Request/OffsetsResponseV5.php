@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version of KIP-482, see {@see OffsetsResponse}. What version 5 itself states is the error code **78**
  * `OFFSET_NOT_AVAILABLE` of KIP-207.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 final class OffsetsResponseV5 extends OffsetsResponse
 {

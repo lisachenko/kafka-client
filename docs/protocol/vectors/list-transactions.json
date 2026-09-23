@@ -1,0 +1,381 @@
+{
+    "api": "list-transactions",
+    "apiKey": 66,
+    "section": "ListTransactions API (key 66, v0 and v1)",
+    "description": "Wire vectors of the ListTransactions API (key 66, v0 and v1), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "listtransactions.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions request v0 without any filter, the shortest frame of the api: two empty compact arrays and a tag buffer. The answer of the node to it is not stored as a vector - it carries every transactional id of the shared container.",
+            "hex": "0000002800420000000019cd001a6b61666b612d636c69656e742d74312d33302d766563746f727300010100",
+            "fields": {
+                "messageSize": 40,
+                "apiKey": 66,
+                "apiVersion": 0,
+                "correlationId": 6605,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": []
+            }
+        },
+        {
+            "id": "listtransactions.request.v0.producer-id-filter",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions request v0 (Kafka 3.0) with an empty state filter and one producer id: the answer of the node is bounded to the transactions of that producer, which is what makes the frame reproducible on a container every suite writes transactions to.",
+            "hex": "0000003000420000000019c9001a6b61666b612d636c69656e742d74312d33302d766563746f7273000102000000000000005500",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 66,
+                "apiVersion": 0,
+                "correlationId": 6601,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [
+                    85
+                ]
+            }
+        },
+        {
+            "id": "listtransactions.response.v0.producer-id-filter",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions answer v0: the top-level error code behind the throttle time, no unknown state filter, and the one transaction of that producer id with its state - three fields, where a DescribeTransactions entry has eight.",
+            "hex": "00000035000019c90000000000000001021674312d747861646d696e2d766563746f72732d74780000000000000055084f6e676f696e670000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 6601,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": {
+                    "t1-txadmin-vectors-tx": {
+                        "transactionalId": "t1-txadmin-vectors-tx",
+                        "producerId": 85,
+                        "transactionState": "Ongoing"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listtransactions.request.v0.state-filter",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions request v0 with both filters: the state `Ongoing` and the producer id of the transaction that is open, which the coordinator ANDs.",
+            "hex": "0000003800420000000019ca001a6b61666b612d636c69656e742d74312d33302d766563746f72730002084f6e676f696e6702000000000000005500",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 66,
+                "apiVersion": 0,
+                "correlationId": 6602,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "stateFilters": [
+                    "Ongoing"
+                ],
+                "producerIdFilters": [
+                    85
+                ]
+            }
+        },
+        {
+            "id": "listtransactions.response.v0.state-filter",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions answer v0 of a state filter that matches: the same single transaction.",
+            "hex": "00000035000019ca0000000000000001021674312d747861646d696e2d766563746f72732d74780000000000000055084f6e676f696e670000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 6602,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": {
+                    "t1-txadmin-vectors-tx": {
+                        "transactionalId": "t1-txadmin-vectors-tx",
+                        "producerId": 85,
+                        "transactionState": "Ongoing"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listtransactions.request.v0.state-filter-no-match",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions request v0 whose state filter names a state the transaction of this producer is not in.",
+            "hex": "0000003f00420000000019cb001a6b61666b612d636c69656e742d74312d33302d766563746f727300020f436f6d706c657465436f6d6d697402000000000000005500",
+            "fields": {
+                "messageSize": 63,
+                "apiKey": 66,
+                "apiVersion": 0,
+                "correlationId": 6603,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "stateFilters": [
+                    "CompleteCommit"
+                ],
+                "producerIdFilters": [
+                    85
+                ]
+            }
+        },
+        {
+            "id": "listtransactions.response.v0.state-filter-no-match",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions answer v0 of a filter that matches nothing: the error code 0 with an EMPTY transaction array - a filter that excludes everything is not an error.",
+            "hex": "0000000e000019cb00000000000000010100",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 6603,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": []
+            }
+        },
+        {
+            "id": "listtransactions.request.v0.unknown-state-filter",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions request v0 whose state filter is the name `ongoing` in lower case, which is no state name of the coordinator.",
+            "hex": "0000003800420000000019cc001a6b61666b612d636c69656e742d74312d33302d766563746f72730002086f6e676f696e6702000000000000005500",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 66,
+                "apiVersion": 0,
+                "correlationId": 6604,
+                "clientId": "kafka-client-t1-30-vectors",
+                "headerTaggedFields": [],
+                "stateFilters": [
+                    "ongoing"
+                ],
+                "producerIdFilters": [
+                    85
+                ]
+            }
+        },
+        {
+            "id": "listtransactions.response.v0.unknown-state-filter",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "ListTransactions answer v0 of an unknown state filter: the error code stays 0 and the name comes back in `unknown_state_filters`, while the transaction array is empty because the filter itself is not empty.",
+            "hex": "00000016000019cc0000000000000002086f6e676f696e670100",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 6604,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [
+                    "ongoing"
+                ],
+                "transactionStates": []
+            }
+        },
+        {
+            "id": "listtransactions.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ListTransactions request **v1** (Kafka 3.8, KIP-994) bounded by one producer id, with the duration filter at its default **-1**: the version 0 body plus eight bytes, and those eight bytes mean \"every transaction, whatever its age\".",
+            "hex": "000000300042000100001e8c00126b61666b612d636c69656e742d74312d33380001020000000000000048ffffffffffffffff00",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 66,
+                "apiVersion": 1,
+                "correlationId": 7820,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [
+                    72
+                ],
+                "durationFilter": -1
+            }
+        },
+        {
+            "id": "listtransactions.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The open transaction of that producer id, `Ongoing`.",
+            "hex": "0000002e00001e8c0000000000000001020f74312d33382d74786e2d6f70656e0000000000000048084f6e676f696e670000",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 7820,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": {
+                    "t1-38-txn-open": {
+                        "transactionalId": "t1-38-txn-open",
+                        "producerId": 72,
+                        "transactionState": "Ongoing"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listtransactions.request.v1.duration",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The same listing with the duration filter **0**: every transaction that started more than zero milliseconds ago, which is every transaction that has started at all.",
+            "hex": "000000300042000100001e8d00126b61666b612d636c69656e742d74312d33380001020000000000000048000000000000000000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 66,
+                "apiVersion": 1,
+                "correlationId": 7821,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [
+                    72
+                ],
+                "durationFilter": 0
+            }
+        },
+        {
+            "id": "listtransactions.response.v1.duration",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The same answer as with -1 - the coordinator drops an entry only while `now - txnStartTimestamp` is not greater than the filter.",
+            "hex": "0000002e00001e8d0000000000000001020f74312d33382d74786e2d6f70656e0000000000000048084f6e676f696e670000",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 7821,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": {
+                    "t1-38-txn-open": {
+                        "transactionalId": "t1-38-txn-open",
+                        "producerId": 72,
+                        "transactionState": "Ongoing"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listtransactions.request.v1.duration-nothing",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The same listing with the duration filter **60000**: only a transaction that has been running for a minute.",
+            "hex": "000000300042000100001e8e00126b61666b612d636c69656e742d74312d33380001020000000000000048000000000000ea6000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 66,
+                "apiVersion": 1,
+                "correlationId": 7822,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [
+                    72
+                ],
+                "durationFilter": 60000
+            }
+        },
+        {
+            "id": "listtransactions.response.v1.duration-nothing",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The empty listing of a filter that matches nothing - fourteen bytes, the error code 0 and two empty arrays.",
+            "hex": "0000000e00001e8e00000000000000010100",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 7822,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": []
+            }
+        },
+        {
+            "id": "listtransactions.request.v1.never-started",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The same minute-old filter, asked for a producer id whose transactional id has only ever run `InitProducerId`.",
+            "hex": "000000300042000100001e8f00126b61666b612d636c69656e742d74312d33380001020000000000000047000000000000ea6000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 66,
+                "apiVersion": 1,
+                "correlationId": 7823,
+                "clientId": "kafka-client-t1-38",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [
+                    71
+                ],
+                "durationFilter": 60000
+            }
+        },
+        {
+            "id": "listtransactions.response.v1.never-started",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The trap of the filter: the id IS listed, `Empty`. Its `txnStartTimestamp` is the **-1** of \"no transaction has ever started\", and `now - (-1)` is greater than every filter a client can send, so an id that never began a transaction passes every duration filter there is.",
+            "hex": "0000002d00001e8f0000000000000001021074312d33382d74786e2d656d707479000000000000004706456d7074790000",
+            "fields": {
+                "messageSize": 45,
+                "correlationId": 7823,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": {
+                    "t1-38-txn-empty": {
+                        "transactionalId": "t1-38-txn-empty",
+                        "producerId": 71,
+                        "transactionState": "Empty"
+                    }
+                }
+            }
+        }
+    ]
+}

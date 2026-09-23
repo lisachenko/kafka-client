@@ -72,7 +72,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * really answers: the `LogAppendTime` of a partition, which is -1 for a topic that keeps the `CreateTime` of the
  * producer and the clock of the broker for a topic with `message.timestamp.type=LogAppendTime`.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
+ * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v11)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceRequestV4::class)]
@@ -408,8 +408,18 @@ final class ProduceApiTest extends IntegrationTestCase
         // Only a Fetch v4 or above brings the headers back: every lower version is answered in a format that has
         // no place for them
         $stream = $this->connect();
-        new FetchRequest([$this->topic => [0 => 0]], 1000, 1, 65536, -1, self::CLIENT_ID, 58)->writeTo($stream);
-        $fetched = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[0];
+        new FetchRequest(
+            [$this->topic => [0 => 0]],
+            1000,
+            1,
+            65536,
+            -1,
+            self::CLIENT_ID,
+            58,
+            // Version 13 names the topic by its id and by nothing else (KIP-516)
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
+        )->writeTo($stream);
+        $fetched = self::fetchedTopic(FetchResponse::unpack($stream), $this->topic)->partitions[0];
         $records = $fetched->getRecords()->getRecords();
 
         self::assertSame(RecordBatch::MAGIC, $fetched->getRecords()->getMagic());

@@ -111,7 +111,7 @@ use Throwable;
  * again" and "your records are there and we disagree about them" visible at all.
  *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0 to v4)" and "The idempotent producer"
+ * @see docs/protocol/3.9.md, sections "InitProducerId API (key 22, v0 to v5)" and "The idempotent producer"
  */
 class TransactionManager
 {
@@ -552,6 +552,16 @@ class TransactionManager
      * goes into {@see TransactionState::ABORTABLE_ERROR}, from which only
      * {@see TransactionManager::abortTransaction()} leads out. That is what `Sender.failBatch()` @ 1.1.1 does
      * with `transactionManager.transitionToAbortableError()`.
+     *
+     * **Kafka 3.8 gave that rule a code of its own.** A Produce **v11** request (KIP-890) says that the client
+     * understands **120** `TransactionAbortable`
+     * ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}), and the broker then
+     * answers exactly this condition with it instead of the fatal-looking **48** `InvalidTxnState` of the
+     * versions below: "the server encountered an error with the transaction, the client can abort the transaction
+     * to continue using this transactional id". It needs no branch of its own here - it is one of the "every
+     * other error" codes and takes the abortable path they all take - but it is the one the broker *means* that
+     * way, so a producer that catches it may abort and begin the next transaction with the same id instead of
+     * throwing the producer away.
      */
     public function batchFailed(
         TopicPartition $topicPartition,
@@ -1179,6 +1189,16 @@ class TransactionManager
      * point - an authorization failure of a topic or a group, a request that timed out, a broken connection -
      * leaves the producer intact but the transaction unusable, so it becomes an **abortable** error and
      * {@see TransactionManager::abortTransaction()} is the only way on.
+     *
+     * The **120** `TransactionAbortable` of KIP-890, which Kafka 3.8 added and which the version bumps of the five
+     * transaction apis promise to understand, is one of those: it is not in the fatal list, so a coordinator that
+     * answers it puts this producer into {@see TransactionState::ABORTABLE_ERROR}, from which the abort with the
+     * epoch bump of KIP-360 leads out - exactly what "the client can abort the transaction to continue using this
+     * transactional ID" asks for, and what the Java `TransactionManager` @ 3.9.2 does with the code in all six of
+     * its handlers. On the 3.9.2 node of this line the branch is really reached: a TxnOffsetCommit **v4** whose
+     * `__consumer_offsets` partition the open transaction does not hold - a `sendOffsetsToTransaction()` whose
+     * AddOffsetsToTxn never went through - is answered the 120, where the version 3 is answered the 48 and the
+     * producer would be finished.
      *
      * @param Closure(): mixed $send The request to send
      *

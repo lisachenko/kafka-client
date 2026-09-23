@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * per partition and dropped the field. The odd version out therefore lives in {@see OffsetsRequestPartitionV0} and
  * the scheme is selected by {@see OffsetsRequestPartition::VERSION}.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 class OffsetsRequestPartition implements BinarySchemaInterface
 {
@@ -56,7 +56,7 @@ class OffsetsRequestPartition implements BinarySchemaInterface
 
     /**
      * Target time in milliseconds, or one of the special values {@see OffsetsRequest::LATEST} /
-     * {@see OffsetsRequest::EARLIEST}.
+     * {@see OffsetsRequest::EARLIEST} / {@see OffsetsRequest::MAX_TIMESTAMP}.
      *
      * In version 1 an ordinary timestamp asks for the offset of the first message whose own timestamp is `>= t`,
      * which the time index of the log resolves. In version 0 the broker knew nothing about the timestamps of the

@@ -16,7 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * EndTxn response object, version 1 (key 26)
+ * EndTxn response object, version 4 (key 26)
  *
  * <pre>
  *   EndTxn Response (Version: 0 and 1) => throttle_time_ms error_code
@@ -47,14 +47,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see EndTxnResponseV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0 to v3)"
+ * **Kafka 3.8 added the version 4** (KIP-890) and gave the answer no field. A 3.9.2 coordinator still answers an
+ * abort of a committed transaction with the **48** and a fenced producer with the **90**: the end of a
+ * transaction verifies no partition, so the code 120 never reaches this api either - measured at both versions.
+ * The producer id and the epoch of the **version 5** are Kafka 3.9's. {@see EndTxnResponseV3} is the frame of
+ * Kafka 2.8.
+ *
+ * @see docs/protocol/3.9.md, section "EndTxn API (key 26, v0 to v4)"
  */
 class EndTxnResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)

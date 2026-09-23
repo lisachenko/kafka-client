@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * *"User not found"* - the api distinguishes "this user has no credential" from "this user was not asked about",
  * which a silent empty list could not.
  *
- * @see docs/protocol/2.8.md, section "DescribeUserScramCredentials API (key 50, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeUserScramCredentials API (key 50, v0)"
  */
 class DescribeUserScramCredentialsResult implements BinarySchemaInterface
 {

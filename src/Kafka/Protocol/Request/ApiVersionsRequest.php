@@ -17,14 +17,14 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Asks a broker which api keys and versions it serves, version 3 (key 18)
+ * Asks a broker which api keys and versions it serves, version 4 (key 18)
  *
  * It is the first request a client of Kafka 0.10 or later sends on a new connection, and the only one whose answer
  * tells a client what the broker on the other side speaks; Kafka 0.9.0.1 and 0.8.2.2 have no such api, which is why
  * the lower lines of this repository probe the surface of their broker by hand.
  *
  * <pre>
- *   ApiVersions Request (Version: 3) => client_software_name client_software_version TAG_BUFFER
+ *   ApiVersions Request (Version: 3 to 4) => client_software_name client_software_version TAG_BUFFER
  *     client_software_name    => COMPACT_STRING
  *     client_software_version => COMPACT_STRING
  * </pre>
@@ -47,6 +47,16 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * that starts with a `-`. This client sends {@see self::CLIENT_SOFTWARE_NAME} and
  * {@see self::CLIENT_SOFTWARE_VERSION}.
  *
+ * **Version 4 (Kafka 3.9) declares no field at all.** Its comment in `ApiVersionsRequest.json` @ 3.9.2 is the
+ * whole specification of it - *"Version 4 fixes KAFKA-17011, which blocked SupportedFeatures.MinVersion in the
+ * response from being 0"* - so the frame of a v4 request is the frame of a v3 request with a 4 in its header, and
+ * what the version really is is a **promise about the answer**: a client that sends it can read a supported
+ * feature whose `min_version` is **0**. A v3 answer hides such a feature altogether
+ * (`ApiVersionsResponse.maybeFilterSupportedFeatureKeys` @ 3.9.2 drops every entry with the minimum 0, because the
+ * clients of Kafka 3.0 to 3.8 read a 0 there as "no such feature"), and on the KRaft node of this line that is
+ * `kraft.version`: the v3 answer lists one supported feature, the v4 answer lists two ({@see ApiVersionsResponse}).
+ * This client sends the version 4, and {@see ApiVersionsRequestV3} is the frame one number below it.
+ *
  * Two properties of this api make it usable before anything else is known about the broker
  * (`KafkaApis.handleApiVersionsRequest` and `RequestContext.parseRequest` @ 2.8.2):
  *
@@ -63,7 +73,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * * It is answered on a SASL listener before the authentication has happened, so a client can learn the surface of
  *   the broker before it knows whether it may talk to it at all.
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 class ApiVersionsRequest extends AbstractRequest
 {
@@ -75,7 +85,7 @@ class ApiVersionsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * @inheritdoc
@@ -94,9 +104,9 @@ class ApiVersionsRequest extends AbstractRequest
      * Version of the client software, which for this package is the Kafka protocol line it speaks
      *
      * Every line of this repository follows the Apache Kafka release it implements instead of a semantic version of
-     * its own - `main` speaks Kafka 2.8 - so that is what a broker is told.
+     * its own - `main` speaks Kafka 3.9 - so that is what a broker is told.
      */
-    public const string CLIENT_SOFTWARE_VERSION = '2.8';
+    public const string CLIENT_SOFTWARE_VERSION = '3.9';
 
     /**
      * Name of the client software, sent from version 3 on (COMPACT_STRING, KIP-511)

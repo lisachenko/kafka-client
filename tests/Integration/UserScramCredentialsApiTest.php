@@ -18,11 +18,12 @@ use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\FeatureUpdate;
 use Protocol\Kafka\Admin\ScramMechanism;
 use Protocol\Kafka\Admin\UserScramCredentialDeletion;
+use Protocol\Kafka\Admin\UserScramCredentialsDescription;
 use Protocol\Kafka\Admin\UserScramCredentialUpsertion;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\DuplicateResourceException;
-use Protocol\Kafka\Common\Errors\InvalidRequestException;
+use Protocol\Kafka\Common\Errors\InvalidUpdateVersionException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\ResourceNotFoundException;
 use Protocol\Kafka\Common\Errors\UnacceptableCredentialException;
@@ -36,21 +37,30 @@ use Throwable;
 
 /**
  * Exercises the three apis Kafka 2.7 added - DescribeUserScramCredentials (50), AlterUserScramCredentials (51) and
- * UpdateFeatures (57) - against a real Kafka 2.8.2 broker.
+ * UpdateFeatures (57) - against the Kafka 3.9.2 KRaft node of this line.
  *
  * KIP-554 is the end of writing SCRAM users into ZooKeeper by hand, and the interesting half of it happens in the
  * **client**: the salted password of RFC 5802 is derived here and the password never reaches the wire. What this
  * class can not show is a *login* with such a credential - this client speaks SASL/PLAIN only, the same limit the
  * delegation tokens of KIP-48 carry.
  *
- * KIP-584 has nothing to finalize on a ZooKeeper-backed 2.8.2 cluster, so what is measured of UpdateFeatures is
- * the frame and the refusals.
+ * Both apis are answered by the **KRaft controller** on this line: `ScramControlManager` writes a
+ * `UserScramCredentialRecord` or a `RemoveUserScramCredentialRecord` to the metadata log and the describe reads
+ * the metadata image of the broker, which is a moment behind it (about 30 ms, measured on the node). A read that
+ * follows a write therefore polls ({@see self::awaitCredentials()}) instead of assuming the answer is already there.
+ *
+ * Two changes of the **same user** in one request are refused with 92 on this node even when they name different
+ * mechanisms, where a 2.8.2 broker took one change per user *and* mechanism: `ScramControlManager.alterCredentials`
+ * @ 3.9.2 keys its `userToUpsert`/`userToDeletion` maps by the user name alone.
+ *
+ * KIP-584 is not empty here either: a KRaft node **finalizes** `metadata.version`, and UpdateFeatures is answered
+ * by a controller that knows the feature - see {@see self::testTheNodeFinalizesItsMetadataVersion()}.
  *
  * Every user of this class carries a `t1-scram-` prefix of its own and every credential it writes is removed again
  * in {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/2.8.md, sections "DescribeUserScramCredentials API (key 50, v0)",
- *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0)"
+ * @see docs/protocol/3.9.md, sections "DescribeUserScramCredentials API (key 50, v0)",
+ *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeUserScramCredentialsRequest::class)]
@@ -126,12 +136,11 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
 
         self::assertSame([$user => null], $result);
 
-        $described = $this->admin->describeUserScramCredentials([$user]);
+        $described = self::awaitCredentials($this->admin, $user);
 
-        self::assertArrayHasKey($user, $described);
-        self::assertTrue($described[$user]->has(ScramMechanism::ScramSha256));
-        self::assertFalse($described[$user]->has(ScramMechanism::ScramSha512));
-        self::assertSame(8192, $described[$user]->credentialFor(ScramMechanism::ScramSha256)?->iterations);
+        self::assertTrue($described->has(ScramMechanism::ScramSha256));
+        self::assertFalse($described->has(ScramMechanism::ScramSha512));
+        self::assertSame(8192, $described->credentialFor(ScramMechanism::ScramSha256)?->iterations);
         self::assertStringNotContainsString(
             't1-secret',
             serialize($described),
@@ -146,24 +155,60 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
     {
         $user = $this->user('two');
 
+        // One request per mechanism: `ScramControlManager.alterCredentials` @ 3.9.2 keys the changes it collects
+        // by the **user name** alone, so the two upsertions of one user that a 2.8.2 broker applied together are
+        // "A user credential cannot be altered twice in the same request" here - the 92 of
+        // {@see self::testTwoChangesOfOneUserInOneRequestAreADuplicateWhateverTheMechanism()}
         $this->admin->alterUserScramCredentials([
             new UserScramCredentialUpsertion($user, ScramMechanism::ScramSha256, 't1-secret', 4096),
+        ]);
+        $this->admin->alterUserScramCredentials([
             new UserScramCredentialUpsertion($user, ScramMechanism::ScramSha512, 't1-secret', 4096),
         ]);
 
-        $described = $this->admin->describeUserScramCredentials([$user]);
+        $described = self::awaitCredentials(
+            $this->admin,
+            $user,
+            static fn(UserScramCredentialsDescription $it): bool => $it->has(ScramMechanism::ScramSha512)
+        );
 
-        self::assertTrue($described[$user]->has(ScramMechanism::ScramSha256));
-        self::assertTrue($described[$user]->has(ScramMechanism::ScramSha512));
+        self::assertTrue($described->has(ScramMechanism::ScramSha256));
+        self::assertTrue($described->has(ScramMechanism::ScramSha512));
 
         $this->admin->alterUserScramCredentials([
             new UserScramCredentialDeletion($user, ScramMechanism::ScramSha256),
         ]);
 
-        $described = $this->admin->describeUserScramCredentials([$user]);
+        $described = self::awaitCredentials(
+            $this->admin,
+            $user,
+            static fn(UserScramCredentialsDescription $it): bool => !$it->has(ScramMechanism::ScramSha256)
+        );
 
-        self::assertFalse($described[$user]->has(ScramMechanism::ScramSha256), 'the one that was deleted is gone');
-        self::assertTrue($described[$user]->has(ScramMechanism::ScramSha512), 'and the other one is untouched');
+        self::assertFalse($described->has(ScramMechanism::ScramSha256), 'the one that was deleted is gone');
+        self::assertTrue($described->has(ScramMechanism::ScramSha512), 'and the other one is untouched');
+    }
+
+    /**
+     * Two changes of one user in one request are 92, whatever the mechanisms are
+     */
+    public function testTwoChangesOfOneUserInOneRequestAreADuplicateWhateverTheMechanism(): void
+    {
+        $user = $this->user('two-in-one');
+
+        $result = $this->admin->alterUserScramCredentials([
+            new UserScramCredentialUpsertion($user, ScramMechanism::ScramSha256, 't1-secret', 4096),
+            new UserScramCredentialUpsertion($user, ScramMechanism::ScramSha512, 't1-secret', 4096),
+        ]);
+
+        self::assertInstanceOf(DuplicateResourceException::class, $result[$user]);
+        self::assertSame(KafkaException::DUPLICATE_RESOURCE, $result[$user]->getCode());
+        self::assertSame(
+            'A user credential cannot be altered twice in the same request',
+            $result[$user]->getContext()['error'],
+            'the controller does not look at the mechanism at all'
+        );
+        self::assertSame([], $this->admin->describeUserScramCredentials([$user]), 'and nothing was written');
     }
 
     /**
@@ -175,6 +220,7 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
         $this->admin->alterUserScramCredentials([
             new UserScramCredentialUpsertion($user, ScramMechanism::ScramSha256, 't1-secret', 4096),
         ]);
+        self::awaitCredentials($this->admin, $user);
 
         $fromNull  = $this->admin->describeUserScramCredentials(null);
         $fromEmpty = $this->admin->describeUserScramCredentials([]);
@@ -281,37 +327,92 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
     }
 
     /**
-     * A ZooKeeper-backed 2.8.2 cluster finalizes no feature, and says so through the ApiVersions v3 answer
+     * A KRaft node finalizes `metadata.version`, and says so through the tagged fields of the ApiVersions answer
+     *
+     * A ZooKeeper-backed 2.8.2 cluster finalized nothing at all: all three values were empty or 0. The node of
+     * this line was formatted at `3.9-IV0`, which is the feature level **21** of `metadata.version`, and it both
+     * supports (1 to 21) and finalizes (21/21) that one feature. Since this client sends the **ApiVersions v4** of
+     * Kafka 3.9 the *supported* map also carries `kraft.version` 0 to 1, which a v3 answer hides because its
+     * minimum is 0 (KAFKA-17011); it is **not** in the finalized map, because the node has finalized it at the
+     * level 0 and a feature at level 0 is not finalized at all - its quorum is the static
+     * `controller.quorum.voters` of KIP-595. The epoch is the **offset of the metadata log** at which the
+     * agreement was written, so it grows with every write the cluster does and can only be asserted to be
+     * positive.
      */
-    public function testTheClusterOfThisContainerFinalizesNoFeature(): void
+    public function testTheNodeFinalizesItsMetadataVersion(): void
     {
         $features = $this->admin->describeFeatures();
 
-        self::assertSame([], $features->supportedFeatures, 'a 2.8.2 broker on ZooKeeper supports no feature');
-        self::assertSame([], $features->finalizedFeatures);
-        self::assertSame(0, $features->finalizedFeaturesEpoch, 'and the epoch of that empty agreement is 0');
+        self::assertSame(
+            ['kraft.version', 'metadata.version'],
+            array_keys($features->supportedFeatures),
+            'the two features a 3.9.2 node supports; a client that sent ApiVersions v3 would see the second alone,'
+            . ' because the minimum of `kraft.version` is 0 (KAFKA-17011)'
+        );
+        self::assertSame(0, $features->supportedFeatures['kraft.version']->minVersion, 'the static voter set');
+        self::assertSame(1, $features->supportedFeatures['kraft.version']->maxVersion, 'the KIP-853 voter set');
+        self::assertSame(1, $features->supportedFeatures['metadata.version']->minVersion);
+        self::assertSame(21, $features->supportedFeatures['metadata.version']->maxVersion, '3.9-IV0');
+
+        self::assertSame(
+            ['metadata.version'],
+            array_keys($features->finalizedFeatures),
+            '`kraft.version` is finalized at the level 0, and a feature at level 0 is not in the finalized map'
+        );
+        self::assertSame(21, $features->finalizedFeatures['metadata.version']->minVersionLevel);
+        self::assertSame(21, $features->finalizedFeatures['metadata.version']->maxVersionLevel);
+
+        self::assertGreaterThan(
+            0,
+            $features->finalizedFeaturesEpoch,
+            'the epoch is the offset of the metadata log, which is beyond 0 as soon as the cluster was formatted'
+        );
     }
 
     /**
-     * Every feature update is refused per feature, because there is no feature to update
+     * A feature update the controller cannot make is refused per feature, with 95 and the reason
+     *
+     * On the 2.8.2 broker every update was the 42 (`InvalidRequest`) of a cluster that finalizes nothing - "the
+     * provided feature is not supported" for an upgrade and "Can not delete non-existing finalized feature" for a
+     * deletion. `FeatureControlManager.updateFeature` @ 3.9.2 answers **95** (`InvalidUpdateVersion`) instead, and
+     * its message names the controller and the range it knows. A **deletion** - the feature level 0 - is not
+     * refused at all any more: level 0 means "disabled" and is supported by everybody, so the controller writes a
+     * `FeatureLevelRecord` with the level 0 and answers 0, whether that feature was ever finalized or not.
      */
     public function testAFeatureUpdateIsRefusedPerFeature(): void
     {
         $result = $this->admin->updateFeatures([new FeatureUpdate('t1-nonsense', 1)]);
 
-        self::assertInstanceOf(InvalidRequestException::class, $result['t1-nonsense']);
-        self::assertSame(KafkaException::INVALID_REQUEST, $result['t1-nonsense']->getCode());
-        self::assertStringContainsString(
-            'the provided feature is not supported',
-            $result['t1-nonsense']->getMessage()
+        self::assertInstanceOf(InvalidUpdateVersionException::class, $result['t1-nonsense']);
+        self::assertSame(KafkaException::INVALID_UPDATE_VERSION, $result['t1-nonsense']->getCode());
+        self::assertSame(
+            'Invalid update version 1 for feature t1-nonsense. Local controller 1 does not support this feature.',
+            $result['t1-nonsense']->getContext()['error']
         );
 
-        $deletion = $this->admin->updateFeatures([FeatureUpdate::delete('t1-nonsense')]);
+        $tooHigh = $this->admin->updateFeatures([new FeatureUpdate('metadata.version', 99)]);
 
-        self::assertInstanceOf(InvalidRequestException::class, $deletion['t1-nonsense']);
-        self::assertStringContainsString(
-            'Can not delete non-existing finalized feature',
-            $deletion['t1-nonsense']->getMessage()
+        self::assertInstanceOf(InvalidUpdateVersionException::class, $tooHigh['metadata.version']);
+        self::assertSame(
+            'Invalid update version 99 for feature metadata.version. Local controller 1 only supports versions 1-21',
+            $tooHigh['metadata.version']->getContext()['error']
+        );
+
+        $downgrade = $this->admin->updateFeatures([new FeatureUpdate('metadata.version', 1)]);
+
+        self::assertInstanceOf(InvalidUpdateVersionException::class, $downgrade['metadata.version']);
+        self::assertSame(
+            'Invalid update version 1 for feature metadata.version. Can\'t downgrade the version of this feature'
+            . ' without setting the upgrade type to either safe or unsafe downgrade.',
+            $downgrade['metadata.version']->getContext()['error'],
+            'the `upgrade_type` of KIP-584 that would allow it is the version 1 of the api, which Kafka 3.3 added'
+        );
+
+        self::assertSame(
+            ['t1-nonsense' => null],
+            $this->admin->updateFeatures([FeatureUpdate::delete('t1-nonsense')]),
+            'and a deletion of a feature that was never finalized is accepted: the level 0 is supported by every'
+            . ' node of the quorum, so the controller simply writes it'
         );
     }
 
@@ -325,6 +426,33 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
             $this->admin->updateFeatures([]),
             'the controller iterates an empty collection and answers the top-level 0 with no result'
         );
+    }
+
+    /**
+     * Waits until the metadata image of the node carries the credentials of the given user and returns them
+     *
+     * AlterUserScramCredentials is answered by the controller once its record is committed; the describe api reads
+     * the metadata image of the broker, which replays that record a moment later - about 30 ms on this node. The
+     * optional predicate says which state of the entry is the one that is being waited for; without it, the mere
+     * presence of the user is.
+     *
+     * @param (callable(UserScramCredentialsDescription): bool)|null $until
+     */
+    private static function awaitCredentials(
+        AdminClient $admin,
+        string $user,
+        ?callable $until = null
+    ): UserScramCredentialsDescription {
+        $deadline = microtime(true) + 15.0;
+        do {
+            $description = $admin->describeUserScramCredentials([$user])[$user] ?? null;
+            if ($description !== null && ($until === null || $until($description))) {
+                return $description;
+            }
+            usleep(20000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("The node did not describe the credentials of {$user} in time");
     }
 
     /**

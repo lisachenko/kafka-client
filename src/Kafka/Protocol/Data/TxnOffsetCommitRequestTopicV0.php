@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see TxnOffsetCommitRequestTopic::partitionClass()} follows, which picks
  * {@see TxnOffsetCommitRequestPartitionV0}.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 final class TxnOffsetCommitRequestTopicV0 extends TxnOffsetCommitRequestTopic
 {

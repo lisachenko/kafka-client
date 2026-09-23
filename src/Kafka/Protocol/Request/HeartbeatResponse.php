@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * this answer can carry: **82** (`FencedInstanceId`), for a static member whose instance id another consumer has
  * taken over.
  *
- * @see docs/protocol/2.8.md, sections "Heartbeat API (key 12, v0 to v4)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, sections "Heartbeat API (key 12, v0 to v4)" and "Quotas and throttle time"
  */
 class HeartbeatResponse extends AbstractResponse
 {

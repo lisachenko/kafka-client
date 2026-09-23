@@ -33,15 +33,19 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The record batch of the message format v2 against a real Kafka 0.11.0.3 broker.
  *
  * The broker is the authority on the format: it validates the CRC-32C of every batch it appends, it assigns the base
- * offset and the partition leader epoch, it converts a batch into the `message.format.version` of the topic on write
- * and it converts the log back down for every client that fetches with a request below version 4. Everything this
- * suite asserts was read out of a log a 0.11.0.3 broker wrote.
+ * offset and the partition leader epoch, and it converts the log back down for every client that fetches with a
+ * request below version 4.
+ *
+ * **It no longer converts a batch on write.** KIP-724 (Kafka 3.0) retired `message.format.version`: the node
+ * stores the record batch v2 whatever the topic asks for - `kafka-topics.sh --config message.format.version=0.10.0`
+ * is accepted with a warning and `DumpLogSegments` then shows `magic: 2` - so a log of an older format is not
+ * something this line can produce any more, and the conversions it still measures all happen on the way out.
  *
  * The apis that carry a batch - Produce v3 and Fetch v4/v5 - are not part of this ticket, so the frames are built by
  * {@see RawRecordBatchProbe}; that is also the only way to make the broker write a **control batch** without a
  * transactional producer.
  *
- * @see docs/protocol/2.8.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/3.9.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(RecordBatch::class)]
 #[CoversClass(RecordV2::class)]
@@ -312,30 +316,6 @@ final class RecordBatchV2Test extends IntegrationTestCase
         self::assertCount(2, $asV1->getBatches(), 'a converted batch becomes one message per record');
     }
 
-    public function testTheLogOfAnOlderTopicFormatIsAnsweredInThatFormat(): void
-    {
-        $topic = self::uniqueTopicName('t2-rbv2-v010');
-        $this->createTopic($topic, ['message.format.version=0.10.0']);
-
-        $createTime = self::now();
-        $answer     = $this->produce(
-            RecordBatch::fromRecords([new Record('alpha', null, 0, null, $createTime, TimestampType::CREATE_TIME)]),
-            $topic
-        );
-
-        self::assertSame(0, $answer['errorCode'], 'a Produce v3 with a record batch is accepted anyway');
-
-        $region = $this->fetch(0, 4, 0, $topic);
-
-        self::assertSame(
-            Message::MAGIC_V1,
-            $region->getMagic(),
-            'the broker converted the batch down to the message format of the topic on write'
-        );
-        self::assertSame('alpha', $region->getRecords()[0]->value);
-        self::assertSame($createTime, $region->getRecords()[0]->timestamp);
-    }
-
     public function testACommittedTransactionLeavesADataBatchAndAControlBatchInTheLog(): void
     {
         $transactionalId = self::uniqueTopicName('t2-rbv2-txn');
@@ -512,9 +492,9 @@ final class RecordBatchV2Test extends IntegrationTestCase
     /**
      * Creates a topic with the given configuration through the tools of the broker container, and waits for it.
      *
-     * `message.format.version` and `message.timestamp.type` are topic-level configuration entries that this line
-     * cannot set through CreateTopics until the admin apis of the ticket that owns them are there, so the topic is
-     * created the way the other message format suites create theirs.
+     * `message.timestamp.type` is a topic-level configuration entry that this line cannot set through CreateTopics
+     * until the admin apis of the ticket that owns them are there, so the topic is created the way the other
+     * message format suites create theirs.
      *
      * @param list<string> $configuration `key=value` entries of the topic configuration
      */
@@ -522,8 +502,8 @@ final class RecordBatchV2Test extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
-            'docker', 'exec', $container === false || $container === '' ? 'kafka-2-8-2' : $container,
-            '/opt/kafka/bin/kafka-topics.sh', '--zookeeper', 'localhost:2181',
+            'docker', 'exec', $container === false || $container === '' ? 'kafka-3-9-2' : $container,
+            '/opt/kafka/bin/kafka-topics.sh', '--bootstrap-server', 'localhost:9092',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];
         foreach ($configuration as $entry) {

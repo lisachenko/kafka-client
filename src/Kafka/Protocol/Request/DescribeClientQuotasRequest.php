@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\ClientQuotaComponentData;
  * `"flexibleVersions": "none"` - and only Kafka **2.8** adds the version 1, which is the same frame written
  * compactly and adds no field. {@see DescribeClientQuotasRequestV0} sends what a 2.6 or 2.7 broker serves.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 class DescribeClientQuotasRequest extends AbstractRequest
 {

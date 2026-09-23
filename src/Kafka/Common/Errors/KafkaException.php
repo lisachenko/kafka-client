@@ -23,8 +23,8 @@ use RuntimeException;
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
  *
- * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 2.8.2,
- * which ends at 104: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
+ * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 3.9.2,
+ * which ends at 127: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
  * 0.10.0, 36-42 (the CreateTopics codes, NOT_CONTROLLER and INVALID_REQUEST) with 0.10.1 and 43-44
  * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2; Kafka 0.11 added 45-55, the codes of the
  * idempotent and transactional producer (KIP-98), of the ACL apis (SECURITY_DISABLED, OPERATION_NOT_ATTEMPTED) and
@@ -43,7 +43,13 @@ use RuntimeException;
  * (THROTTLING_QUOTA_EXCEEDED, PRODUCER_FENCED, the three SCRAM credential codes, INCONSISTENT_VOTER_SET and the two
  * UpdateFeatures codes) with 2.7 and 97-104 (the forwarding, snapshot, topic id and broker registration codes of the
  * KRaft work) with 2.8. Of them 72, 74, 80, 83, 84, 100 and 103 extend InvalidMetadataException and 75, 78, 88 and 89
- * RetriableException in the Java client, as here. Codes above 104 (105 is Kafka 3.0) are answered with
+ * RetriableException in the Java client, as here. The 3.x line added 105-127, read off `Errors.java` at the release
+ * tags: 105 TRANSACTIONAL_ID_NOT_FOUND with Kafka 3.0; 106 FETCH_SESSION_TOPIC_ID_ERROR with 3.1; 107-108 (the two
+ * AlterPartition codes) with 3.3; 109-112 (OFFSET_MOVED_TO_TIERED_STORAGE of KIP-405 and the first three codes of the
+ * KIP-848 consumer protocol) with 3.5; 113 STALE_MEMBER_EPOCH with 3.6; 114-119 (the three endpoint codes of KIP-919,
+ * the two client-metrics codes of KIP-714 and INVALID_REGISTRATION) with 3.7; 120 TRANSACTION_ABORTABLE of KIP-890
+ * with 3.8 and 121-127 (the four share-group codes of KIP-932 and the three voter codes of KIP-853) with 3.9. Of them
+ * only 106, 122 and 123 extend RetriableException in the Java client, as here. Codes above 127 are answered with
  * {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
  */
 abstract class KafkaException extends RuntimeException
@@ -156,6 +162,29 @@ abstract class KafkaException extends RuntimeException
     public const BROKER_ID_NOT_REGISTERED              = 102;
     public const INCONSISTENT_TOPIC_ID                 = 103;
     public const INCONSISTENT_CLUSTER_ID               = 104;
+    public const TRANSACTIONAL_ID_NOT_FOUND             = 105;
+    public const FETCH_SESSION_TOPIC_ID_ERROR           = 106;
+    public const INELIGIBLE_REPLICA                     = 107;
+    public const NEW_LEADER_ELECTED                     = 108;
+    public const OFFSET_MOVED_TO_TIERED_STORAGE         = 109;
+    public const FENCED_MEMBER_EPOCH                    = 110;
+    public const UNRELEASED_INSTANCE_ID                 = 111;
+    public const UNSUPPORTED_ASSIGNOR                   = 112;
+    public const STALE_MEMBER_EPOCH                     = 113;
+    public const MISMATCHED_ENDPOINT_TYPE               = 114;
+    public const UNSUPPORTED_ENDPOINT_TYPE              = 115;
+    public const UNKNOWN_CONTROLLER_ID                  = 116;
+    public const UNKNOWN_SUBSCRIPTION_ID                = 117;
+    public const TELEMETRY_TOO_LARGE                    = 118;
+    public const INVALID_REGISTRATION                   = 119;
+    public const TRANSACTION_ABORTABLE                  = 120;
+    public const INVALID_RECORD_STATE                   = 121;
+    public const SHARE_SESSION_NOT_FOUND                = 122;
+    public const INVALID_SHARE_SESSION_EPOCH            = 123;
+    public const FENCED_STATE_EPOCH                     = 124;
+    public const INVALID_VOTER_KEY                      = 125;
+    public const DUPLICATE_VOTER                        = 126;
+    public const VOTER_NOT_FOUND                        = 127;
 
     /**
      * Mapping from the codes to class names
@@ -268,6 +297,29 @@ abstract class KafkaException extends RuntimeException
         self::BROKER_ID_NOT_REGISTERED              => BrokerIdNotRegisteredException::class,
         self::INCONSISTENT_TOPIC_ID                 => InconsistentTopicIdException::class,
         self::INCONSISTENT_CLUSTER_ID               => InconsistentClusterIdException::class,
+        self::TRANSACTIONAL_ID_NOT_FOUND             => TransactionalIdNotFoundException::class,
+        self::FETCH_SESSION_TOPIC_ID_ERROR           => FetchSessionTopicIdException::class,
+        self::INELIGIBLE_REPLICA                     => IneligibleReplicaException::class,
+        self::NEW_LEADER_ELECTED                     => NewLeaderElectedException::class,
+        self::OFFSET_MOVED_TO_TIERED_STORAGE         => OffsetMovedToTieredStorageException::class,
+        self::FENCED_MEMBER_EPOCH                    => FencedMemberEpochException::class,
+        self::UNRELEASED_INSTANCE_ID                 => UnreleasedInstanceIdException::class,
+        self::UNSUPPORTED_ASSIGNOR                   => UnsupportedAssignorException::class,
+        self::STALE_MEMBER_EPOCH                     => StaleMemberEpochException::class,
+        self::MISMATCHED_ENDPOINT_TYPE               => MismatchedEndpointTypeException::class,
+        self::UNSUPPORTED_ENDPOINT_TYPE              => UnsupportedEndpointTypeException::class,
+        self::UNKNOWN_CONTROLLER_ID                  => UnknownControllerIdException::class,
+        self::UNKNOWN_SUBSCRIPTION_ID                => UnknownSubscriptionIdException::class,
+        self::TELEMETRY_TOO_LARGE                    => TelemetryTooLargeException::class,
+        self::INVALID_REGISTRATION                   => InvalidRegistrationException::class,
+        self::TRANSACTION_ABORTABLE                  => TransactionAbortableException::class,
+        self::INVALID_RECORD_STATE                   => InvalidRecordStateException::class,
+        self::SHARE_SESSION_NOT_FOUND                => ShareSessionNotFoundException::class,
+        self::INVALID_SHARE_SESSION_EPOCH            => InvalidShareSessionEpochException::class,
+        self::FENCED_STATE_EPOCH                     => FencedStateEpochException::class,
+        self::INVALID_VOTER_KEY                      => InvalidVoterKeyException::class,
+        self::DUPLICATE_VOTER                        => DuplicateVoterException::class,
+        self::VOTER_NOT_FOUND                        => VoterNotFoundException::class,
     ];
 
     /**

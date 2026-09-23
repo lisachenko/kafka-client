@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * KIP-447 changed the request alone, and the version 3 writes these very fields in the flexible encoding.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 final class TxnOffsetCommitResponseV2 extends TxnOffsetCommitResponse
 {

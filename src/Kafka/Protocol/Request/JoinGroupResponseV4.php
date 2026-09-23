@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 5 (KIP-345, Kafka 2.3) gave every entry of the member array a nullable `group_instance_id` behind its
  * member id, which {@see JoinGroupResponse} decodes; the answer of the versions 2 to 4 is this one.
  *
- * @see docs/protocol/2.8.md, section "Static membership (KIP-345)"
+ * @see docs/protocol/3.9.md, section "Static membership (KIP-345)"
  */
 final class JoinGroupResponseV4 extends JoinGroupResponse
 {

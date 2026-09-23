@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see JoinGroupResponse::getScheme()} follows, so that the leading `throttle_time_ms` of version 2 is not read out
  * of the `error_code` and the `generation_id` of these versions.
  *
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupResponseV1 extends JoinGroupResponse
 {

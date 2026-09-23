@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Consumer;
  * a broker below 2.1 - carries {@see self::UNKNOWN_LEADER_EPOCH} on the wire, and `null` here, exactly as the Java
  * `OffsetAndMetadata.leaderEpoch()` carries an empty `Optional`.
  *
- * @see docs/protocol/2.8.md, section "The leader epoch of a committed offset (KIP-320)"
+ * @see docs/protocol/3.9.md, section "The leader epoch of a committed offset (KIP-320)"
  */
 final class OffsetAndMetadata implements \Stringable
 {

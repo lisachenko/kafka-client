@@ -18,9 +18,9 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol;
 
 /**
- * Numeric codes that the ApiKey in the request can take, as of Kafka 2.8.2.
+ * Numeric codes that the ApiKey in the request can take, as of Kafka 3.9.2.
  *
- * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 2.8.2: SaslHandshake (17) and ApiVersions (18)
+ * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 3.9.2: SaslHandshake (17) and ApiVersions (18)
  * arrived with Kafka 0.10.0, CreateTopics (19) and DeleteTopics (20) with 0.10.1, the keys 21 to 33 (DeleteRecords,
  * the idempotent and transactional producer apis, the ACL and config apis) with 0.11.0, the keys 34 to 37
  * (AlterReplicaLogDirs and DescribeLogDirs of KIP-113, SaslAuthenticate of KIP-152, CreatePartitions of KIP-195)
@@ -31,11 +31,22 @@ namespace Protocol\Kafka\Protocol;
  * KIP-554), the four raft apis of the KRaft quorum (52 to 55, KIP-595), AlterIsr (56, KIP-497), UpdateFeatures (57,
  * KIP-584) and Envelope (58, KIP-590), and 2.8 FetchSnapshot (59, KIP-630), DescribeCluster (60, KIP-700),
  * DescribeProducers (61, KIP-664) and the three broker registration apis of the KRaft mode (62 to 64, KIP-631).
+ * The 3.x line added the keys 65 to 87 (`ApiKeys.java` @ 3.9.2, read at the release tags): 3.0 DescribeTransactions
+ * (65), ListTransactions (66) and AllocateProducerIds (67, broker-to-controller); 3.5 ConsumerGroupHeartbeat (68) of
+ * the new consumer protocol of KIP-848; 3.7 ConsumerGroupDescribe (69, KIP-848), ControllerRegistration (70, KIP-919),
+ * the client-metrics apis GetTelemetrySubscriptions (71), PushTelemetry (72) and ListClientMetricsResources (74) of
+ * KIP-714 and AssignReplicasToDirs (73); 3.8 DescribeTopicPartitions (75); and 3.9 the share-group apis
+ * ShareGroupHeartbeat, ShareGroupDescribe, ShareFetch and ShareAcknowledge (76 to 79, KIP-932, early access) with
+ * their state apis 83 to 87 (internal), and the raft-voter apis AddRaftVoter, RemoveRaftVoter and UpdateRaftVoter
+ * (80 to 82, the dynamic quorums of KIP-853). Key 56 was renamed from AlterIsr to AlterPartition in Kafka 3.2
+ * (KIP-704); the constant keeps the published name.
  * A broker of 0.10 or later answers an ApiVersions request with the keys and versions it serves; a request with a
- * key or version it cannot parse closes the connection. A ZooKeeper-backed 2.8.2 broker serves the keys 0 to 51, 56,
- * 57, 60 and 61 (the `zkBroker` listener of the message specifications); the raft, envelope, snapshot and broker
- * registration apis (52 to 55, 58, 59, 62 to 64) are the KRaft controller's and never appear in its ApiVersions
- * answer - their constants exist here so that a frame of any 2.8.2 api can be named.
+ * key or version it cannot parse closes the connection. The answer is the set of the **listener** the request arrived
+ * on: a ZooKeeper-backed broker serves the `zkBroker` set of the message specifications, a KRaft node the `broker`
+ * set on its client listeners (and the `controller` set on its controller listener, which no client reaches). The
+ * container of this line is a KRaft node of 3.9.2; what it lists is measured in `ApiVersionProbeTest` and written in
+ * the "API keys" section of `docs/protocol/3.9.md`. The constants of the apis it does not list exist here so that a
+ * frame of any 3.9.2 api can be named.
  */
 class ApiKeys
 {
@@ -110,4 +121,27 @@ class ApiKeys
     public const BROKER_REGISTRATION              = 62;
     public const BROKER_HEARTBEAT                 = 63;
     public const UNREGISTER_BROKER                = 64;
+    public const DESCRIBE_TRANSACTIONS            = 65;
+    public const LIST_TRANSACTIONS                = 66;
+    public const ALLOCATE_PRODUCER_IDS            = 67;
+    public const CONSUMER_GROUP_HEARTBEAT         = 68;
+    public const CONSUMER_GROUP_DESCRIBE          = 69;
+    public const CONTROLLER_REGISTRATION          = 70;
+    public const GET_TELEMETRY_SUBSCRIPTIONS      = 71;
+    public const PUSH_TELEMETRY                   = 72;
+    public const ASSIGN_REPLICAS_TO_DIRS          = 73;
+    public const LIST_CLIENT_METRICS_RESOURCES    = 74;
+    public const DESCRIBE_TOPIC_PARTITIONS        = 75;
+    public const SHARE_GROUP_HEARTBEAT            = 76;
+    public const SHARE_GROUP_DESCRIBE             = 77;
+    public const SHARE_FETCH                      = 78;
+    public const SHARE_ACKNOWLEDGE                = 79;
+    public const ADD_RAFT_VOTER                   = 80;
+    public const REMOVE_RAFT_VOTER                = 81;
+    public const UPDATE_RAFT_VOTER                = 82;
+    public const INITIALIZE_SHARE_GROUP_STATE     = 83;
+    public const READ_SHARE_GROUP_STATE           = 84;
+    public const WRITE_SHARE_GROUP_STATE          = 85;
+    public const DELETE_SHARE_GROUP_STATE         = 86;
+    public const READ_SHARE_GROUP_STATE_SUMMARY   = 87;
 }

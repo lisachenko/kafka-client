@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * has taken its identity - the coordinator answers it 82 (`FencedInstanceId`), which is fatal for this
  * consumer. A dynamic member sends `null`, the frame {@see HeartbeatRequestV2} sends without the field.
  *
- * @see docs/protocol/2.8.md, section "Heartbeat API (key 12, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "Heartbeat API (key 12, v0 to v4)"
  */
 class HeartbeatRequest extends AbstractRequest
 {

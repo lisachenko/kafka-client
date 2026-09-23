@@ -19,41 +19,26 @@ use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\TopicMetadata;
-use Protocol\Kafka\Protocol\ApiKeys;
-use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
-use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
-use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
-use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
-use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0;
-use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV2;
-use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
-use Protocol\Kafka\Protocol\Request\ControlledShutdownResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the AdminClient against a real Kafka 2.8.2 broker.
+ * Exercises the AdminClient against the Kafka 3.9.2 KRaft node of this line.
  *
- * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v3)"
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
+ * The three tests of the ControlledShutdown api that this class carried up to the 2.x line are gone with the
+ * `controlledShutdown()` method of the admin client: key 7 is `zkBroker`-only, a KRaft node does not list it on a
+ * client listener and closes the connection for every version of it - see the "(3.x)" note of the section below.
+ *
+ * @see docs/protocol/3.9.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
  */
 #[CoversClass(AdminClient::class)]
-#[CoversClass(ApiVersionsRequest::class)]
-#[CoversClass(ApiVersionsResponse::class)]
-#[CoversClass(ApiVersionsResponseMetadata::class)]
-#[CoversClass(ControlledShutdownRequest::class)]
-#[CoversClass(ControlledShutdownRequestV0::class)]
-#[CoversClass(ControlledShutdownResponse::class)]
 final class AdminApiTest extends IntegrationTestCase
 {
     /**
-     * A broker id no single-node test cluster can ever have; asking for a real one would shut that broker down
-     */
-    private const int UNKNOWN_BROKER_ID = 4242;
-
-    /**
-     * Topic of this test class, created once: the broker is shared with the other suites, and creating a topic on a
-     * 0.8 cluster means a round trip through ZooKeeper and a leader election
+     * Topic of this test class, created once: the node is shared with the other suites, and creating a topic means
+     * a round trip through the KRaft controller and a leader election
      */
     private static ?string $topic = null;
 
@@ -143,8 +128,8 @@ final class AdminApiTest extends IntegrationTestCase
         $partitions = array_keys($this->awaitTopic($topic)->partitions);
         $this->cluster->reload();
 
-        $latest   = $this->admin->listOffsets([$topic => $partitions]);
-        $earliest = $this->admin->listOffsets([$topic => $partitions], OffsetsRequest::EARLIEST);
+        $latest   = $this->listOffsetsOfALeaderThatIsThere($topic, $partitions, OffsetsRequest::LATEST);
+        $earliest = $this->listOffsetsOfALeaderThatIsThere($topic, $partitions, OffsetsRequest::EARLIEST);
 
         self::assertSame([$topic], array_keys($latest));
         foreach ($partitions as $partition) {
@@ -176,80 +161,6 @@ final class AdminApiTest extends IntegrationTestCase
             self::assertSame(-1, $partition->offset, 'an uncommitted partition comes back with the offset -1');
             self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, 'the kafka storage reports no error');
         }
-    }
-
-    public function testControlledShutdownOfAnUnknownBrokerIsRefused(): void
-    {
-        // The controller throws BrokerNotAvailableException and ControlledShutdownRequest.handleError() @ 0.9.0.1
-        // maps e.getClass(), so the code 8 reaches the wire. A 0.8.2.2 broker mapped e.getCause(), which is null for
-        // a directly thrown exception, and answered -1 (Unknown) instead.
-        $this->expectException(KafkaException::class);
-        $this->expectExceptionCode(KafkaException::BROKER_NOT_AVAILABLE);
-
-        $this->admin->controlledShutdown(self::UNKNOWN_BROKER_ID);
-    }
-
-    public function testTheBrokerAnnouncesEveryVersionOfControlledShutdown(): void
-    {
-        // A 0.9 to 0.11 broker reported `minVersion = 1` for key 7: version 0 uses a request header without a client
-        // id, which the Java client of those releases could not build, so the protocol retired it. Kafka 1.0 gave
-        // `RequestHeader` a schema of its own for that one frame (`CONTROLLED_SHUTDOWN_V0_SCHEMA`) and moved the api
-        // to the Java schemas altogether, so a 1.1.1 broker announced **v0 and v1** again. A 2.8.2 broker serves
-        // two versions more: the **v2** of KIP-380, which Kafka 2.2 added for the `broker_epoch`, and the flexible
-        // **v3** of Kafka 2.4, which is the one this client sends now.
-        $nodes       = $this->cluster->nodes();
-        $apiVersions = $this->admin->getApiVersions(reset($nodes));
-
-        self::assertSame(0, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion);
-        self::assertSame(3, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->maxVersion);
-        self::assertSame(
-            3,
-            ControlledShutdownRequest::VERSION,
-            'and the client sends the highest of them, the flexible one of KIP-482'
-        );
-    }
-
-    public function testEveryVersionOfControlledShutdownIsStillServedByTheBroker(): void
-    {
-        // Both announced versions really are answered. Up to 0.11 this test proved something else: key 7 was the
-        // last api a broker parsed with its Scala class, which never validated the version, so v0 was answered
-        // although the table did not contain it - and so was any version above 1. On this line the api is an
-        // ordinary Java-schema api and the first version above its table closes the connection like every other
-        // unknown version (`ApiVersionProbeTest::testTheBrokerClosesTheConnectionForAVersionAboveTheTable`). The
-        // AdminClient sends v3, the flexible one; v0 is kept for the 0.8/0.9 lines and their vectors.
-        $stream = $this->connect();
-
-        new ControlledShutdownRequestV0(self::UNKNOWN_BROKER_ID, 4200)->writeTo($stream);
-        $versionZero = ControlledShutdownResponseV2::unpack($stream);
-
-        new ControlledShutdownRequestV2(
-            self::UNKNOWN_BROKER_ID,
-            ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
-            't10-admin',
-            4201
-        )->writeTo($stream);
-        $versionTwo = ControlledShutdownResponseV2::unpack($stream);
-
-        new ControlledShutdownRequest(
-            self::UNKNOWN_BROKER_ID,
-            ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
-            't10-admin',
-            4202
-        )->writeTo($stream);
-        $versionThree = ControlledShutdownResponse::unpack($stream);
-
-        self::assertSame(4200, $versionZero->getCorrelationId());
-        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionZero->errorCode);
-        self::assertSame([], $versionZero->remainingTopicPartitions);
-
-        self::assertSame(4201, $versionTwo->getCorrelationId());
-        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionTwo->errorCode);
-        self::assertSame([], $versionTwo->remainingTopicPartitions);
-
-        // The flexible version of KIP-482: the same two values, in the smallest frame of the whole protocol
-        self::assertSame(4202, $versionThree->getCorrelationId());
-        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionThree->errorCode);
-        self::assertSame([], $versionThree->remainingTopicPartitions);
     }
 
     /**
@@ -284,6 +195,35 @@ final class AdminApiTest extends IntegrationTestCase
         } while (microtime(true) < $deadline);
 
         self::fail("The topic {$topic} did not become available in time");
+    }
+
+    /**
+     * Lists the offsets of a freshly created topic, retrying while the node is still moving its leadership around
+     *
+     * A KRaft node answers a topic that the controller has just created before every broker has replayed the
+     * metadata record of it, so the leader of a partition can be elsewhere for a moment and the Offsets api - which
+     * only its leader serves - answers **6** `NotLeaderForPartition` (and **3** while the partition is not there at
+     * all). Both are retriable and both pass within a few dozen milliseconds; the metadata of the client is
+     * reloaded between the attempts, because it is the stale half of the race.
+     *
+     * @param list<int> $partitions Partitions of the topic to list
+     *
+     * @return array<string, array<int, int>> Offsets as topic => partition => offset
+     */
+    private function listOffsetsOfALeaderThatIsThere(string $topic, array $partitions, int $time): array
+    {
+        $deadline = microtime(true) + 30.0;
+        do {
+            try {
+                return $this->admin->listOffsets([$topic => $partitions], $time);
+            } catch (RetriableException $exception) {
+                $last = $exception;
+                usleep(200000);
+                $this->cluster->reload();
+            }
+        } while (microtime(true) < $deadline);
+
+        throw $last;
     }
 
     /**

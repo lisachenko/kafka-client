@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * This class measures both halves against the container: what the conversion does to a magic 2 log, and what a
  * topic with the switch off answers instead.
  *
- * @see docs/protocol/2.8.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v12)"
+ * @see docs/protocol/3.9.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v17)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -127,7 +127,7 @@ final class DownConversionTest extends IntegrationTestCase
 
         $refused = $this->fetch($this->refusingTopic, FetchRequestV3::class, FetchResponseV3::class, 820);
 
-        // **35 UNSUPPORTED_VERSION, not 43.** `KafkaApis.handleFetchRequest` @ 2.8.2: "if down-conversion is
+        // **35 UNSUPPORTED_VERSION, not 43.** `KafkaApis.handleFetchRequest` @ 3.9.2: "if down-conversion is
         // disabled for the particular partition ... sending unsupported version response". 43
         // UNSUPPORTED_FOR_MESSAGE_FORMAT is the code of a timestamp lookup on a log below magic 1 and never
         // appears here.
@@ -138,7 +138,12 @@ final class DownConversionTest extends IntegrationTestCase
             KafkaException::fromCode($refused->errorCode, ['topic' => $this->refusingTopic])
         );
         self::assertSame(-1, $refused->highWaterMarkOffset, 'the error carries no high water mark either');
-        self::assertSame('', $refused->messageSet, 'and an empty record set, not a converted one');
+
+        // A refused partition is built by `FetchResponse.partitionResponse(tp, error)` @ 3.9.2, which sets the
+        // partition index, the error code and the high water mark and leaves `Records` at the `"default": "null"`
+        // of `FetchResponse.json`: the node writes the length **-1**, not the empty byte array the 2.8.2 broker
+        // sent. The record layer reads both as "no records at all"
+        self::assertNull($refused->messageSet, 'a null record set, not an empty one and not a converted one');
         self::assertSame([], $refused->getRecords()->getRecords());
     }
 
@@ -209,7 +214,7 @@ final class DownConversionTest extends IntegrationTestCase
         }
 
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-2-8-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
         $command   = sprintf(
             'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create'
             . ' --if-not-exists --topic %s --partitions 1 --replication-factor 1%s 2>&1',
@@ -267,12 +272,14 @@ final class DownConversionTest extends IntegrationTestCase
             65536,
             -1,
             self::CLIENT_ID,
-            $correlationId
+            $correlationId,
+            // Version 13 names the topic by its id (KIP-516); every lower version ignores the map
+            topicIds: [$topic => self::topicIdOf($topic)]
         )->writeTo($stream);
 
         $response = $responseClass::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
 
-        return $response->topics[$topic]->partitions[0];
+        return self::fetchedTopic($response, $topic)->partitions[0];
     }
 }

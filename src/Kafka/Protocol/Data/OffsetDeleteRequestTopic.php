@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `Name` is the `mapKey` of the array in `OffsetDeleteRequestTopic.json` @ 2.8.2, so a topic may not appear twice
  * in one request; this package indexes the array by the same field.
  *
- * @see docs/protocol/2.8.md, section "OffsetDelete API (key 47, v0)"
+ * @see docs/protocol/3.9.md, section "OffsetDelete API (key 47, v0)"
  */
 class OffsetDeleteRequestTopic implements BinarySchemaInterface
 {

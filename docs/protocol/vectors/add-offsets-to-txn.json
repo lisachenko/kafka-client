@@ -1,8 +1,8 @@
 {
     "api": "add-offsets-to-txn",
     "apiKey": 25,
-    "section": "AddOffsetsToTxn API (key 25, v0 to v3)",
-    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 to v3), replayed by tests/Compliance.",
+    "section": "AddOffsetsToTxn API (key 25, v0 to v4)",
+    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addoffsetstotxn.request.v0",
@@ -112,7 +112,7 @@
         {
             "id": "addoffsetstotxn.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequestV3",
             "version": 3,
             "source": "broker",
             "description": "AddOffsetsToTxn request v3 (Kafka 2.8, KIP-482): the four fields of the version 2 in the flexible encoding, the first flexible version of this api.",
@@ -133,7 +133,7 @@
         {
             "id": "addoffsetstotxn.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponseV3",
             "version": 3,
             "source": "broker",
             "description": "AddOffsetsToTxn answer v3: the error code 0 for the whole request, behind the throttle time and before the tagged-field section of the body.",
@@ -144,6 +144,80 @@
                 "headerTaggedFields": [],
                 "throttleTimeMs": 0,
                 "errorCode": 0
+            }
+        },
+        {
+            "id": "addoffsetstotxn.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "AddOffsetsToTxn request v4 (Kafka 3.8, KIP-890): the four fields of the version 3 in the same flexible encoding - \"Version 4 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\" and nothing else (`AddOffsetsToTxnRequest.json` @ 3.8.1). It puts the `__consumer_offsets` partition of `t4-38-vectors-group` on the list of the open transaction of `t4-38-vectors-tx`.",
+            "hex": "0000004d0019000400000ee700126b61666b612d636c69656e742d74342d3338001174342d33382d766563746f72732d7478000000000000004400011474342d33382d766563746f72732d67726f757000",
+            "fields": {
+                "messageSize": 77,
+                "apiKey": 25,
+                "apiVersion": 4,
+                "correlationId": 3815,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-tx",
+                "producerId": 68,
+                "producerEpoch": 1,
+                "groupId": "t4-38-vectors-group"
+            }
+        },
+        {
+            "id": "addoffsetstotxn.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "AddOffsetsToTxn answer v4: the throttle time, the one error code of the whole request and the two tag buffers - the same 16 bytes the version 3 answers.",
+            "hex": "0000000c00000ee70000000000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3815,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "addoffsetstotxn.request.v4.unknown-producer",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The same version 4 with a producer id that the coordinator does not hold for `t4-38-vectors-tx` (68 + 1000), the epoch left as it is.",
+            "hex": "0000004d0019000400000ee800126b61666b612d636c69656e742d74342d3338001174342d33382d766563746f72732d7478000000000000042c00011474342d33382d766563746f72732d67726f757000",
+            "fields": {
+                "messageSize": 77,
+                "apiKey": 25,
+                "apiVersion": 4,
+                "correlationId": 3816,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-tx",
+                "producerId": 1068,
+                "producerEpoch": 1,
+                "groupId": "t4-38-vectors-group"
+            }
+        },
+        {
+            "id": "addoffsetstotxn.response.v4.unknown-producer",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The refusal: **49** `InvalidProducerIdMapping`, the code of the version 0, answered at the version 4 unchanged. The 120 the version promises is not among the codes this api produces on a 3.9.2 node.",
+            "hex": "0000000c00000ee80000000000003100",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 3816,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 49
             }
         }
     ]

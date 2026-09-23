@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * then has to join again with that id. A version 3 request with an empty member id is still added to the group
  * right away, which is what this class does.
  *
- * @see docs/protocol/2.8.md, section "The member id of a first join (v4, KIP-394)"
+ * @see docs/protocol/3.9.md, section "The member id of a first join (v4, KIP-394)"
  */
 final class JoinGroupRequestV3 extends JoinGroupRequest
 {

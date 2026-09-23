@@ -57,7 +57,7 @@ use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
  * {@see \Protocol\Kafka\Consumer\Internals\ConsumerCoordinator} passes on. {@see SyncGroupRequestV4} is the
  * same frame without the two fields.
  *
- * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "SyncGroup API (key 14, v0 to v5)"
  */
 class SyncGroupRequest extends AbstractRequest
 {

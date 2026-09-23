@@ -16,8 +16,12 @@ namespace Protocol\Kafka\Common;
 /**
  * Operations of the Kafka authorizer, and the bitfield that KIP-430 reports them in
  *
- * `AclOperation` @ 2.8.2 is the enumeration of everything an ACL may allow, and the codes below are its byte
- * values. **KIP-430** (Kafka 2.3) put them on the wire in a second shape: an `int32` **bitfield** in which the bit
+ * `AclOperation` @ 3.9.2 is the enumeration of everything an ACL may allow, and the codes below are its byte
+ * values: the operation of an acl of the three ACL apis ({@see AclBinding}), and the one a filter matches. Kafka
+ * 3.3 added the last two of them, {@see self::CREATE_TOKENS} and {@see self::DESCRIBE_TOKENS} of KIP-373, which
+ * are written on the {@see ResourceType::USER} resource the version 3 of those apis brought with them.
+ *
+ * **KIP-430** (Kafka 2.3) put them on the wire in a second shape: an `int32` **bitfield** in which the bit
  * with the number of an operation is set when the principal of the connection is authorized for it - the
  * `authorized_operations` of a Metadata v8 answer (per topic and for the cluster) and of a DescribeGroups v3
  * answer. `Utils.to32BitField` @ 2.8.2 builds it, `Utils.from32BitField` reads it back, and this class is both
@@ -27,10 +31,13 @@ namespace Protocol\Kafka\Common;
  * request did not ask for the field, and it is **not** an empty set: a client that reads it has been told
  * nothing, while the bitfield `0` means "this principal may do nothing at all".
  *
- * A broker **without an authorizer** - the container of this line has none - answers every asked-for bitfield
- * with the full set of the operations of the resource, because `AclAuthorizer` is not there to refuse anything.
+ * A broker **without an authorizer** - the containers of the lines below - answers every asked-for bitfield with
+ * the full set of the operations of the resource, because there is nothing there to refuse anything. The node of
+ * this line runs the `StandardAuthorizer`, so the bitfield is the real answer of the authorizer: the full set for
+ * a super user, and the operations the acls of the principal name for everybody else - **0** for the SASL user
+ * `acltest`, which no acl of the node names.
  *
- * @see docs/protocol/2.8.md, section "The authorized operations (v8, KIP-430)"
+ * @see docs/protocol/3.9.md, section "The authorized operations (v8, KIP-430)"
  */
 final class AclOperation
 {
@@ -67,6 +74,20 @@ final class AclOperation
     public const int IDEMPOTENT_WRITE = 12;
 
     /**
+     * Issuing a delegation token for another principal, on its {@see ResourceType::USER} resource
+     *
+     * @since Kafka 3.3 (KIP-373), together with the version 3 of the three ACL apis
+     */
+    public const int CREATE_TOKENS = 13;
+
+    /**
+     * Seeing the delegation tokens of another principal, on its {@see ResourceType::USER} resource
+     *
+     * @since Kafka 3.3 (KIP-373), together with the version 3 of the three ACL apis
+     */
+    public const int DESCRIBE_TOKENS = 14;
+
+    /**
      * Value of an `authorized_operations` field the request did not ask for: `Integer.MIN_VALUE`
      */
     public const int NOT_REQUESTED = -2147483648;
@@ -90,7 +111,17 @@ final class AclOperation
         self::DESCRIBE_CONFIGS => 'DESCRIBE_CONFIGS',
         self::ALTER_CONFIGS    => 'ALTER_CONFIGS',
         self::IDEMPOTENT_WRITE => 'IDEMPOTENT_WRITE',
+        self::CREATE_TOKENS    => 'CREATE_TOKENS',
+        self::DESCRIBE_TOKENS  => 'DESCRIBE_TOKENS',
     ];
+
+    /**
+     * Returns the name of an operation, or the code itself when the broker used one this client does not know
+     */
+    public static function nameOf(int $operation): string
+    {
+        return self::NAMES[$operation] ?? (string) $operation;
+    }
 
     /**
      * Tells whether a bitfield of KIP-430 names a given operation

@@ -77,11 +77,11 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * threads: the Java consumer leaves the group by itself when the application does not come back to poll() in time,
  * this one simply stops sending heartbeats and is dropped when its session timeout expires.
  *
- * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)" and
+ * @see docs/protocol/3.9.md, sections "Group membership protocol (keys 11 to 14)" and
  *      "Consumer group protocol (protocol_type = consumer)"
  * @see \Protocol\Kafka\Consumer\KafkaConsumer::poll()
  */
-final class ConsumerCoordinator
+final class ConsumerCoordinator implements ConsumerCoordinatorInterface
 {
     /**
      * Protocol type of a consumer group, the only one Kafka itself defines
@@ -98,6 +98,30 @@ final class ConsumerCoordinator
     private const int MAX_REBALANCE_ATTEMPTS = 5;
 
     /**
+     * Reason this member sends with the LeaveGroup of a {@see \Protocol\Kafka\Consumer\KafkaConsumer::close()}
+     *
+     * The text of `AbstractCoordinator.close` @ 3.2.3, word for word: the reasons of KIP-800 are read by a human
+     * being in a broker log, so a client that invents its own wording makes that log harder to read.
+     */
+    public const string LEAVE_REASON_CLOSED = 'the consumer is being closed';
+
+    /**
+     * Reason this member sends with the LeaveGroup of a
+     * {@see \Protocol\Kafka\Consumer\KafkaConsumer::unsubscribe()}, `KafkaConsumer.unsubscribe` @ 3.2.3
+     */
+    public const string LEAVE_REASON_UNSUBSCRIBED = 'the consumer unsubscribed from all topics';
+
+    /**
+     * Reason of the second join of the KIP-394 exchange, `AbstractCoordinator` @ 3.2.3 (the member id is appended)
+     */
+    public const string REJOIN_REASON_MEMBER_ID = 'need to re-join with the given member-id: ';
+
+    /**
+     * Reason of the join that follows a {@see \Protocol\Kafka\Consumer\KafkaConsumer::subscribe()}
+     */
+    public const string REJOIN_REASON_SUBSCRIPTION = 'the subscription of the consumer changed';
+
+    /**
      * Member id of this consumer, {@see JoinGroupRequest::DEFAULT_MEMBER_ID} until the coordinator assigned one
      */
     private string $memberId = JoinGroupRequest::DEFAULT_MEMBER_ID;
@@ -111,6 +135,14 @@ final class ConsumerCoordinator
      * Whether the next poll() has to run a rebalance before it fetches anything
      */
     private bool $rejoinNeeded = true;
+
+    /**
+     * The `reason` of KIP-800 that the next JoinGroup carries, the empty string of a first join
+     *
+     * `AbstractCoordinator.rejoinReason` @ 3.2.3 starts empty, is set by every `requestRejoin(...)` and is reset
+     * once a join succeeded, so the coordinator is told why a member came back and a first join says nothing.
+     */
+    private string $rejoinReason = '';
 
     /**
      * Coordinator of the group, resolved on the first use and dropped when a broker refuses to be it
@@ -193,10 +225,51 @@ final class ConsumerCoordinator
 
     /**
      * Asks for a rebalance on the next poll(), e.g. because the subscription changed
+     *
+     * The reason travels to the coordinator in the `reason` of the JoinGroup v8 that follows (KIP-800, Kafka 3.2),
+     * which logs it next to the rebalance it starts; a caller that names none sends the empty string, which is
+     * what the Java consumer sends for a first join.
+     *
+     * @param string|null $reason Why this member has to rejoin, null to keep the reason of the last request
      */
-    public function requestRejoin(): void
+    public function requestRejoin(?string $reason = null): void
     {
         $this->rejoinNeeded = true;
+        if ($reason !== null) {
+            $this->rejoinReason = $reason;
+        }
+    }
+
+    /**
+     * Returns the `reason` of KIP-800 that the next JoinGroup of this member carries
+     */
+    public function getRejoinReason(): string
+    {
+        return $this->rejoinReason;
+    }
+
+    /**
+     * The eager rebalance of the classic protocol gives **everything** up before it joins again
+     *
+     * `ConsumerCoordinator.onJoinPrepare` @ 3.9.2 revokes the whole assignment of a member whose assignor uses the
+     * EAGER protocol, which is what every assignor of this client does, and the JoinGroup is sent afterwards. The
+     * incremental revoke of {@see ConsumerGroupHeartbeatCoordinator} is the other half of this contract.
+     *
+     * @inheritdoc
+     */
+    public function partitionsToRevoke(array $ownedPartitions): array
+    {
+        return $ownedPartitions;
+    }
+
+    /**
+     * And the assignment it receives afterwards is announced whole, because nothing of it was kept
+     *
+     * @inheritdoc
+     */
+    public function partitionsToAssign(array $ownedPartitions, array $assignment): array
+    {
+        return $assignment;
     }
 
     /**
@@ -306,8 +379,13 @@ final class ConsumerCoordinator
      * point of `group.instance.id`, so the request that would give its partitions to somebody else is not sent and
      * the coordinator holds them for `session.timeout.ms`. The local membership is forgotten all the same, so that
      * the next poll() joins again - under the same instance id, which is what gets the assignment back.
+     *
+     * The `reason` of KIP-800 (LeaveGroup v5, Kafka 3.2) travels in the one entry of the batch and ends up in the
+     * log line with which the coordinator removes the member.
+     *
+     * @param string|null $reason Why this member leaves, null for {@see self::LEAVE_REASON_CLOSED}
      */
-    public function leaveGroup(): void
+    public function leaveGroup(?string $reason = null): void
     {
         if (!$this->isMember()) {
             return;
@@ -323,7 +401,13 @@ final class ConsumerCoordinator
         $this->resetMembership();
 
         try {
-            $this->client->leaveGroup($this->getNode(), $this->groupId, $memberId);
+            $this->client->leaveGroup(
+                $this->getNode(),
+                $this->groupId,
+                $memberId,
+                null,
+                $reason ?? self::LEAVE_REASON_CLOSED
+            );
         } catch (UnknownMemberIdException) {
             // The coordinator has already forgotten this member, which is exactly what was asked for
         }
@@ -356,8 +440,11 @@ final class ConsumerCoordinator
         $this->memberId     = $joinResponse->memberId;
         $this->generationId = $joinResponse->generationId;
 
+        // KIP-814 (JoinGroup v9): a static member that came back as the leader of a group the coordinator did not
+        // rebalance is told to SKIP the assignment - the generation keeps the one it already agreed on, and the
+        // leader publishes an EMPTY assignment array, exactly as `ConsumerCoordinator.onLeaderElected` @ 3.2.3 does
         $groupAssignments = [];
-        if ($joinResponse->memberId === $joinResponse->leaderId) {
+        if ($joinResponse->memberId === $joinResponse->leaderId && !$joinResponse->skipAssignment) {
             $groupAssignments = $this->assignPartitions($joinResponse->members, $partitionsResolver);
         }
 
@@ -376,6 +463,7 @@ final class ConsumerCoordinator
         );
 
         $this->rejoinNeeded    = false;
+        $this->rejoinReason    = '';
         $this->lastHeartbeatMs = (int) (microtime(true) * 1e3);
 
         return self::readAssignment($syncResponse->memberAssignment);
@@ -408,13 +496,16 @@ final class ConsumerCoordinator
                 self::PROTOCOL_TYPE,
                 $protocols,
                 $this->rebalanceTimeoutMs,
-                $this->groupInstanceId
+                $this->groupInstanceId,
+                $this->rejoinReason
             );
         } catch (MemberIdRequiredException $exception) {
             $this->memberId = (string) ($exception->getContext()['assignedMemberId'] ?? '');
             if ($this->memberId === JoinGroupRequest::DEFAULT_MEMBER_ID) {
                 throw $exception;
             }
+            // The second join of the KIP-394 exchange says why it is sent, word for word as the Java consumer does
+            $this->rejoinReason = self::REJOIN_REASON_MEMBER_ID . $this->memberId;
         }
 
         return $this->client->joinGroup(
@@ -424,7 +515,8 @@ final class ConsumerCoordinator
             self::PROTOCOL_TYPE,
             $protocols,
             $this->rebalanceTimeoutMs,
-            $this->groupInstanceId
+            $this->groupInstanceId,
+            $this->rejoinReason
         );
     }
 

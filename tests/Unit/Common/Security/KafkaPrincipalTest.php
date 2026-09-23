@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 /**
  * Tests the principal struct that the four delegation token APIs of KIP-48 embed.
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 #[CoversClass(KafkaPrincipal::class)]
 final class KafkaPrincipalTest extends TestCase

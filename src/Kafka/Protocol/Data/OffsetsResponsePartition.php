@@ -33,11 +33,13 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * into {@see self::$offsets}. The scheme is selected by {@see OffsetsResponsePartition::VERSION}.
  *
  * Both `timestamp` and `offset` are {@see self::UNKNOWN_TIMESTAMP} / {@see self::UNKNOWN_OFFSET} when the broker
- * found nothing: a failed partition, and a target timestamp that is above the timestamp of every message of the
- * log. A request for {@see OffsetsRequest::LATEST} or {@see OffsetsRequest::EARLIEST} succeeds with a real offset
- * and the timestamp -1, because the broker does not read the message the offset points at.
+ * found nothing: a failed partition, a target timestamp that is above the timestamp of every message of the
+ * log, and {@see OffsetsRequest::MAX_TIMESTAMP} on an empty log. A request for {@see OffsetsRequest::LATEST} or
+ * {@see OffsetsRequest::EARLIEST} succeeds with a real offset and the timestamp -1, because the broker does not
+ * read the message the offset points at; `MAX_TIMESTAMP` (version 7, Kafka 3.0) is the one special target time
+ * that is answered with a real timestamp, the largest one of the partition, without reading a record either.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 class OffsetsResponsePartition implements BinarySchemaInterface
 {
