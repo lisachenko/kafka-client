@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Common;
  * {@see PartitionMetadata::getScheme()} follows; `$offlineReplicas` keeps its empty default, which is "the answer
  * did not say".
  *
- * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class PartitionMetadataV0 extends PartitionMetadata
 {

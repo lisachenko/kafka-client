@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * read the message the offset points at; `MAX_TIMESTAMP` (version 7, Kafka 3.0) is the one special target time
  * that is answered with a real timestamp, the largest one of the partition, without reading a record either.
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
  */
 class OffsetsResponsePartition implements BinarySchemaInterface
 {

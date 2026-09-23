@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     TopicName => string
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v11)"
+ * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v12)"
  */
 class ProduceRequestTopic implements BinarySchemaInterface
 {

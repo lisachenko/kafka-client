@@ -367,7 +367,10 @@ final class ClientTest extends TestCase
         string $compressionType,
         int $expectedCodec
     ): void {
-        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]));
+        $leader = new BrokerConnection(
+            self::apiVersionsOfKafka39(),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]])
+        );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -384,8 +387,9 @@ final class ClientTest extends TestCase
             ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
         ])->produce([self::TOPIC => [0 => $records]]);
 
-        // A compressed batch travels as a message set of exactly one message, whose value is the whole batch
-        $messageSetBuffer = self::messageSetOf($leader->getReceivedFrames()[0]);
+        // A compressed batch travels as a message set of exactly one message, whose value is the whole batch; the
+        // first frame the leader received is the ApiVersions request of the KIP-896 check
+        $messageSetBuffer = self::messageSetOf($leader->getReceivedFrames()[1]);
         $wrapper          = self::firstMessageOf($messageSetBuffer);
 
         self::assertTrue($wrapper->isCompressed());
@@ -406,7 +410,10 @@ final class ClientTest extends TestCase
 
     public function testABatchIsSentAsItIsWithoutACompressionType(): void
     {
-        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 1]]]));
+        $leader = new BrokerConnection(
+            self::apiVersionsOfKafka39(),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 1]]])
+        );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -415,7 +422,7 @@ final class ClientTest extends TestCase
         $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
             ->produce([self::TOPIC => [0 => [new Record('as it is', 'a key')]]]);
 
-        $wrapper = self::firstMessageOf(self::messageSetOf($leader->getReceivedFrames()[0]));
+        $wrapper = self::firstMessageOf(self::messageSetOf($leader->getReceivedFrames()[1]));
 
         self::assertFalse($wrapper->isCompressed(), 'compression.type defaults to none');
         self::assertSame('as it is', $wrapper->value);
@@ -484,6 +491,26 @@ final class ClientTest extends TestCase
         $offsets = $this->client()->fetchTopicPartitionOffsets([self::TOPIC => [0 => -1, 1 => -1]]);
 
         self::assertSame([self::TOPIC => [0 => 64, 1 => 0]], $offsets);
+    }
+
+    public function testTheListOffsetsRequestCarriesTheRequestTimeoutAsTheTimeoutOfKip1075(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::offsets(0, [self::TOPIC => [0 => [0, -1, 64]]]));
+        $this->brokers
+            ->on(
+                self::BOOTSTRAP_ADDRESS,
+                new BrokerConnection(ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], [self::TOPIC => [0 => 0]]))
+            )
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $this->client([ClientConfig::REQUEST_TIMEOUT_MS => 12345])
+            ->fetchTopicPartitionOffsets([self::TOPIC => [0 => -1]]);
+
+        // ListOffsets v10 (Kafka 4.0): `timeout_ms` is the last field of the body, in front of its tag buffer
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        self::assertStringStartsWith('0002000a', $frame, 'ListOffsets v10');
+        self::assertStringEndsWith('00003039' . '00', $frame, 'timeout_ms = 12345, the request.timeout.ms');
     }
 
     public function testTheRecordsOfAFetchAreDecoded(): void
@@ -695,9 +722,9 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 11, correlation id, client id, the tag buffer of the request header v2 and then
+        // ApiKey 0, ApiVersion 12, correlation id, client id, the tag buffer of the request header v2 and then
         // the null transactional id of a plain producer, which a flexible frame writes as the single byte 00
-        self::assertStringStartsWith('0000000b', $frame, 'the Produce api is spoken in version 11');
+        self::assertStringStartsWith('0000000c', $frame, 'the Produce api is spoken in version 12 (Kafka 4.0)');
         self::assertStringContainsString('74372d636c69656e74' . '00' . '00', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
@@ -709,7 +736,10 @@ final class ClientTest extends TestCase
 
     public function testAMessageFormatBelowTheRecordBatchIsSentAsAProduceVersionTwo(): void
     {
-        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]));
+        $leader = new BrokerConnection(
+            self::apiVersionsOfKafka39(),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]])
+        );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -719,12 +749,92 @@ final class ClientTest extends TestCase
         $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
             ->produce([self::TOPIC => [0 => [$record]]]);
 
-        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        // The leader is asked what it serves first: a node of Kafka 3.x serves Produce from version 0
+        self::assertStringStartsWith('00120004', bin2hex($leader->getReceivedFrames()[0]), 'ApiVersions v4');
+
+        $frame = bin2hex($leader->getReceivedFrames()[1]);
         self::assertStringStartsWith('00000002', $frame, 'a message set can only be sent below version 3');
 
-        $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
+        $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[1]));
         self::assertSame(Message::MAGIC_V1, $records->getMagic());
         self::assertSame([], $records->getRecords()[0]->headers, 'a message set has no place for headers');
+    }
+
+    /**
+     * @return iterable<string, array{0: array{int, int}}>
+     */
+    public static function produceRowsOfKafka4(): iterable
+    {
+        // KAFKA-18659: every node of Kafka 4.0 and later lists Produce from 0, and refuses v0 to v2 all the same
+        yield 'Kafka 4.0, v0 to v12 advertised' => [[0, 12]];
+        yield 'Kafka 4.3, v0 to v13 advertised' => [[0, 13]];
+        yield 'a row that says it itself'       => [[3, 11]];
+    }
+
+    /**
+     * @param array{int, int} $produceRow
+     */
+    #[DataProvider('produceRowsOfKafka4')]
+    public function testAMessageFormatBelowTheRecordBatchIsRefusedBeforeItReachesANodeOfKafka4(array $produceRow): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::apiVersions(0, [0 => $produceRow, 1 => [4, 17]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        try {
+            $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
+                ->produce([self::TOPIC => [0 => [new Record('legacy', 'a key')]]]);
+            self::fail('a Produce v2 costs the connection on a node of Kafka 4.0 or later (KIP-896)');
+        } catch (InvalidConfigurationException $expected) {
+            self::assertStringContainsString('message.format.version 0.10.0', $expected->getMessage());
+            self::assertStringContainsString('serves Produce from version 3 only', $expected->getMessage());
+            self::assertStringContainsString('KIP-896', $expected->getMessage());
+        }
+
+        self::assertCount(1, $leader->getReceivedFrames(), 'the ApiVersions request, and no Produce request at all');
+    }
+
+    public function testTheNodeIsAskedForItsApiVersionsOncePerClient(): void
+    {
+        $leader = new BrokerConnection(
+            self::apiVersionsOfKafka39(),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 6]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client = $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_9_0]);
+        $client->produce([self::TOPIC => [0 => [new Record('first')]]]);
+        $client->produce([self::TOPIC => [0 => [new Record('second')]]]);
+
+        self::assertCount(3, $leader->getReceivedFrames(), 'one ApiVersions request and two Produce v2 requests');
+        self::assertStringStartsWith('00000002', bin2hex($leader->getReceivedFrames()[2]));
+    }
+
+    public function testTheRecordBatchNeedsNoApiVersionsRequestAtAll(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $this->client()->produce([self::TOPIC => [0 => [new Record('batch')]]]);
+
+        self::assertCount(1, $leader->getReceivedFrames(), 'the Produce v12 request alone');
+    }
+
+    /**
+     * The ApiVersions answer of a node of Kafka 3.9, whose Produce row starts at 0 and ends at 11
+     */
+    private static function apiVersionsOfKafka39(): string
+    {
+        return ResponseFrame::apiVersions(0, [0 => [0, 11], 1 => [0, 17], 2 => [0, 9], 3 => [0, 12]]);
     }
 
     public function testTheProducerStateOfABatchTravelsInItsRecordBatch(): void

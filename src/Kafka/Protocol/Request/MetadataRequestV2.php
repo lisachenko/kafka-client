@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see MetadataRequestV1} - and the version exists because its ANSWER carries the `ClusterId` on top
  * ({@see MetadataResponseV2}).
  *
- * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class MetadataRequestV2 extends MetadataRequest
 {

@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `allowAutoCreation = config.autoCreateTopicsEnable && metadataRequest.allowAutoTopicCreation`, and
  * `MetadataRequest.allowAutoTopicCreation()` answers `true` for a struct without the field.
  *
- * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class MetadataRequestV3 extends MetadataRequest
 {
