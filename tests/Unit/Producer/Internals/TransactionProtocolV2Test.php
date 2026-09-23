@@ -300,18 +300,28 @@ final class TransactionProtocolV2Test extends TestCase
         self::assertSame(['endTxnBumpingEpoch'], array_column($client->transactionCalls, 0));
     }
 
-    public function testAnApiVersionsAnswerThatDoesNotArriveOnTheInitializationIsFatal(): void
+    public function testAnApiVersionsAnswerThatDoesNotArriveOnTheInitializationKeepsTheProtocolV1(): void
     {
         $client                    = $this->client(2);
         $client->apiVersionsErrors = [new NetworkException()];
         $manager                   = $this->manager($client);
 
-        try {
-            $manager->initTransactions();
-            self::fail('a producer that does not know its protocol cannot write a transaction');
-        } catch (NetworkException) {
-            self::assertSame(TransactionState::FATAL_ERROR, $manager->currentState());
-        }
+        $manager->initTransactions();
+
+        self::assertSame(TransactionState::READY, $manager->currentState());
+        self::assertFalse($manager->isTransactionV2Enabled());
+    }
+
+    public function testAPeerThatRefusesTheApiVersionsRequestKeepsTheProtocolV1(): void
+    {
+        // A peer older than Kafka 3.9 answers the ApiVersions v4 with the 35
+        $client                       = $this->client(2);
+        $client->apiVersionsErrorCode = 35;
+        $manager                      = $this->manager($client);
+
+        $manager->initTransactions();
+
+        self::assertFalse($manager->isTransactionV2Enabled());
     }
 
     /**

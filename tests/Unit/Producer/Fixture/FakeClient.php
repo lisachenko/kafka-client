@@ -117,6 +117,11 @@ final class FakeClient extends Client
     public array $apiVersionsErrors = [];
 
     /**
+     * Error code of the scripted ApiVersions answer, the 35 of a peer that does not serve the version
+     */
+    public int $apiVersionsErrorCode = 0;
+
+    /**
      * The producer id and epoch every EndTxn v5 answers, one after the other; the epoch of the request plus one
      * once the list runs out
      *
@@ -287,7 +292,8 @@ final class FakeClient extends Client
             throw $error;
         }
 
-        $answer = new ApiVersionsResponse();
+        $answer            = new ApiVersionsResponse();
+        $answer->errorCode = $this->apiVersionsErrorCode;
         if ($this->transactionVersion !== null) {
             $feature                  = new ApiVersionsFinalizedFeature();
             $feature->name            = TransactionManager::TRANSACTION_VERSION_FEATURE;

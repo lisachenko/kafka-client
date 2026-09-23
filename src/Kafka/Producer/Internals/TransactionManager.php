@@ -1192,10 +1192,10 @@ class TransactionManager
      * `transaction.version` - every 3.x node - runs the level 0. Moving up to the protocol v2 anywhere but in the
      * initialization bumps the epoch once, "to fence the old V1 transaction epoch" (`clientSideEpochBumpRequired`).
      *
-     * An answer that does not arrive leaves the protocol where it is, exactly as the Java client keeps what its last
-     * ApiVersions answer said; the next end of a transaction asks again.
-     *
-     * @throws KafkaException Only when the producer is being initialized and the coordinator does not answer
+     * An answer that does not arrive, or that refuses the request - a peer older than Kafka 3.9 answers the
+     * ApiVersions v4 of {@see Client::apiVersions()} with the 35 - leaves the protocol where it is: the v1 of every
+     * line below while the producer is being initialized, and whatever the last answer said afterwards, exactly as
+     * the Java client keeps what its last ApiVersions answer said. The next end of a transaction asks again.
      */
     private function maybeUpdateTransactionV2Enabled(bool $onInitialization): void
     {
@@ -1204,11 +1204,10 @@ class TransactionManager
         try {
             $this->transactionCoordinator ??= $this->client->getTransactionCoordinator($transactionalId);
             $answer = $this->client->apiVersions($this->transactionCoordinator);
-        } catch (KafkaException $error) {
-            if ($onInitialization) {
-                throw $error;
-            }
-
+        } catch (KafkaException) {
+            return;
+        }
+        if ($answer->errorCode !== KafkaException::NO_ERROR) {
             return;
         }
 
