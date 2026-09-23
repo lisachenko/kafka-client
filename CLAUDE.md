@@ -169,7 +169,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 - Conventional commits. No force-pushes on shared branches.
 - Cascade: after a line is complete, merge it upwards on a `cascade/<from>-into-<to>` branch (rules in
   `docs/CASCADE.md`); `.github/workflows/cascade.yml` opens the PR automatically on pushes to `0.8.x`,
-  `0.9.x`, `0.10.x`, `0.11.x` and `1.x`. `main` is the top of the cascade and the line in development.
+  `0.9.x`, `0.10.x`, `0.11.x`, `1.x`, `2.x` and `3.x`. `main` is the top of the cascade and the line in development.
 
 ## How the work is organised (multi-agent)
 
