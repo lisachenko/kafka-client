@@ -31,13 +31,15 @@ use Protocol\Kafka\Protocol\Request\DescribeQuorumResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeQuorumResponseV1;
 
 /**
- * Exercises DescribeQuorum (key 55, v0 to v2) against the 3.9.2 KRaft node.
+ * Exercises DescribeQuorum (key 55, v0 to v2) against the 4.3.1 KRaft node.
  *
  * The api reads the state of the **raft quorum** that KIP-595 put in the place of ZooKeeper, and the node of this
  * line is the smallest quorum there is: one combined node, which is its own leader, its own single voter and no
  * observer at all. The version 1 of KIP-836 adds the two timestamps of a replica state and the version 2 of
  * KIP-853 the directory id of a replica, the two error messages and the top-level nodes array; the request of all
- * three versions is one and the same frame.
+ * three versions is one and the same frame. The quorum of the 4.3.1 node is **dynamic** - its storage was formatted
+ * `--standalone` and it finalizes `kraft.version` 1 - so its one voter reports the real directory id of its
+ * metadata log, where the static quorum of the 3.9.2 node reported the zero uuid.
  *
  * It creates nothing on the broker and therefore has nothing to clean up: the metadata quorum is read-only from
  * the outside, and the topic it asks about on purpose is one that does not exist.
@@ -208,9 +210,11 @@ final class MetadataQuorumApiTest extends IntegrationTestCase
      *
      * KIP-853 made the voter set of a KRaft quorum reconfigurable, and the four fields it added to this answer are
      * what a client needs for that: the `(id, directory id)` key of a voter and the endpoint that id listens at.
-     * The node of this line still runs the **static** `controller.quorum.voters` of KIP-595 - its `kraft.version`
-     * feature is supported 0 to 1 and finalized at 0 - so every directory id it reports is the zero uuid, while
-     * the `nodes` array is filled all the same, with the CONTROLLER listener of the container.
+     * The node of this line runs the **dynamic** quorum of KIP-853 - `kraft.version` finalized at 1 - so its voter
+     * reports the real `directory.id` of its `meta.properties`, the key that
+     * {@see AdminClient::removeRaftVoter()} would have to name; the 3.9.2 node of the 3.x line, at
+     * `kraft.version` 0, answered the zero uuid here. The `nodes` array names the CONTROLLER listener of the
+     * container.
      */
     public function testTheVersionTwoCarriesTheNodesAndTheDirectoryIdsOfKip853(): void
     {
@@ -235,12 +239,18 @@ final class MetadataQuorumApiTest extends IntegrationTestCase
         $leader = $quorum->voters[0];
 
         self::assertSame(1, $leader->replicaId);
-        self::assertSame(
+        self::assertSame(Uuid::SIZE, strlen($leader->replicaDirectoryId));
+        self::assertNotSame(
             Uuid::ZERO,
             $leader->replicaDirectoryId,
-            'a quorum at kraft.version 0 has no directory ids, although meta.properties carries one'
+            'a quorum at kraft.version 1 reports the directory id of meta.properties'
         );
-        self::assertSame('AAAAAAAAAAAAAAAAAAAAAA', $leader->replicaDirectoryIdAsString());
+        self::assertMatchesRegularExpression('/^[A-Za-z0-9_-]{22}$/', $leader->replicaDirectoryIdAsString());
+        self::assertSame(
+            $leader->replicaDirectoryId,
+            $this->admin->describeMetadataQuorum()->voters[0]->replicaDirectoryId,
+            'the key of a voter is stable: it is the disk, not the request'
+        );
     }
 
     /**

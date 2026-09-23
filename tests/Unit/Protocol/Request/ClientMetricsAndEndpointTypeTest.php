@@ -25,7 +25,9 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ClientMetricsResource;
 use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
 use Protocol\Kafka\Protocol\Request\DescribeClusterRequestV0;
+use Protocol\Kafka\Protocol\Request\DescribeClusterRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV1;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsRequest;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsResponse;
 use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequest;
@@ -45,7 +47,9 @@ use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
  *      only"
  */
 #[CoversClass(DescribeClusterRequest::class)]
+#[CoversClass(DescribeClusterRequestV1::class)]
 #[CoversClass(DescribeClusterResponse::class)]
+#[CoversClass(DescribeClusterResponseV1::class)]
 #[CoversClass(EndpointType::class)]
 #[CoversClass(ClusterDescription::class)]
 #[CoversClass(GetTelemetrySubscriptionsRequest::class)]
@@ -131,12 +135,12 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
         . '00';
 
     /**
-     * Version 1 is what this client sends, and the `endpoint_type` is the only byte that separates the two
+     * The `endpoint_type` is the only byte that separates the versions 0 and 1 (Kafka 4.0 appended a third)
      */
     public function testTheEndpointTypeIsTheOneByteVersionOneAdded(): void
     {
         $version0 = new DescribeClusterRequestV0(false, 'test', 9);
-        $version1 = new DescribeClusterRequest(false, 'test', 9);
+        $version1 = new DescribeClusterRequestV1(false, 'test', 9);
 
         self::assertSame(0, $version0->getApiVersion());
         self::assertSame(1, $version1->getApiVersion());
@@ -156,8 +160,8 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
      */
     public function testTheRequestCarriesEveryEndpointTypeVerbatim(): void
     {
-        $controllers = new DescribeClusterRequest(false, 'test', 9, EndpointType::Controller);
-        $nonsense    = new DescribeClusterRequest(false, 'test', 9, 3);
+        $controllers = new DescribeClusterRequestV1(false, 'test', 9, EndpointType::Controller);
+        $nonsense    = new DescribeClusterRequestV1(false, 'test', 9, 3);
 
         self::assertSame(2, $controllers->getEndpointTypeId());
         self::assertSame(EndpointType::Controller, $controllers->getEndpointType());
@@ -195,7 +199,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
      */
     public function testTheAnswerCarriesTheDescribedEndpointType(): void
     {
-        $response = DescribeClusterResponse::unpack(
+        $response = DescribeClusterResponseV1::unpack(
             new StringStream((string) hex2bin(self::CLUSTER_RESPONSE_V1_HEX))
         );
 
@@ -218,7 +222,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
      */
     public function testAMismatchedEndpointTypeIsAnsweredWithoutACluster(): void
     {
-        $response = DescribeClusterResponse::unpack(
+        $response = DescribeClusterResponseV1::unpack(
             new StringStream((string) hex2bin(self::CLUSTER_RESPONSE_V1_MISMATCHED_HEX))
         );
 
