@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\Data\FeatureUpdateKeyV0;
  * here, and the {@see UpdateFeaturesRequest::$validateOnly} of an instance of this class never reaches the wire,
  * so the controller of such a request always writes what it accepts.
  *
- * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 to v2)" and "The upgrade type and the dry
  *      run of KIP-778 (v1)"
  */
 final class UpdateFeaturesRequestV0 extends UpdateFeaturesRequest
