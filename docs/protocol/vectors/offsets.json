@@ -1,8 +1,8 @@
 {
     "api": "offsets",
     "apiKey": 2,
-    "section": "Offsets API (key 2, v0 to v9), a.k.a. ListOffset",
-    "description": "Wire vectors of the Offsets API (key 2, v0 to v9), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "section": "Offsets API (key 2, v0 to v10), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0 to v10), a.k.a. ListOffset, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsets.request.v0.latest",
@@ -1161,7 +1161,7 @@
         {
             "id": "offsets.request.v9.latest-tiered",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV9",
             "version": 9,
             "source": "broker",
             "description": "ListOffsets request v9 (Kafka 3.9, KIP-1005): the flexible frame of the versions 6, 7 and 8 once more - the version declares no field - with the fifth special target time -5 LATEST_TIERED_TIMESTAMP, the last offset of the partition that has been moved to remote storage. The eight bytes ff ff ff ff ff ff ff fb are the whole of what the version exists for.",
@@ -1192,7 +1192,7 @@
         {
             "id": "offsets.response.v9.latest-tiered",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The answer of a node WITHOUT remote storage: the error code 0, the timestamp -1, the offset -1 and the leader epoch -1, although the log of t2-39-vectors holds two records. `UnifiedLog.fetchOffsetByTimestamp` @ 3.9.2 answers `highestOffsetInRemoteStorage()` only when `remoteLogEnabled()`, and writes the literal TimestampAndOffset(-1, -1, epoch -1) when it does not: the question is valid and nothing of this partition is tiered. It is the one lookup of this api that answers -1 for a log that is not empty.",
@@ -1221,7 +1221,7 @@
         {
             "id": "offsets.request.v9.latest-tiered-empty",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same target time -5 asked of an EMPTY partition, the topic t2-39-vectors-empty.",
@@ -1252,7 +1252,7 @@
         {
             "id": "offsets.response.v9.latest-tiered-empty",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The very same answer as for the filled log: 0 / -1 / -1 / -1. Unlike -4 EARLIEST_LOCAL_TIMESTAMP, which answers the offset 0 of a log that starts where it ends, -5 does not depend on the log at all on a broker without tiered storage.",
@@ -1341,7 +1341,7 @@
         {
             "id": "offsets.request.v9.latest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The old target time -1 LATEST asked at version 9, the cheapest proof that the frame of the version is the frame of version 6: the body is the one of offsets.request.v8.earliest-local with another number in its header and another timestamp in its partition entry.",
@@ -1372,7 +1372,7 @@
         {
             "id": "offsets.response.v9.latest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The answer: the error code 0, the timestamp -1, the offset 2 - the end of the log of t2-39-vectors, whose two records are the offsets 0 and 1 - and the leader epoch 0.",
@@ -1391,6 +1391,128 @@
                                 "errorCode": 0,
                                 "timestamp": -1,
                                 "offset": 2,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v10.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "ListOffsets request v10 (Kafka 4.0, KIP-1075): the flexible body of version 6 with the target time -1 LATEST, followed by the new timeout_ms = 30000 - the request.timeout.ms the Java consumer sends (OffsetFetcher.sendListOffsetRequest @ 4.0.0) - in front of the tag buffer of the body.",
+            "hex": "000000490002000a00000fa300126b61666b612d636c69656e742d74322d343000ffffffff00020e74322d34302d766563746f72730200000000ffffffffffffffffffffffff00000000753000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 2,
+                "apiVersion": 10,
+                "correlationId": 4003,
+                "clientId": "kafka-client-t2-40",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-40-vectors": {
+                        "topic": "t2-40-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                },
+                "timeoutMs": 30000
+            }
+        },
+        {
+            "id": "offsets.response.v10.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The answer: ListOffsetsResponse.json @ 4.0.0 adds no field of version 10, so it is the version 9 frame - the error code 0, the timestamp -1 and the offset 3, the end of a log that holds the two records of produce.request.v12 and the transactional one of produce.request.v12.transactional, with the leader epoch 0. The timeout only matters for a topic with remote storage, which the node has not.",
+            "hex": "0000003600000fa30000000000020e74322d34302d766563746f727302000000000000ffffffffffffffff000000000000000300000000000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 4003,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-40-vectors": {
+                        "topic": "t2-40-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 3,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v10.timestamp",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "The same version asked for the offset of a timestamp, CreateTime + 500 ms of the first record, with timeout_ms = 0 - which the broker reads as \"use my remote.list.offsets.request.timeout.ms\" (ReplicaManager.fetchOffset @ 4.0.0).",
+            "hex": "000000490002000a00000fa400126b61666b612d636c69656e742d74322d343000ffffffff00020e74322d34302d766563746f72730200000000ffffffff000001a0c4506df400000000000000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 2,
+                "apiVersion": 10,
+                "correlationId": 4004,
+                "clientId": "kafka-client-t2-40",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-40-vectors": {
+                        "topic": "t2-40-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": 1790000000500
+                            }
+                        ]
+                    }
+                },
+                "timeoutMs": 0
+            }
+        },
+        {
+            "id": "offsets.response.v10.timestamp",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The answer: the first record whose timestamp is at or after the target, the second record of the batch at the offset 1 with its CreateTime 1790000001000 - a lookup in the local log, answered at once.",
+            "hex": "0000003600000fa40000000000020e74322d34302d766563746f727302000000000000000001a0c4506fe8000000000000000100000000000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 4004,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-40-vectors": {
+                        "topic": "t2-40-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": 1790000001000,
+                                "offset": 1,
                                 "leaderEpoch": 0
                             }
                         ]

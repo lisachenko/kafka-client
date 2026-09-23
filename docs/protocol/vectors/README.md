@@ -72,7 +72,9 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1135** of them in **60** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **1149** of them in **60** files: **14** were captured on the `kafka-4-3-1` node of the
+**4.x** line - the 6 of Produce v12 in `produce.json`, the 4 of Metadata v13 in `metadata.json` and the 4 of
+ListOffsets v10 in `offsets.json`, what **Kafka 4.0** added to the producer and consumer apis - **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -233,7 +235,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v12)",
+    "section": "Metadata API (key 3, v0 to v13)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
