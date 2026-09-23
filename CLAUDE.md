@@ -12,10 +12,11 @@ one gated milestone commit per minor). See `docs/CASCADE.md` and, for each line,
 one of those files carries the release notes of its line with the plan it was built from below them —
 `docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/2.x.md` the record of the 2.x line,
 `docs/handoff/3.x.md` the record of the 3.x line, and **`docs/handoff/main.md` is the plan of the 4.x line** (its
-release notes are written above the plan when the line is complete). `main` and `3.x` are identical at the start of
-the 4.x line, so the line starts on `main` without branching anything off; its foundation ticket brings the node of
-the line, renames the grammar `docs/protocol/3.9.md` with the line, and declares what Kafka 4.x adds — until it
-lands, `main` speaks what the 3.x line delivered, on the 3.9.2 KRaft node.
+release notes are written above the plan when the line is complete). `main` and `3.x` were identical at the start
+of the 4.x line, so the line started on `main` without branching anything off; its foundation brought the node of
+the line (**Kafka 4.3.1**, `docker/kafka-4.3.1`), renamed the grammar to `docs/protocol/4.3.md` and declared what
+Kafka 4.x adds (the api keys 88–92, the error codes 128–133) — the client sends what the 3.x line delivered until
+the milestones 4.0 to 4.3 raise it.
 
 **The 3.x line started from `main` as it stood at the end of 2.x** and speaks Kafka 3.9.2 on a **KRaft** node
 (`docs/handoff/3.x.md`). What it added over 2.8.2: the api keys 65–87 declared and six of them spoken
@@ -27,10 +28,10 @@ versions** of KIP-482 (compact strings, bytes and arrays, tagged fields, request
 Kafka 2.4), the **leader epochs** of KIP-320 (2.1), the **zstd** codec of KIP-110 (2.1), the api keys 43 to 64 and
 the error codes 72-104.
 
-**The 4.x line starts from `main` as it stood at the end of 3.x** and speaks towards the last 4.x release available
-when the line starts — Kafka 4.x is **KRaft only**, and 4.0 is the first release that stops serving protocol versions
-a 3.9.2 node still answers (KIP-896), so the lower-line frames the compliance suite replays are no longer frames a
-4.x node accepts. What Kafka 4.x adds over 3.9.2 api by api is derived from the message specs at the release tags by
+**The 4.x line starts from `main` as it stood at the end of 3.x** and speaks towards **Kafka 4.3.1**, the last 4.x
+release available when the line started (epic #213) — Kafka 4.x is **KRaft only**, and 4.0 is the first release that
+stops serving protocol versions a 3.9.2 node still answers (KIP-896), so the lower-line frames the compliance suite
+replays are no longer frames a 4.x node accepts. What Kafka 4.x adds over 3.9.2 api by api is derived from the message specs at the release tags by
 the foundation ticket, on the plan in `docs/handoff/main.md`. For this line rule 4 means "start from the 3.9.2 class of
 `main` and add what the new release adds", and rule 2 "the names of the 3.9.2 classes, plus the names of the Java
 client at the line's release for what is new".
@@ -97,10 +98,11 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 ### Kafka broker for integration tests
 
 - `docker compose up -d --wait` starts the broker of this branch's Kafka version
-  (`docker/kafka-<version>/`, advertised as 127.0.0.1:9092). On `3.x`, and on `main` until the foundation ticket of the 4.x line replaces it, that is **`docker/kafka-3.9.2`**, the
-  container `kafka-3-9-2`: a **KRaft** node (`process.roles=broker,controller`, no ZooKeeper, a CONTROLLER
-  listener on 9096 inside the container); on `2.x` it is `docker/kafka-2.8.2` (`kafka-2-8-2`, ZooKeeper
-  bundled), on `0.11.x` `docker/kafka-0.11.0.3` (`kafka-0-11-0-3`). Either way it has the four listeners
+  (`docker/kafka-<version>/`, advertised as 127.0.0.1:9092). On `main` (the 4.x line) that is
+  **`docker/kafka-4.3.1`**, the container `kafka-4-3-1`: a **KRaft** node (`process.roles=broker,controller`, no
+  ZooKeeper, a CONTROLLER listener on 9096 inside the container, a dynamic quorum formatted `--standalone`); on
+  `3.x` it is `docker/kafka-3.9.2` (`kafka-3-9-2`, KRaft with a static quorum), on `2.x` `docker/kafka-2.8.2`
+  (`kafka-2-8-2`, ZooKeeper bundled), on `0.11.x` `docker/kafka-0.11.0.3` (`kafka-0-11-0-3`). Either way it has the four listeners
   PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch
   carries — the first ticket of a new line adds its image, points `docker-compose.yml` and every fixture at
   it and **deletes the one below**. A stale container name does not fail a test, it makes it *skip*: grep
@@ -134,7 +136,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   newline as well, so `start.sh` keeps appending one, and the one-broker `transaction.state.log.*=1` settings are
   still needed. Two settings are new in this image: **two log directories**
   (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2` — a partition lands in either, find it with
-  `docker exec kafka-3-9-2 ls /tmp/kafka-logs /tmp/kafka-logs-2`) and a
+  `docker exec kafka-4-3-1 ls /tmp/kafka-logs /tmp/kafka-logs-2`) and a
   **`delegation.token.master.key`**, without which the token apis 38–41 answer 61 instead of 64. And **a 1.x broker
   closes the socket on a version above its table for every api, ControlledShutdown included** — only ApiVersions
   answers an unknown version with the error code 35.
@@ -150,6 +152,21 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   `super.users=User:ANONYMOUS;User:admin;User:kafkatest`; the SASL user `acltest`/`acltest-secret` is the one
   principal the ACLs apply to. The KIP-848 coordinator is on (`group.coordinator.rebalance.protocols=classic,consumer`).
   Metadata answers brokers before any topic exists; a fresh topic still answers 5/6 for a moment.
+- **4.3 specifics (KRaft, the node of `main`).** Everything of the 3.9 paragraph above holds except what follows.
+  The distribution keeps its configuration in `config/server.properties` (no `config/kraft/`) and `start.sh`
+  writes it from scratch. The quorum is **dynamic** (KIP-853): `controller.quorum.bootstrap.servers` and
+  `kafka-storage.sh format --standalone`, as the release formats a combined node, so every feature is finalized at
+  its default: `metadata.version` 4.3-IV0 (30), `kraft.version` 1, `transaction.version` 2, `group.version` 1,
+  `share.version` 1, `streams.version` 1, `eligible.leader.replicas.version` 1 (`kafka-features.sh
+  --bootstrap-server localhost:9092 describe`). The node lists **75 keys** on its client listeners (0–3, 8–51, 55,
+  57, 60, 61, 64–66, 68, 69, 74–81, 83–92): 4–7 have no version at all, the controller-only apis live on 9096,
+  71/72 are hidden without a client-telemetry plugin. **KIP-896**: fifteen rows start above 0 and every frame of a
+  removed version closes the connection — Produce v0–v2 too, although the answer still lists them (KAFKA-18659);
+  the message formats v0/v1 cannot be produced any more, and the topic config `message.downconversion.enable` is
+  gone. The group coordinator serves `classic,consumer,streams` by default and share groups through
+  `share.version`; the single-node share state topic needs `share.coordinator.state.topic.replication.factor=1`
+  and `.min.isr=1`. AddRaftVoter/RemoveRaftVoter are answered (126 for the node's own id 1, 127 for an unknown one)
+  — **never send a RemoveRaftVoter of voter 1 or an AddRaftVoter of a reachable node**: the quorum has one voter.
 - Useful in-container tools (the `--zookeeper` forms are the lines up to 2.x): `docker exec <container>
   /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list` (`--zookeeper localhost:2181` on a
   ZooKeeper broker),

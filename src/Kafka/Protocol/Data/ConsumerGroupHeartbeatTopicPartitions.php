@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatRequest
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatResponse
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
  */
 class ConsumerGroupHeartbeatTopicPartitions implements BinarySchemaInterface
 {

@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * means implicitly. The three filters are ANDed. {@see ListTransactionsRequestV0} is the frame below it, which
  * cannot ask at all.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 and v1)"
  */
 class ListTransactionsRequest extends AbstractRequest
 {

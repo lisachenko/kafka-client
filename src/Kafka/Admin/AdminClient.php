@@ -3141,7 +3141,7 @@ class AdminClient
      *
      * @return array<string, TopicMetadata> The answer of every id, indexed by {@see Uuid::toString()} of that id
      *
-     * @see docs/protocol/3.9.md, section "Metadata by topic id (v12, KIP-516)"
+     * @see docs/protocol/4.3.md, section "Metadata by topic id (v12, KIP-516)"
      */
     public function describeTopicsByIds(array $topicIds): array
     {
@@ -3193,7 +3193,7 @@ class AdminClient
      *
      * @throws KafkaException If the request as a whole, or the partition of the metadata log, was refused
      *
-     * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
+     * @see docs/protocol/4.3.md, section "DescribeQuorum API (key 55, v0 to v2)"
      */
     public function describeMetadataQuorum(): QuorumInfo
     {
@@ -3637,7 +3637,7 @@ class AdminClient
      *
      * @return array<string, ConsumerGroupDescription> Descriptions, indexed by the group id
      *
-     * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
      */
     public function describeConsumerGroups(array $groupIds, bool $includeAuthorizedOperations = false): array
     {
@@ -3685,7 +3685,7 @@ class AdminClient
      *
      * @throws InvalidGroupIdException If the coordinator answered with no description of the group at all
      *
-     * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
      */
     public function describeConsumerGroup(
         string $groupId,

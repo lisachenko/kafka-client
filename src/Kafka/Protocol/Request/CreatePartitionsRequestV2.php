@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (`CreatePartitionsRequest.json` @ 2.7.2): the version Kafka 2.7 added with KIP-599 changes no byte and only
  * promises that the client understands the error code **89** and retries after the `throttle_time_ms`.
  *
- * @see docs/protocol/3.9.md, section "CreatePartitions API (key 37, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 final class CreatePartitionsRequestV2 extends CreatePartitionsRequest
 {

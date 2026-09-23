@@ -71,7 +71,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
  * on - which is the answer to "will this disk still take the partition" that no earlier version could give. It is
  * the version this client sends; {@see DescribeLogDirsRequestV3} is the same frame for a broker below Kafka 3.3.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 class DescribeLogDirsRequest extends AbstractRequest
 {

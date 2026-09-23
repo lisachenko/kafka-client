@@ -18,9 +18,9 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol;
 
 /**
- * Numeric codes that the ApiKey in the request can take, as of Kafka 3.9.2.
+ * Numeric codes that the ApiKey in the request can take, as of Kafka 4.3.1.
  *
- * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 3.9.2: SaslHandshake (17) and ApiVersions (18)
+ * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 4.3.1: SaslHandshake (17) and ApiVersions (18)
  * arrived with Kafka 0.10.0, CreateTopics (19) and DeleteTopics (20) with 0.10.1, the keys 21 to 33 (DeleteRecords,
  * the idempotent and transactional producer apis, the ACL and config apis) with 0.11.0, the keys 34 to 37
  * (AlterReplicaLogDirs and DescribeLogDirs of KIP-113, SaslAuthenticate of KIP-152, CreatePartitions of KIP-195)
@@ -40,13 +40,19 @@ namespace Protocol\Kafka\Protocol;
  * their state apis 83 to 87 (internal), and the raft-voter apis AddRaftVoter, RemoveRaftVoter and UpdateRaftVoter
  * (80 to 82, the dynamic quorums of KIP-853). Key 56 was renamed from AlterIsr to AlterPartition in Kafka 3.2
  * (KIP-704); the constant keeps the published name.
+ * The 4.x line adds the keys 88 to 92 (`ApiKeys.java` @ 4.3.1, read at the release tags), all of them Kafka 4.1: the
+ * streams-group apis StreamsGroupHeartbeat (88) and StreamsGroupDescribe (89) of KIP-1071 (unstable in 4.1, stable
+ * from 4.2) and the share-group offset apis DescribeShareGroupOffsets (90), AlterShareGroupOffsets (91) and
+ * DeleteShareGroupOffsets (92) of KIP-932. Kafka 4.0 removed the ZooKeeper-only apis 4 to 7 from every listener
+ * (their message specifications declare `"validVersions": "none"`, the constants stay) and 4.1 renamed key 74 from
+ * ListClientMetricsResources to ListConfigResources (KIP-1142); the constant keeps the published name.
  * A broker of 0.10 or later answers an ApiVersions request with the keys and versions it serves; a request with a
  * key or version it cannot parse closes the connection. The answer is the set of the **listener** the request arrived
  * on: a ZooKeeper-backed broker serves the `zkBroker` set of the message specifications, a KRaft node the `broker`
  * set on its client listeners (and the `controller` set on its controller listener, which no client reaches). The
- * container of this line is a KRaft node of 3.9.2; what it lists is measured in `ApiVersionProbeTest` and written in
- * the "API keys" section of `docs/protocol/3.9.md`. The constants of the apis it does not list exist here so that a
- * frame of any 3.9.2 api can be named.
+ * container of this line is a KRaft node of 4.3.1; what it lists is measured in `ApiVersionProbeTest` and written in
+ * the "API keys" section of `docs/protocol/4.3.md`. The constants of the apis it does not list exist here so that a
+ * frame of any 4.3.1 api can be named.
  */
 class ApiKeys
 {
@@ -144,4 +150,9 @@ class ApiKeys
     public const WRITE_SHARE_GROUP_STATE          = 85;
     public const DELETE_SHARE_GROUP_STATE         = 86;
     public const READ_SHARE_GROUP_STATE_SUMMARY   = 87;
+    public const STREAMS_GROUP_HEARTBEAT          = 88;
+    public const STREAMS_GROUP_DESCRIBE           = 89;
+    public const DESCRIBE_SHARE_GROUP_OFFSETS     = 90;
+    public const ALTER_SHARE_GROUP_OFFSETS        = 91;
+    public const DELETE_SHARE_GROUP_OFFSETS       = 92;
 }

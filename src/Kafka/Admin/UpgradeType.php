@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Admin;
  *
  * {@see self::Unknown} is the zero of the enum, which the Java client answers for any other code and never sends.
  *
- * @see docs/protocol/3.9.md, section "The upgrade type and the dry run of KIP-778 (v1)"
+ * @see docs/protocol/4.3.md, section "The upgrade type and the dry run of KIP-778 (v1)"
  */
 enum UpgradeType: int
 {

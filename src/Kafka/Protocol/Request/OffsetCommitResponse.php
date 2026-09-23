@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
  * `IllegalGeneration`, and the **113** `StaleMemberEpoch` of a member of a KIP-848 group whose member epoch is
  * behind the one the coordinator holds. {@see OffsetCommitResponseV8} keeps the version below it.
  *
- * @see docs/protocol/3.9.md, sections "OffsetCommit API (key 8, v0 to v9)" and "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, sections "OffsetCommit API (key 8, v0 to v9)" and "Quotas and throttle time"
  */
 class OffsetCommitResponse extends AbstractResponse
 {

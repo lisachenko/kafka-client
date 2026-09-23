@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * A request of this version is therefore what a client sends that does not want to be told about an offset which
  * has moved to remote storage: a broker answers such a fetch **1** `OffsetOutOfRange` instead of the 109.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "The tiered-storage error of KIP-405
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)" and "The tiered-storage error of KIP-405
  *      (v14)"
  */
 final class FetchRequestV13 extends FetchRequest

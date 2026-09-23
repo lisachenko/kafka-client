@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * a structure that names a topic by its **name or by its id** - so the version 5 is the last one that sends names
  * alone. What the version 5 itself added is the `error_message` of the answer (Kafka 2.7).
  *
- * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 final class DeleteTopicsRequestV5 extends DeleteTopicsRequest
 {

@@ -121,7 +121,7 @@ final class ConsumerConfig extends GeneralConfig
      * `consumer` is refused, and a ConsumerGroupHeartbeat for a classic group as well.
      *
      * @see \Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator
-     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
      */
     public const string GROUP_PROTOCOL = 'group.protocol';
 
@@ -329,7 +329,7 @@ final class ConsumerConfig extends GeneralConfig
      * A control batch - the COMMIT or ABORT marker the transaction coordinator appends - is never handed to an
      * application in either level.
      *
-     * @see docs/protocol/3.9.md, section "Transactions"
+     * @see docs/protocol/4.3.md, section "Transactions"
      */
     public const string ISOLATION_LEVEL = 'isolation.level';
 
@@ -347,7 +347,7 @@ final class ConsumerConfig extends GeneralConfig
      * having no field at all. A broker without a `replica.selector.class` - the default, and the configuration of
      * the container of this line - answers `-1` to every fetch whatever the rack, i.e. "read from me".
      *
-     * @see docs/protocol/3.9.md, section "Reading from a follower (v11, KIP-392)"
+     * @see docs/protocol/4.3.md, section "Reading from a follower (v11, KIP-392)"
      */
     public const string CLIENT_RACK = 'client.rack';
 

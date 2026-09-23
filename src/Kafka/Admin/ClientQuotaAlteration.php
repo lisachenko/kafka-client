@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\ClientQuotaOpData;
  *
  * `ClientQuotaAlteration` of the Java admin client, whose nested `Op` is {@see ClientQuotaAlterationOp} here.
  *
- * @see docs/protocol/3.9.md, section "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "AlterClientQuotas API (key 49, v0 and v1)"
  */
 final class ClientQuotaAlteration
 {

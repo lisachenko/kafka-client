@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * is the error code **3** with the zero topic id and no partition; a name that is not a legal topic name is **17**
  * (`InvalidTopic`), and a topic the principal may not `Describe` is **29** with the zero id.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 class DescribeTopicPartitionsResponseTopic implements BinarySchemaInterface
 {

@@ -44,7 +44,7 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Name of the environment variable that holds the `host:port` of the SSL listener of the same broker
      *
-     * The broker of `docker/kafka-3.9.2` binds `PLAINTEXT://0.0.0.0:9092` and `SSL://0.0.0.0:9093`, so the SSL
+     * The broker of `docker/kafka-4.3.1` binds `PLAINTEXT://0.0.0.0:9092` and `SSL://0.0.0.0:9093`, so the SSL
      * endpoint is derived from the default rather than configured separately; the variable only exists for a broker
      * that publishes its SSL listener somewhere else. The tests that need it are still skipped together with the
      * rest of the suite, i.e. when KAFKA_BOOTSTRAP_SERVERS is unset.
@@ -261,12 +261,12 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Returns the certificate the broker presents on its SSL listener, to be used as the trust anchor of a client
      *
-     * It is the self-signed certificate that `docker/kafka-3.9.2` puts into the keystore of the broker
+     * It is the self-signed certificate that `docker/kafka-4.3.1` puts into the keystore of the broker
      * (CN=localhost, with `localhost` and `127.0.0.1` as subject alternative names).
      */
     final protected static function brokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-3.9.2/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-4.3.1/ssl/broker.crt';
     }
 
     /**
@@ -279,7 +279,7 @@ abstract class IntegrationTestCase extends TestCase
      *
      * @throws \RuntimeException If the node had no id for that topic within the timeout
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     final protected static function topicIdOf(string $topic, float $timeout = 30.0): string
     {
@@ -316,7 +316,7 @@ abstract class IntegrationTestCase extends TestCase
      *
      * @throws \RuntimeException If the answer holds no entry that can be this topic
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     final protected static function fetchedTopic(FetchResponse $answer, string $topic): FetchResponseTopic
     {

@@ -40,7 +40,7 @@ namespace Protocol\Kafka\Protocol;
  * The property the marker stands on is nullable and `null` by default; a decoder writes `null` for the `-1` byte
  * and the structure for the `1`, and an encoder writes the byte back from the property.
  *
- * @see docs/protocol/3.9.md, sections "Implementation model" and "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, sections "Implementation model" and "DescribeTopicPartitions API (key 75, v0)"
  */
 final class NullableStruct
 {

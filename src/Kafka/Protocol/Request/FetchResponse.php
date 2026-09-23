@@ -135,7 +135,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * {@see FetchResponseV3}, {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
  *      "The topic ids of the fetch path (v13, KIP-516)", "The tiered-storage error of KIP-405 (v14)",
  *      "The leader discovery of KIP-951 (v16)" and "The replica directory id of KIP-853 (v17)"
  */

@@ -66,7 +66,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * the resource type the version 3 of the three ACL apis added in the same release. A super user needs no acl for
  * it; anybody else is answered **31**.
  *
- * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 class CreateDelegationTokenRequest extends AbstractRequest
 {

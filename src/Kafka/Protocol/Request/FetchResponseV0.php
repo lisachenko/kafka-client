@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * that {@see FetchResponse::getScheme()} follows. Reading a version 0 answer with any higher version class would
  * take the size of the topics array for the throttle time and desynchronize the whole frame.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v17)"
  */
 final class FetchResponseV0 extends FetchResponse
 {

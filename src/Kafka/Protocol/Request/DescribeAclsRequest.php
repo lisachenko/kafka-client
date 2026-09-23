@@ -60,7 +60,7 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * field changed with it, which is why this client keeps no version below 3: the api is implemented on this line
  * for the first time and the node announces 0 to 3.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 class DescribeAclsRequest extends AbstractRequest
 {

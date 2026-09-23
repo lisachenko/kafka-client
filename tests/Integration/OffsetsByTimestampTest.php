@@ -56,7 +56,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
  * index. The code stays in {@see KafkaException} and in the error table, it is simply not reachable from a client
  * of a 3.x broker.
  *
- * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]

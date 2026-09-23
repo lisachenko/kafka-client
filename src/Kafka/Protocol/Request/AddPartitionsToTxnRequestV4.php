@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `CLUSTER_ACTION` and answers a principal that is not a broker with the top-level error code 31
  * ({@see AddPartitionsToTxnRequest}).
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 final class AddPartitionsToTxnRequestV4 extends AddPartitionsToTxnRequest
 {

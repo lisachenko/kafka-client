@@ -29,7 +29,7 @@ declare(strict_types=1);
  *   php examples/record-headers.php my-topic
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/record-headers.php
  *
- * @see docs/protocol/3.9.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/4.3.md, section "RecordBatch (message format v2)"
  */
 
 use Protocol\Kafka\Common\ClientConfig;
@@ -165,5 +165,5 @@ while ($emptyPolls < 3) {
 $consumer->unsubscribe();
 
 echo "\nThe same batch printed by the broker itself:\n";
-echo "  docker exec kafka-3-9-2 /opt/kafka/bin/kafka-run-class.sh kafka.tools.DumpLogSegments"
+echo "  docker exec kafka-4-3-1 /opt/kafka/bin/kafka-run-class.sh kafka.tools.DumpLogSegments"
     . " --files /tmp/kafka-logs/{$topic}-0/00000000000000000000.log --print-data-log --deep-iteration\n";

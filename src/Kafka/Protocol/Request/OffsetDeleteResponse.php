@@ -55,7 +55,7 @@ use Protocol\Kafka\Protocol\Data\OffsetDeleteResponseTopic;
  * subscribed to and deletes the rest, while a live group of any other protocol type falls into the `case _` of
  * `GroupCoordinator.handleDeleteOffsets` and is refused as a whole with 68.
  *
- * @see docs/protocol/3.9.md, section "OffsetDelete API (key 47, v0)"
+ * @see docs/protocol/4.3.md, section "OffsetDelete API (key 47, v0)"
  */
 class OffsetDeleteResponse extends AbstractResponse
 {

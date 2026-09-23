@@ -36,22 +36,23 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV3;
 use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 
 /**
- * Establishes which api keys and versions the client listener of a real Kafka 3.9.2 KRaft node serves.
+ * Establishes which api keys and versions the client listener of a real Kafka 4.3.1 KRaft node serves.
  *
  * Kafka 0.10.0 added the api that answers that question - **ApiVersions**, key 18 - so this class no longer has to
  * guess it the way the `0.8.x` and `0.9.x` lines did. The first half of the suite asks the node with
- * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/3.9.md`: **61
- * keys**, the `broker` listener set of the JSON message specifications @ 3.9.2 minus the two telemetry apis and
- * the nine unstable ones ({@see self::SERVED_APIS}).
+ * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/4.3.md`: **75
+ * keys**, the `broker` listener set of the JSON message specifications @ 4.3.1 minus the two telemetry apis
+ * ({@see self::SERVED_APIS}). Kafka 4.0 is the first release whose table does not start every row at 0: KIP-896
+ * removed the versions below the Kafka 2.1 baseline, and fifteen rows start at 1 or 2 now - every frame below a
+ * minimum closes the connection ({@see self::testTheBrokerClosesTheConnectionForAVersionKafka4Removed()}).
  *
  * The container is not the ZooKeeper-backed broker of the 2.x line any more but a **KRaft node in combined mode**
  * (`process.roles=broker,controller`): the same process answers on the client listeners 9092 to 9095 as a `broker`
  * and on the CONTROLLER listener 9096 as a `controller`, and Kafka 2.8 (KIP-500) made the ApiVersions answer a
- * property of the **listener** the request arrived on (`ApiVersionManager.apiVersionResponse` @ 3.9.2). Every
- * frame of this class is sent to 9092, so it sees the `broker` set and only that: the `zkBroker` apis of the
- * 2.x line - LeaderAndIsr, StopReplica, UpdateMetadata, ControlledShutdown, AlterPartition - are gone from the
- * answer together with everything the controller keeps for itself ({@see self::ZK_BROKER_LISTENER_KEYS},
- * {@see self::CONTROLLER_LISTENER_KEYS}).
+ * property of the **listener** the request arrived on. Every frame of this class is sent to 9092, so it sees the
+ * `broker` set and only that: the ZooKeeper apis LeaderAndIsr, StopReplica, UpdateMetadata and ControlledShutdown
+ * have no version at all since Kafka 4.0 ({@see self::REMOVED_ZOOKEEPER_KEYS}), and everything the controller keeps
+ * for itself - AlterPartition included - is served on 9096 alone ({@see self::CONTROLLER_LISTENER_KEYS}).
  *
  * The second half is still a raw probe ({@see RawApiProbe}), because the *edges* of that table are not in it: what
  * the node does with a key or a version it does not serve is behaviour, not data. Kafka 0.10 changed that
@@ -59,22 +60,21 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *
  * * A 0.9.0.1 broker **dropped** a frame it could not parse and kept the connection open, so a client waited for its
  *   own timeout ({@see RawApiProbe::SILENT}).
- * * A 3.9.2 node **closes the connection** ({@see RawApiProbe::CLOSED}). `SocketServer.parseRequestHeader`
- *   @ 3.9.2 asks `ApiVersionManager.isApiEnabled(apiKey, apiVersion)` right behind `RequestHeader.parse`, and
- *   that one check now covers what two exceptions covered on 2.8.2: a key of another listener, an unstable key
- *   and a version above the table all end in `Received request api key VOTE with version 0 which is not enabled`,
- *   a key no `ApiKeys` entry knows ends in `Error parsing request header. Our best guess of the apiKey is: 88`,
- *   and a body the generated message class cannot read still ends in `Error getting request for apiKey:
- *   GET_TELEMETRY_SUBSCRIPTIONS, apiVersion: 0` with a `BufferUnderflowException` behind it.
- *   `processCompletedReceives` catches the `InvalidRequestException` of all three and calls `close()` on the
- *   channel; `docker logs kafka-3-9-2` shows `ERROR Closing socket for ... because of error` with the reason.
+ * * A 3.9.2 node and a 4.3.1 node **close the connection** ({@see RawApiProbe::CLOSED}). On 4.3.1 a version
+ *   below or above the table ends in `UnsupportedVersionException: Received request for api with key 0 (Produce)
+ *   and unsupported version 2`, a key of another listener or of the removed ZooKeeper apis in
+ *   `InvalidRequestException: Unsupported api with key 7 (ControlledShutdown) and version 0`, a key no `ApiKeys`
+ *   entry knows in `Error parsing request header. Our best guess of the apiKeyId is: 93`, and a body the generated
+ *   message class cannot read still in `Error getting request for apiKey: JOIN_GROUP, apiVersion: 0`. The
+ *   processor catches all of them and closes the channel; `docker logs kafka-4-3-1` shows `ERROR Closing socket for
+ *   ... because of error` with the reason.
  *
  * **Exactly one api is an exception to that rule**: ApiVersions itself, which answers an unknown version with the
- * error code 35 on a connection that stays open - `ApiKeys.isVersionEnabled` @ 3.9.2 returns `true` for key 18
+ * error code 35 on a connection that stays open - `ApiKeys.isVersionEnabled` returns `true` for key 18
  * before it looks at the version - as long as the frame carries the request header that the *requested* version
  * prescribes, which since KIP-482 is the header v2 for every version above 2.
  *
- * The frame of every key is sent at the **maximum version the node reports**, which for 59 of the 61 keys is a
+ * The frame of every key is sent at the **maximum version the node reports**, which for 73 of the 75 keys is a
  * **flexible** version (KIP-482): a compact body, the request header v2 and a tagged-field section at the end of
  * every structure. The bytes are built by the fixture, not by the schema engine, exactly as the frames above the
  * table are: a probe that used the engine could only send what the engine believes, and half of what this class
@@ -84,11 +84,13 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * transactional id that no other test uses, UnregisterBroker and the raft-voter apis name a broker id that does not
  * exist and a cluster id that is not this cluster's, and every api that takes a list of things to change -
  * CreateTopics, DeleteTopics, DeleteRecords, WriteTxnMarkers, AlterConfigs, ElectLeaders,
- * AlterPartitionReassignments, the quota, SCRAM and ACL apis, UpdateFeatures - is sent with an empty array or
- * `validate_only`. Two apis of this node **do not answer an empty array at all** and are sent with one harmless
+ * AlterPartitionReassignments, the quota, SCRAM and ACL apis, UpdateFeatures, the share-group state and offset
+ * apis - is sent with an empty array or `validate_only`. The membership apis of the three new-style groups
+ * (ConsumerGroupHeartbeat, ShareGroupHeartbeat, StreamsGroupHeartbeat) send the leave of a member of a group that
+ * does not exist, which is answered 69 and creates nothing. Two apis of this node **do not answer an empty array at all** and are sent with one harmless
  * element instead ({@see self::body()}).
  *
- * @see docs/protocol/3.9.md, section "API keys"
+ * @see docs/protocol/4.3.md, section "API keys"
  */
 #[CoversClass(ApiKeys::class)]
 #[CoversClass(ApiVersionsRequest::class)]
@@ -115,7 +117,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     private const string FOREIGN_CLUSTER_ID = 'not-this-cluster';
 
     /**
-     * The name of the one feature a 3.9.2 node finalizes (KIP-584); its level 21 is `3.9-IV0` (`MetadataVersion.java`)
+     * The feature of the metadata log (KIP-584); a 4.3.1 node finalizes the level 30, `4.3-IV0` (`MetadataVersion.java`)
      */
     private const string METADATA_VERSION_FEATURE = 'metadata.version';
 
@@ -123,201 +125,228 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * The feature of KIP-853 that a node only reports to an **ApiVersions v4**, because its minimum is 0
      *
      * `kraft.version` 0 is the static voter set of KIP-595 (`controller.quorum.voters`) and 1 the reconfigurable
-     * one the raft-voter apis 80 and 81 change. The node supports 0 to 1 and has finalized 0 (KAFKA-17011).
+     * one the raft-voter apis 80 and 81 change (KAFKA-17011). The node supports 0 to 1 and has finalized **1**: it is
+     * formatted with `--standalone`, the default of the 4.3.1 distribution for a combined node.
      */
     private const string KRAFT_VERSION_FEATURE = 'kraft.version';
 
     /**
-     * The api table of the client listener of a Kafka 3.9.2 KRaft node, as `api key => [minimum, maximum]`
+     * The api table of the client listener of a Kafka 4.3.1 KRaft node, as `api key => [minimum, maximum]`
      *
-     * This is what the `validVersions` of the JSON message specifications @ 3.9.2 declare for every api whose
-     * `listeners` include `broker`, and what the container really answers. **Every minimum is 0** up to and
-     * including 3.9: the tag `4.0.0` is the first whose specifications start above it (Produce at 3, Fetch at 4,
-     * KIP-896).
+     * This is what the `validVersions` of the JSON message specifications @ 4.3.1 declare for every api whose
+     * `listeners` include `broker`, and what the container really answers - with one exception: **Produce reports
+     * the minimum 0** although its specification starts at 3, because `ApiKeys.PRODUCE_API_VERSIONS_RESPONSE_MIN_VERSION`
+     * keeps the row of a librdkafka that reads it (KAFKA-18659); every frame of Produce v0 to v2 is refused like any
+     * other removed version. The other minimums above 0 are the removals of KIP-896 (Kafka 4.0), and the share-group
+     * apis 76 to 79 start at 1 because their early-access version 0 of Kafka 3.9 was dropped when 4.1 stabilized them.
      *
-     * The set is the one of the **listener** the request arrived on (`ApiVersionManager.apiVersionResponse`
-     * @ 3.9.2): `DefaultApiVersionManager` starts from `ApiKeys.apisForListener(BROKER)`, intersects every
-     * forwardable api with what the active controller serves (`ApiVersionsResponse.intersectForwardableApis`)
-     * and drops two more kinds of key from the answer before it is sent - the telemetry apis 71 and 72 while no
-     * client-metrics receiver plugin is configured, and every api whose only version is `latestVersionUnstable`
-     * while `unstable.api.versions.enable` is off ({@see self::HIDDEN_TELEMETRY_KEYS}, {@see self::UNSTABLE_KEYS}).
-     * That leaves these 61 keys.
+     * The set is the one of the **listener** the request arrived on: the `broker` apis of `ApiKeys.java` @ 4.3.1,
+     * minus the telemetry apis 71 and 72 while no client-metrics receiver plugin is configured
+     * ({@see self::HIDDEN_TELEMETRY_KEYS}). No api of this node is unstable any more - InitProducerId v6 is the one
+     * *version* that is, and the table stops at v5 for it. That leaves these 75 keys.
      */
     private const array SERVED_APIS = [
-        ApiKeys::PRODUCE                        => [0, 11],
-        ApiKeys::FETCH                          => [0, 17],
-        ApiKeys::OFFSETS                        => [0, 9],
-        ApiKeys::METADATA                       => [0, 12],
-        ApiKeys::OFFSET_COMMIT                  => [0, 9],
-        ApiKeys::OFFSET_FETCH                   => [0, 9],
-        ApiKeys::GROUP_COORDINATOR              => [0, 6],
-        ApiKeys::JOIN_GROUP                     => [0, 9],
-        ApiKeys::HEARTBEAT                      => [0, 4],
-        ApiKeys::LEAVE_GROUP                    => [0, 5],
-        ApiKeys::SYNC_GROUP                     => [0, 5],
-        ApiKeys::DESCRIBE_GROUPS                => [0, 5],
-        ApiKeys::LIST_GROUPS                    => [0, 5],
-        ApiKeys::SASL_HANDSHAKE                 => [0, 1],
-        ApiKeys::API_VERSIONS                   => [0, 4],
-        ApiKeys::CREATE_TOPICS                  => [0, 7],
-        ApiKeys::DELETE_TOPICS                  => [0, 6],
-        ApiKeys::DELETE_RECORDS                 => [0, 2],
-        ApiKeys::INIT_PRODUCER_ID               => [0, 5],
-        ApiKeys::OFFSET_FOR_LEADER_EPOCH        => [0, 4],
-        ApiKeys::ADD_PARTITIONS_TO_TXN          => [0, 5],
-        ApiKeys::ADD_OFFSETS_TO_TXN             => [0, 4],
-        ApiKeys::END_TXN                        => [0, 4],
-        ApiKeys::WRITE_TXN_MARKERS              => [0, 1],
-        ApiKeys::TXN_OFFSET_COMMIT              => [0, 4],
-        ApiKeys::DESCRIBE_ACLS                  => [0, 3],
-        ApiKeys::CREATE_ACLS                    => [0, 3],
-        ApiKeys::DELETE_ACLS                    => [0, 3],
-        ApiKeys::DESCRIBE_CONFIGS               => [0, 4],
-        ApiKeys::ALTER_CONFIGS                  => [0, 2],
-        ApiKeys::ALTER_REPLICA_LOG_DIRS         => [0, 2],
-        ApiKeys::DESCRIBE_LOG_DIRS              => [0, 4],
-        ApiKeys::SASL_AUTHENTICATE              => [0, 2],
-        ApiKeys::CREATE_PARTITIONS              => [0, 3],
-        ApiKeys::CREATE_DELEGATION_TOKEN        => [0, 3],
-        ApiKeys::RENEW_DELEGATION_TOKEN         => [0, 2],
-        ApiKeys::EXPIRE_DELEGATION_TOKEN        => [0, 2],
-        ApiKeys::DESCRIBE_DELEGATION_TOKEN      => [0, 3],
-        ApiKeys::DELETE_GROUPS                  => [0, 2],
-        ApiKeys::ELECT_LEADERS                  => [0, 2],
-        ApiKeys::INCREMENTAL_ALTER_CONFIGS      => [0, 1],
-        ApiKeys::ALTER_PARTITION_REASSIGNMENTS  => [0, 0],
-        ApiKeys::LIST_PARTITION_REASSIGNMENTS   => [0, 0],
-        ApiKeys::OFFSET_DELETE                  => [0, 0],
-        ApiKeys::DESCRIBE_CLIENT_QUOTAS         => [0, 1],
-        ApiKeys::ALTER_CLIENT_QUOTAS            => [0, 1],
+        ApiKeys::PRODUCE                         => [0, 13],
+        ApiKeys::FETCH                           => [4, 18],
+        ApiKeys::OFFSETS                         => [1, 11],
+        ApiKeys::METADATA                        => [0, 13],
+        ApiKeys::OFFSET_COMMIT                   => [2, 10],
+        ApiKeys::OFFSET_FETCH                    => [1, 10],
+        ApiKeys::GROUP_COORDINATOR               => [0, 6],
+        ApiKeys::JOIN_GROUP                      => [0, 9],
+        ApiKeys::HEARTBEAT                       => [0, 4],
+        ApiKeys::LEAVE_GROUP                     => [0, 5],
+        ApiKeys::SYNC_GROUP                      => [0, 5],
+        ApiKeys::DESCRIBE_GROUPS                 => [0, 6],
+        ApiKeys::LIST_GROUPS                     => [0, 5],
+        ApiKeys::SASL_HANDSHAKE                  => [0, 1],
+        ApiKeys::API_VERSIONS                    => [0, 4],
+        ApiKeys::CREATE_TOPICS                   => [2, 7],
+        ApiKeys::DELETE_TOPICS                   => [1, 6],
+        ApiKeys::DELETE_RECORDS                  => [0, 2],
+        ApiKeys::INIT_PRODUCER_ID                => [0, 5],
+        ApiKeys::OFFSET_FOR_LEADER_EPOCH         => [2, 4],
+        ApiKeys::ADD_PARTITIONS_TO_TXN           => [0, 5],
+        ApiKeys::ADD_OFFSETS_TO_TXN              => [0, 4],
+        ApiKeys::END_TXN                         => [0, 5],
+        ApiKeys::WRITE_TXN_MARKERS               => [1, 2],
+        ApiKeys::TXN_OFFSET_COMMIT               => [0, 5],
+        ApiKeys::DESCRIBE_ACLS                   => [1, 3],
+        ApiKeys::CREATE_ACLS                     => [1, 3],
+        ApiKeys::DELETE_ACLS                     => [1, 3],
+        ApiKeys::DESCRIBE_CONFIGS                => [1, 4],
+        ApiKeys::ALTER_CONFIGS                   => [0, 2],
+        ApiKeys::ALTER_REPLICA_LOG_DIRS          => [1, 2],
+        ApiKeys::DESCRIBE_LOG_DIRS               => [1, 5],
+        ApiKeys::SASL_AUTHENTICATE               => [0, 2],
+        ApiKeys::CREATE_PARTITIONS               => [0, 3],
+        ApiKeys::CREATE_DELEGATION_TOKEN         => [1, 3],
+        ApiKeys::RENEW_DELEGATION_TOKEN          => [1, 2],
+        ApiKeys::EXPIRE_DELEGATION_TOKEN         => [1, 2],
+        ApiKeys::DESCRIBE_DELEGATION_TOKEN       => [1, 3],
+        ApiKeys::DELETE_GROUPS                   => [0, 2],
+        ApiKeys::ELECT_LEADERS                   => [0, 2],
+        ApiKeys::INCREMENTAL_ALTER_CONFIGS       => [0, 1],
+        ApiKeys::ALTER_PARTITION_REASSIGNMENTS   => [0, 1],
+        ApiKeys::LIST_PARTITION_REASSIGNMENTS    => [0, 0],
+        ApiKeys::OFFSET_DELETE                   => [0, 0],
+        ApiKeys::DESCRIBE_CLIENT_QUOTAS          => [0, 1],
+        ApiKeys::ALTER_CLIENT_QUOTAS             => [0, 1],
         ApiKeys::DESCRIBE_USER_SCRAM_CREDENTIALS => [0, 0],
-        ApiKeys::ALTER_USER_SCRAM_CREDENTIALS   => [0, 0],
-        ApiKeys::DESCRIBE_QUORUM                => [0, 2],
-        ApiKeys::UPDATE_FEATURES                => [0, 1],
-        ApiKeys::DESCRIBE_CLUSTER               => [0, 1],
-        ApiKeys::DESCRIBE_PRODUCERS             => [0, 0],
-        ApiKeys::UNREGISTER_BROKER              => [0, 0],
-        ApiKeys::DESCRIBE_TRANSACTIONS          => [0, 0],
-        ApiKeys::LIST_TRANSACTIONS              => [0, 1],
-        ApiKeys::CONSUMER_GROUP_HEARTBEAT       => [0, 0],
-        ApiKeys::CONSUMER_GROUP_DESCRIBE        => [0, 0],
-        ApiKeys::LIST_CLIENT_METRICS_RESOURCES  => [0, 0],
-        ApiKeys::DESCRIBE_TOPIC_PARTITIONS      => [0, 0],
-        ApiKeys::ADD_RAFT_VOTER                 => [0, 0],
-        ApiKeys::REMOVE_RAFT_VOTER              => [0, 0],
+        ApiKeys::ALTER_USER_SCRAM_CREDENTIALS    => [0, 0],
+        ApiKeys::DESCRIBE_QUORUM                 => [0, 2],
+        ApiKeys::UPDATE_FEATURES                 => [0, 2],
+        ApiKeys::DESCRIBE_CLUSTER                => [0, 2],
+        ApiKeys::DESCRIBE_PRODUCERS              => [0, 0],
+        ApiKeys::UNREGISTER_BROKER               => [0, 0],
+        ApiKeys::DESCRIBE_TRANSACTIONS           => [0, 0],
+        ApiKeys::LIST_TRANSACTIONS               => [0, 2],
+        ApiKeys::CONSUMER_GROUP_HEARTBEAT        => [0, 1],
+        ApiKeys::CONSUMER_GROUP_DESCRIBE         => [0, 1],
+        ApiKeys::LIST_CLIENT_METRICS_RESOURCES   => [0, 1],
+        ApiKeys::DESCRIBE_TOPIC_PARTITIONS       => [0, 0],
+        ApiKeys::SHARE_GROUP_HEARTBEAT           => [1, 1],
+        ApiKeys::SHARE_GROUP_DESCRIBE            => [1, 1],
+        ApiKeys::SHARE_FETCH                     => [1, 2],
+        ApiKeys::SHARE_ACKNOWLEDGE               => [1, 2],
+        ApiKeys::ADD_RAFT_VOTER                  => [0, 1],
+        ApiKeys::REMOVE_RAFT_VOTER               => [0, 0],
+        ApiKeys::INITIALIZE_SHARE_GROUP_STATE    => [0, 0],
+        ApiKeys::READ_SHARE_GROUP_STATE          => [0, 0],
+        ApiKeys::WRITE_SHARE_GROUP_STATE         => [0, 1],
+        ApiKeys::DELETE_SHARE_GROUP_STATE        => [0, 0],
+        ApiKeys::READ_SHARE_GROUP_STATE_SUMMARY  => [0, 1],
+        ApiKeys::STREAMS_GROUP_HEARTBEAT         => [0, 0],
+        ApiKeys::STREAMS_GROUP_DESCRIBE          => [0, 0],
+        ApiKeys::DESCRIBE_SHARE_GROUP_OFFSETS    => [0, 1],
+        ApiKeys::ALTER_SHARE_GROUP_OFFSETS       => [0, 0],
+        ApiKeys::DELETE_SHARE_GROUP_OFFSETS      => [0, 0],
     ];
 
     /**
      * The first **flexible** version of every api of the table that has one, as `api key => version` (KIP-482)
      *
-     * The `flexibleVersions` of the JSON message specification of the request @ 3.9.2, verified frame by frame
+     * The `flexibleVersions` of the JSON message specification of the request @ 4.3.1, verified frame by frame
      * against the container: a version below this one is refused when it is sent with a compact body, and a version
      * from it on is refused when it is not. Only two apis of the table never became flexible - SaslHandshake (17),
      * which was frozen when SaslAuthenticate took over the token exchange, and OffsetDelete (47), the one api of
-     * Kafka 2.4 that was written without it - and they are simply absent here. Every api that Kafka 2.8 or a 3.x
-     * release added is flexible from its version 0.
+     * Kafka 2.4 that was written without it - and they are simply absent here. Every api that Kafka 2.8, a 3.x or a
+     * 4.x release added is flexible from its version 0, and no 4.x release moved the flexible version of an api.
      *
      * The *request* and the *response* of an api can be flexible at different versions (Metadata is flexible from
      * v9, its response from v9 as well, but JoinGroup v6 and OffsetFetch v6 are flexible while their v5 is not),
      * so this table is the one of the request; the answer of the container tells the rest.
      */
     private const array FLEXIBLE_FROM = [
-        ApiKeys::PRODUCE                        => 9,
-        ApiKeys::FETCH                          => 12,
-        ApiKeys::OFFSETS                        => 6,
-        ApiKeys::METADATA                       => 9,
-        ApiKeys::OFFSET_COMMIT                  => 8,
-        ApiKeys::OFFSET_FETCH                   => 6,
-        ApiKeys::GROUP_COORDINATOR              => 3,
-        ApiKeys::JOIN_GROUP                     => 6,
-        ApiKeys::HEARTBEAT                      => 4,
-        ApiKeys::LEAVE_GROUP                    => 4,
-        ApiKeys::SYNC_GROUP                     => 4,
-        ApiKeys::DESCRIBE_GROUPS                => 5,
-        ApiKeys::LIST_GROUPS                    => 3,
-        ApiKeys::API_VERSIONS                   => 3,
-        ApiKeys::CREATE_TOPICS                  => 5,
-        ApiKeys::DELETE_TOPICS                  => 4,
-        ApiKeys::DELETE_RECORDS                 => 2,
-        ApiKeys::INIT_PRODUCER_ID               => 2,
-        ApiKeys::OFFSET_FOR_LEADER_EPOCH        => 4,
-        ApiKeys::ADD_PARTITIONS_TO_TXN          => 3,
-        ApiKeys::ADD_OFFSETS_TO_TXN             => 3,
-        ApiKeys::END_TXN                        => 3,
-        ApiKeys::WRITE_TXN_MARKERS              => 1,
-        ApiKeys::TXN_OFFSET_COMMIT              => 3,
-        ApiKeys::DESCRIBE_ACLS                  => 2,
-        ApiKeys::CREATE_ACLS                    => 2,
-        ApiKeys::DELETE_ACLS                    => 2,
-        ApiKeys::DESCRIBE_CONFIGS               => 4,
-        ApiKeys::ALTER_CONFIGS                  => 2,
-        ApiKeys::ALTER_REPLICA_LOG_DIRS         => 2,
-        ApiKeys::DESCRIBE_LOG_DIRS              => 2,
-        ApiKeys::SASL_AUTHENTICATE              => 2,
-        ApiKeys::CREATE_PARTITIONS              => 2,
-        ApiKeys::CREATE_DELEGATION_TOKEN        => 2,
-        ApiKeys::RENEW_DELEGATION_TOKEN         => 2,
-        ApiKeys::EXPIRE_DELEGATION_TOKEN        => 2,
-        ApiKeys::DESCRIBE_DELEGATION_TOKEN      => 2,
-        ApiKeys::DELETE_GROUPS                  => 2,
-        ApiKeys::ELECT_LEADERS                  => 2,
-        ApiKeys::INCREMENTAL_ALTER_CONFIGS      => 1,
-        ApiKeys::ALTER_PARTITION_REASSIGNMENTS  => 0,
-        ApiKeys::LIST_PARTITION_REASSIGNMENTS   => 0,
-        ApiKeys::DESCRIBE_CLIENT_QUOTAS         => 1,
-        ApiKeys::ALTER_CLIENT_QUOTAS            => 1,
+        ApiKeys::PRODUCE                         => 9,
+        ApiKeys::FETCH                           => 12,
+        ApiKeys::OFFSETS                         => 6,
+        ApiKeys::METADATA                        => 9,
+        ApiKeys::OFFSET_COMMIT                   => 8,
+        ApiKeys::OFFSET_FETCH                    => 6,
+        ApiKeys::GROUP_COORDINATOR               => 3,
+        ApiKeys::JOIN_GROUP                      => 6,
+        ApiKeys::HEARTBEAT                       => 4,
+        ApiKeys::LEAVE_GROUP                     => 4,
+        ApiKeys::SYNC_GROUP                      => 4,
+        ApiKeys::DESCRIBE_GROUPS                 => 5,
+        ApiKeys::LIST_GROUPS                     => 3,
+        ApiKeys::API_VERSIONS                    => 3,
+        ApiKeys::CREATE_TOPICS                   => 5,
+        ApiKeys::DELETE_TOPICS                   => 4,
+        ApiKeys::DELETE_RECORDS                  => 2,
+        ApiKeys::INIT_PRODUCER_ID                => 2,
+        ApiKeys::OFFSET_FOR_LEADER_EPOCH         => 4,
+        ApiKeys::ADD_PARTITIONS_TO_TXN           => 3,
+        ApiKeys::ADD_OFFSETS_TO_TXN              => 3,
+        ApiKeys::END_TXN                         => 3,
+        ApiKeys::WRITE_TXN_MARKERS               => 1,
+        ApiKeys::TXN_OFFSET_COMMIT               => 3,
+        ApiKeys::DESCRIBE_ACLS                   => 2,
+        ApiKeys::CREATE_ACLS                     => 2,
+        ApiKeys::DELETE_ACLS                     => 2,
+        ApiKeys::DESCRIBE_CONFIGS                => 4,
+        ApiKeys::ALTER_CONFIGS                   => 2,
+        ApiKeys::ALTER_REPLICA_LOG_DIRS          => 2,
+        ApiKeys::DESCRIBE_LOG_DIRS               => 2,
+        ApiKeys::SASL_AUTHENTICATE               => 2,
+        ApiKeys::CREATE_PARTITIONS               => 2,
+        ApiKeys::CREATE_DELEGATION_TOKEN         => 2,
+        ApiKeys::RENEW_DELEGATION_TOKEN          => 2,
+        ApiKeys::EXPIRE_DELEGATION_TOKEN         => 2,
+        ApiKeys::DESCRIBE_DELEGATION_TOKEN       => 2,
+        ApiKeys::DELETE_GROUPS                   => 2,
+        ApiKeys::ELECT_LEADERS                   => 2,
+        ApiKeys::INCREMENTAL_ALTER_CONFIGS       => 1,
+        ApiKeys::ALTER_PARTITION_REASSIGNMENTS   => 0,
+        ApiKeys::LIST_PARTITION_REASSIGNMENTS    => 0,
+        ApiKeys::DESCRIBE_CLIENT_QUOTAS          => 1,
+        ApiKeys::ALTER_CLIENT_QUOTAS             => 1,
         ApiKeys::DESCRIBE_USER_SCRAM_CREDENTIALS => 0,
-        ApiKeys::ALTER_USER_SCRAM_CREDENTIALS   => 0,
-        ApiKeys::DESCRIBE_QUORUM                => 0,
-        ApiKeys::UPDATE_FEATURES                => 0,
-        ApiKeys::DESCRIBE_CLUSTER               => 0,
-        ApiKeys::DESCRIBE_PRODUCERS             => 0,
-        ApiKeys::UNREGISTER_BROKER              => 0,
-        ApiKeys::DESCRIBE_TRANSACTIONS          => 0,
-        ApiKeys::LIST_TRANSACTIONS              => 0,
-        ApiKeys::CONSUMER_GROUP_HEARTBEAT       => 0,
-        ApiKeys::CONSUMER_GROUP_DESCRIBE        => 0,
-        ApiKeys::LIST_CLIENT_METRICS_RESOURCES  => 0,
-        ApiKeys::DESCRIBE_TOPIC_PARTITIONS      => 0,
-        ApiKeys::ADD_RAFT_VOTER                 => 0,
-        ApiKeys::REMOVE_RAFT_VOTER              => 0,
+        ApiKeys::ALTER_USER_SCRAM_CREDENTIALS    => 0,
+        ApiKeys::DESCRIBE_QUORUM                 => 0,
+        ApiKeys::UPDATE_FEATURES                 => 0,
+        ApiKeys::DESCRIBE_CLUSTER                => 0,
+        ApiKeys::DESCRIBE_PRODUCERS              => 0,
+        ApiKeys::UNREGISTER_BROKER               => 0,
+        ApiKeys::DESCRIBE_TRANSACTIONS           => 0,
+        ApiKeys::LIST_TRANSACTIONS               => 0,
+        ApiKeys::CONSUMER_GROUP_HEARTBEAT        => 0,
+        ApiKeys::CONSUMER_GROUP_DESCRIBE         => 0,
+        ApiKeys::LIST_CLIENT_METRICS_RESOURCES   => 0,
+        ApiKeys::DESCRIBE_TOPIC_PARTITIONS       => 0,
+        ApiKeys::SHARE_GROUP_HEARTBEAT           => 0,
+        ApiKeys::SHARE_GROUP_DESCRIBE            => 0,
+        ApiKeys::SHARE_FETCH                     => 0,
+        ApiKeys::SHARE_ACKNOWLEDGE               => 0,
+        ApiKeys::ADD_RAFT_VOTER                  => 0,
+        ApiKeys::REMOVE_RAFT_VOTER               => 0,
+        ApiKeys::INITIALIZE_SHARE_GROUP_STATE    => 0,
+        ApiKeys::READ_SHARE_GROUP_STATE          => 0,
+        ApiKeys::WRITE_SHARE_GROUP_STATE         => 0,
+        ApiKeys::DELETE_SHARE_GROUP_STATE        => 0,
+        ApiKeys::READ_SHARE_GROUP_STATE_SUMMARY  => 0,
+        ApiKeys::STREAMS_GROUP_HEARTBEAT         => 0,
+        ApiKeys::STREAMS_GROUP_DESCRIBE          => 0,
+        ApiKeys::DESCRIBE_SHARE_GROUP_OFFSETS    => 0,
+        ApiKeys::ALTER_SHARE_GROUP_OFFSETS       => 0,
+        ApiKeys::DELETE_SHARE_GROUP_OFFSETS      => 0,
     ];
 
     /**
-     * The api keys of `ApiKeys.java` @ 3.9.2 whose `listeners` name `zkBroker` but not `broker`
+     * The four ZooKeeper apis, which have no version at all since Kafka 4.0
      *
-     * LeaderAndIsr (4), StopReplica (5) and UpdateMetadata (6) are the controller-to-broker apis of a ZooKeeper
-     * cluster and list `["zkBroker"]` alone; ControlledShutdown (7) and AlterPartition (56, the `AlterIsr` of 2.8,
-     * KIP-704) list `["zkBroker", "controller"]`, so a KRaft broker sends them to its controller listener and never
-     * receives them itself. All five were in the table of the 2.x line, because that container was a ZooKeeper
-     * broker; on the client listener of a KRaft node a frame of any of them costs the connection: `Received request
-     * api key CONTROLLED_SHUTDOWN with version 0 which is not enabled`.
+     * LeaderAndIsr (4), StopReplica (5), UpdateMetadata (6) and ControlledShutdown (7) were the controller-to-broker
+     * and broker-to-controller apis of a ZooKeeper cluster; their message specifications @ 4.0.0 declare
+     * `"validVersions": "none"` and no listener, and `ApiKeys.java` keeps the four entries only so that the ids stay
+     * taken. On the 3.9.2 node of the 3.x line they were `zkBroker` apis the client listener did not serve; on
+     * 4.3.1 a frame of any of them ends in `InvalidRequestException: Unsupported api with key 7 (ControlledShutdown)
+     * and version 0` and costs the connection.
      */
-    private const array ZK_BROKER_LISTENER_KEYS = [
+    private const array REMOVED_ZOOKEEPER_KEYS = [
         ApiKeys::LEADER_AND_ISR,
         ApiKeys::STOP_REPLICA,
         ApiKeys::UPDATE_METADATA,
         ApiKeys::CONTROLLED_SHUTDOWN,
-        ApiKeys::ALTER_ISR,
     ];
 
     /**
-     * The api keys of `ApiKeys.java` @ 3.9.2 that only the CONTROLLER listener serves
+     * The api keys of `ApiKeys.java` @ 4.3.1 that only the CONTROLLER listener serves
      *
-     * The raft apis of KIP-595 (52 to 54), `FetchSnapshot` (59), the broker registration and heartbeat of KIP-631
-     * (62, 63), `ControllerRegistration` (70, KIP-919), `AssignReplicasToDirs` (73, KIP-858) and `UpdateRaftVoter`
-     * (82, KIP-853) list `["controller"]` alone; the `Envelope` of KIP-590 (58) and `AllocateProducerIds` (67,
-     * KIP-730) list `["controller", "zkBroker"]` - a ZooKeeper broker forwards through the one and asks for
-     * producer ids with the other, a KRaft broker does both over its own controller channel. The container serves
-     * all of them on 9096 and none on 9092: `Received request api key VOTE with version 0 which is not enabled`.
-     * DescribeQuorum (55), UnregisterBroker (64), AddRaftVoter (80) and RemoveRaftVoter (81) are the four
-     * controller apis whose `listeners` include `broker` as well, and they are in the table, forwarded by the
-     * broker to the controller (`forwardToControllerOrFail` in `KafkaApis` @ 3.9.2).
+     * The raft apis of KIP-595 (52 to 54), `AlterPartition` (56, the `AlterIsr` of 2.8, KIP-704), `FetchSnapshot`
+     * (59), the broker registration and heartbeat of KIP-631 (62, 63), `ControllerRegistration` (70, KIP-919),
+     * `AssignReplicasToDirs` (73, KIP-858) and `UpdateRaftVoter` (82, KIP-853) list `["controller"]` alone since
+     * Kafka 4.0 removed the `zkBroker` listener, and so do the `Envelope` of KIP-590 (58) and
+     * `AllocateProducerIds` (67, KIP-730). The container serves all of them on 9096 and none on 9092: `Unsupported
+     * api with key 52 (Vote) and version 0`. DescribeQuorum (55), UnregisterBroker (64), AddRaftVoter (80) and
+     * RemoveRaftVoter (81) are the four controller apis whose `listeners` include `broker` as well, and they are in
+     * the table, forwarded by the broker to the controller.
      */
     private const array CONTROLLER_LISTENER_KEYS = [
         ApiKeys::VOTE,
         ApiKeys::BEGIN_QUORUM_EPOCH,
         ApiKeys::END_QUORUM_EPOCH,
+        ApiKeys::ALTER_ISR,
         ApiKeys::ENVELOPE,
         ApiKeys::FETCH_SNAPSHOT,
         ApiKeys::BROKER_REGISTRATION,
@@ -332,7 +361,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * The two client-telemetry apis of KIP-714 (Kafka 3.7), served but hidden from the table
      *
      * GetTelemetrySubscriptions (71) and PushTelemetry (72) list `["broker"]` and are enabled on the listener, so a
-     * frame of either passes `isApiEnabled` and reaches `KafkaApis`; but `ApiVersionsResponse.filterApis` @ 3.9.2
+     * frame of either passes `isApiEnabled` and reaches `KafkaApis`; but `ApiVersionsResponse.filterApis`
      * skips both rows of the answer while `ClientMetricsManager.isTelemetryReceiverConfigured` is false, i.e. while
      * no `MetricsReporter` that implements `ClientTelemetry` is configured - which is the case of the container.
      * The rest of the table is what KIP-714 promises a client that finds no row 71: "do not send telemetry".
@@ -343,35 +372,13 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     ];
 
     /**
-     * The api keys of `ApiKeys.java` @ 3.9.2 whose only version is `"latestVersionUnstable": true`
+     * The first api key above the table of `ApiKeys.java` @ 4.3.1, which ends at `DeleteShareGroupOffsets` (92)
      *
-     * The share-group apis of KIP-932 (76 to 79) and the share-group state apis of KIP-932 as well (83 to 87) are
-     * early-access in 3.9: their specifications carry the flag, `ApiKeys.latestVersion(false)` answers -1 for
-     * them, `toApiVersion` drops them from the table and `isVersionEnabled(0, false)` refuses every frame while
-     * `unstable.api.versions.enable` is off - which it is in the container - with the same closed connection as a
-     * key of another listener: `Received request api key SHARE_FETCH with version 0 which is not enabled`.
-     *
-     * @see docs/protocol/3.9.md, section "The raft-voter apis (keys 80 and 81) and the share groups — probe only"
+     * No 4.3.1 node can name it: `ApiKeys.forId(93)` throws, and the node closes the connection while it parses
+     * the request header (`Error parsing request header. Our best guess of the apiKeyId is: 93`). The 3.9.2 node of
+     * the 3.x line was probed with 88, which is StreamsGroupHeartbeat on this one.
      */
-    private const array UNSTABLE_KEYS = [
-        ApiKeys::SHARE_GROUP_HEARTBEAT,
-        ApiKeys::SHARE_GROUP_DESCRIBE,
-        ApiKeys::SHARE_FETCH,
-        ApiKeys::SHARE_ACKNOWLEDGE,
-        ApiKeys::INITIALIZE_SHARE_GROUP_STATE,
-        ApiKeys::READ_SHARE_GROUP_STATE,
-        ApiKeys::WRITE_SHARE_GROUP_STATE,
-        ApiKeys::DELETE_SHARE_GROUP_STATE,
-        ApiKeys::READ_SHARE_GROUP_STATE_SUMMARY,
-    ];
-
-    /**
-     * The first api key above the table of `ApiKeys.java` @ 3.9.2, which ends at `ReadShareGroupStateSummary` (87)
-     *
-     * No 3.9.2 node can name it: `ApiKeys.forId(88)` throws, and the node closes the connection while it parses
-     * the request header (`Error parsing request header. Our best guess of the apiKey is: 88`).
-     */
-    private const int UNKNOWN_API_KEY = 88;
+    private const int UNKNOWN_API_KEY = 93;
 
     /**
      * Cluster of this test class, resolved once
@@ -403,7 +410,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         $this->missingTopic    = 't1-probe-no-such-topic-' . $suffix;
     }
 
-    public function testTheBrokerReportsEveryApiOfKafka392(): void
+    public function testTheBrokerReportsEveryApiOfKafka431(): void
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
@@ -415,7 +422,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         }
 
         self::assertSame(self::SERVED_APIS, $reported, 'the api table of the protocol document');
-        self::assertCount(61, $reported, 'the broker listener set of Kafka 3.9.2 without telemetry and unstable apis');
+        self::assertCount(75, $reported, 'the broker listener set of Kafka 4.3.1 without the telemetry apis');
     }
 
     /**
@@ -448,40 +455,48 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     /**
      * A KRaft node finalizes features, so the tagged fields of KIP-584 are no longer empty
      *
-     * The ZooKeeper broker of the 2.x line answered one tagged field, the finalized-features epoch 0. A KRaft node
-     * keeps its features in the metadata log and answers all three: the features it **supports** (tag 0), the
-     * epoch of the finalized ones (tag 1, the offset of the metadata log and therefore never the same twice) and
-     * the features the cluster has **finalized** (tag 2). The **version 4** of Kafka 3.9 is what this client sends,
-     * and it sees **two** supported features - `kraft.version` 0 to 1 and `metadata.version` 1 to 21 - where a v3
-     * request is shown one: a feature whose minimum is 0 is filtered out of every answer below the version 4
-     * (KAFKA-17011, {@see self::testApiVersionsVersionFourUnhidesTheSupportedFeaturesWithAMinimumOfZero()}).
-     * `metadata.version` is finalized at the level **21**, which is `3.9-IV0` in `MetadataVersion.java` @ 3.9.2,
-     * the `LATEST_PRODUCTION` of the release; the minimum it supports is level 1, `3.0-IV1`. `kraft.version` is
-     * finalized at **0**, and a feature at the level 0 is not in the finalized map at all - which is why the static
-     * `controller.quorum.voters` of KIP-595 still govern this quorum. The fourth tag of the specification,
-     * `zk_migration_ready` (3), stays at its default `false` and is therefore not written at all.
+     * A KRaft node keeps its features in the metadata log and answers all three tagged fields: the features it
+     * **supports** (tag 0), the epoch of the finalized ones (tag 1, the offset of the metadata log and therefore never
+     * the same twice) and the features the cluster has **finalized** (tag 2). The **version 4** of Kafka 3.9 is what
+     * this client sends, and on the 4.3.1 node it sees **seven** supported features where the 3.9.2 node of the 3.x
+     * line reported two; six of them have the minimum 0 and are therefore filtered out of every answer below the
+     * version 4 (KAFKA-17011, {@see self::testApiVersionsVersionFourUnhidesTheSupportedFeaturesWithAMinimumOfZero()}).
+     * **Every one of the seven is finalized** at the highest level the node supports - the default of a node that
+     * `kafka-storage.sh format --standalone` formatted: `metadata.version` 30 (`4.3-IV0`, the `LATEST_PRODUCTION` of
+     * `MetadataVersion.java` @ 4.3.1, whose lowest supported level is 7, `3.3-IV3`), `kraft.version` 1 (the dynamic
+     * quorum of KIP-853), `transaction.version` 2 (KIP-890 part 2), `group.version` 1 (KIP-848), `share.version` 1
+     * (KIP-932), `streams.version` 1 (KIP-1071) and `eligible.leader.replicas.version` 1 (KIP-966). The node writes
+     * the features in the order of a hash map, so the test compares the sorted names.
      */
     public function testTheTaggedFieldsOfTheAnswerCarryTheFinalizedFeaturesOfTheKRaftNode(): void
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
+        $expected = [
+            'eligible.leader.replicas.version' => [0, 1, 1],
+            'group.version'                    => [0, 1, 1],
+            self::KRAFT_VERSION_FEATURE        => [0, 1, 1],
+            self::METADATA_VERSION_FEATURE     => [7, 30, 30],
+            'share.version'                    => [0, 1, 1],
+            'streams.version'                  => [0, 1, 1],
+            'transaction.version'              => [0, 2, 2],
+        ];
+
         self::assertGreaterThanOrEqual(0, $response->finalizedFeaturesEpoch, 'a KRaft node knows its epoch');
-        self::assertSame(
-            [self::KRAFT_VERSION_FEATURE, self::METADATA_VERSION_FEATURE],
-            array_keys($response->supportedFeatures),
-            'the version 4 sees the feature whose minimum is 0 as well'
-        );
-        self::assertSame(0, $response->supportedFeatures[self::KRAFT_VERSION_FEATURE]->minVersion, 'KAFKA-17011');
-        self::assertSame(1, $response->supportedFeatures[self::KRAFT_VERSION_FEATURE]->maxVersion, 'KIP-853');
-        self::assertSame(1, $response->supportedFeatures[self::METADATA_VERSION_FEATURE]->minVersion, '3.0-IV1');
-        self::assertSame(21, $response->supportedFeatures[self::METADATA_VERSION_FEATURE]->maxVersion, '3.9-IV0');
-        self::assertSame(
-            [self::METADATA_VERSION_FEATURE],
-            array_keys($response->finalizedFeatures),
-            'kraft.version is finalized at the level 0, and a feature at the level 0 is not finalized at all'
-        );
-        self::assertSame(21, $response->finalizedFeatures[self::METADATA_VERSION_FEATURE]->maxVersionLevel);
-        self::assertSame(21, $response->finalizedFeatures[self::METADATA_VERSION_FEATURE]->minVersionLevel);
+
+        $supported = array_keys($response->supportedFeatures);
+        $finalized = array_keys($response->finalizedFeatures);
+        sort($supported);
+        sort($finalized);
+        self::assertSame(array_keys($expected), $supported, 'the version 4 sees the features whose minimum is 0 too');
+        self::assertSame(array_keys($expected), $finalized, 'every feature is finalized above the level 0');
+
+        foreach ($expected as $feature => [$minVersion, $maxVersion, $level]) {
+            self::assertSame($minVersion, $response->supportedFeatures[$feature]->minVersion, $feature);
+            self::assertSame($maxVersion, $response->supportedFeatures[$feature]->maxVersion, $feature);
+            self::assertSame($level, $response->finalizedFeatures[$feature]->minVersionLevel, $feature);
+            self::assertSame($level, $response->finalizedFeatures[$feature]->maxVersionLevel, $feature);
+        }
     }
 
     public function testTheAdminClientReportsTheSameTable(): void
@@ -493,7 +508,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         self::assertSame(
             0,
             $apiVersions[ApiKeys::PRODUCE]->minVersion,
-            'Kafka 3.9 still serves Produce v0; the specification @ 4.0.0 is the first that starts at v3 (KIP-896)'
+            'Produce v0 to v2 are refused since KIP-896, but the row still starts at 0 (KAFKA-18659)'
         );
     }
 
@@ -501,9 +516,10 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
-        self::assertTrue($response->supports(ApiKeys::FETCH, 17), 'Fetch v17 arrived with Kafka 3.9 (KIP-853)');
-        self::assertFalse($response->supports(ApiKeys::FETCH, 18), 'no specification up to 4.0.0 has a Fetch v18');
-        self::assertSame(12, $response->maxVersionOf(ApiKeys::METADATA), 'Metadata v12 is Kafka 3.1 (topic ids)');
+        self::assertTrue($response->supports(ApiKeys::FETCH, 18), 'Fetch v18 arrived with Kafka 4.1 (KIP-1166)');
+        self::assertFalse($response->supports(ApiKeys::FETCH, 19), 'no specification up to 4.3.1 has a Fetch v19');
+        self::assertFalse($response->supports(ApiKeys::FETCH, 3), 'Kafka 4.0 removed Fetch v0 to v3 (KIP-896)');
+        self::assertSame(13, $response->maxVersionOf(ApiKeys::METADATA), 'Metadata v13 is Kafka 4.0 (KIP-1102)');
         self::assertSame(2, $response->maxVersionOf(ApiKeys::ELECT_LEADERS), 'ElectLeaders (43) is Kafka 2.2');
         self::assertSame(
             0,
@@ -512,19 +528,21 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         );
         self::assertNull(
             $response->maxVersionOf(ApiKeys::CONTROLLED_SHUTDOWN),
-            'key 7 belongs to the zkBroker and controller listeners, not to the client listener of a KRaft node'
+            'key 7 has no version at all since Kafka 4.0 removed ZooKeeper'
         );
         self::assertNull(
             $response->maxVersionOf(ApiKeys::VOTE),
             'the raft api 52 belongs to the controller listener'
         );
-        self::assertNull(
-            $response->maxVersionOf(ApiKeys::SHARE_FETCH),
-            'the unstable api 78 is hidden without unstable.api.versions.enable'
+        self::assertSame(2, $response->maxVersionOf(ApiKeys::SHARE_FETCH), 'ShareFetch v2 is Kafka 4.2 (KIP-932)');
+        self::assertSame(
+            0,
+            $response->maxVersionOf(ApiKeys::DELETE_SHARE_GROUP_OFFSETS),
+            'DeleteShareGroupOffsets (92) is Kafka 4.1'
         );
         self::assertNull(
             $response->maxVersionOf(self::UNKNOWN_API_KEY),
-            'the api key 88 is above the table of ApiKeys.java @ 3.9.2'
+            'the api key 93 is above the table of ApiKeys.java @ 4.3.1'
         );
     }
 
@@ -586,9 +604,10 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
-     * On 2.8.2 the version check was the `UnsupportedVersionException` of the generated message class; on 3.9.2 it
-     * is `ApiVersionManager.isApiEnabled` in the network thread, and the log says `Received request api key
-     * OFFSET_COMMIT with version 10 which is not enabled` before any body is looked at
+     * On 2.8.2 the version check was the `UnsupportedVersionException` of the generated message class, on 3.9.2
+     * `ApiVersionManager.isApiEnabled` in the network thread (`Received request api key OFFSET_COMMIT with version 10
+     * which is not enabled`); on 4.3.1 the log says `UnsupportedVersionException: Received request for api with key
+     * 8 (OffsetCommit) and unsupported version 11`, before any body is looked at
      */
     #[DataProvider('unservedApiProvider')]
     public function testTheBrokerClosesTheConnectionForAVersionAboveTheTable(int $apiKey, int $apiVersion): void
@@ -599,21 +618,62 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             RawApiProbe::CLOSED,
             $result['status'],
             "The broker did not close the connection for the api key {$apiKey} version {$apiVersion}, which Kafka "
-            . '3.9.2 does not serve'
+            . '4.3.1 does not serve'
         );
         self::assertNull($result['correlationId'], 'a closed connection carries no response frame');
     }
 
     /**
-     * The sixteen api keys of `ApiKeys.java` @ 3.9.2 that another listener of the node serves and 9092 does not
+     * Every version Kafka 4.0 removed (KIP-896), one frame each
+     *
+     * The versions below the minimum of every row of the table, and **Produce v0 to v2** on top of them, which the
+     * answer still lists (KAFKA-18659). The node refuses every one of them in the network thread, before it reads a
+     * byte of the body, with `UnsupportedVersionException: Received request for api with key 0 (Produce) and
+     * unsupported version 2`, and closes the connection - exactly like a version above the table. The classes and
+     * the wire vectors of these versions stay in this package (a published identifier is never removed, and the
+     * compliance replay needs no broker); the client never sends one to a node whose table starts above it.
+     *
+     * @return array<string, array{int, int}>
+     */
+    public static function removedVersionProvider(): array
+    {
+        $cases = [];
+        foreach ([0, 1, 2] as $version) {
+            $cases["key 0 v{$version} (advertised)"] = [ApiKeys::PRODUCE, $version];
+        }
+        foreach (self::SERVED_APIS as $apiKey => [$minVersion]) {
+            for ($version = 0; $version < $minVersion; $version++) {
+                $cases["key {$apiKey} v{$version}"] = [$apiKey, $version];
+            }
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('removedVersionProvider')]
+    public function testTheBrokerClosesTheConnectionForAVersionKafka4Removed(int $apiKey, int $apiVersion): void
+    {
+        $result = $this->probe($apiKey, $apiVersion, 4500 + $apiKey * 20 + $apiVersion, withBody: false);
+
+        self::assertSame(
+            RawApiProbe::CLOSED,
+            $result['status'],
+            "The broker did not close the connection for the api key {$apiKey} version {$apiVersion}, which Kafka "
+            . '4.0 removed'
+        );
+    }
+
+    /**
+     * The sixteen api keys of `ApiKeys.java` @ 4.3.1 that 9092 does not serve: the four ZooKeeper apis without a
+     * version and the twelve of the controller listener
      *
      * @return array<string, array{int}>
      */
     public static function otherListenerKeyProvider(): array
     {
         $cases = [];
-        foreach (self::ZK_BROKER_LISTENER_KEYS as $apiKey) {
-            $cases["key {$apiKey} (zkBroker)"] = [$apiKey];
+        foreach (self::REMOVED_ZOOKEEPER_KEYS as $apiKey) {
+            $cases["key {$apiKey} (removed with ZooKeeper)"] = [$apiKey];
         }
         foreach (self::CONTROLLER_LISTENER_KEYS as $apiKey) {
             $cases["key {$apiKey} (controller)"] = [$apiKey];
@@ -634,43 +694,6 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             $result['status'],
             "The broker did not close the connection for the api key {$apiKey}, which the client listener does "
             . 'not serve'
-        );
-    }
-
-    /**
-     * The nine unstable api keys of `ApiKeys.java` @ 3.9.2: the share groups of KIP-932 (76 to 79, 83 to 87)
-     *
-     * Share groups are early access in Kafka 3.9 and **out of this line by decision of the owner**, and this is
-     * the measurement that decision rests on: a ShareGroupHeartbeat v0 - or any of the other eight - does not get
-     * an error code, it gets the connection closed, exactly like a key of another listener, because
-     * `ApiKeys.toApiVersion(false)` leaves an api whose only version is `latestVersionUnstable` out of the table
-     * and `isApiEnabled` then refuses every version of it. The node logs `Received request api key
-     * SHARE_GROUP_HEARTBEAT with version 0 which is not enabled`. The four share-group error codes 121 to 124 are
-     * therefore declared on this line and unreachable on this node.
-     *
-     * @return array<string, array{int}>
-     */
-    public static function unstableKeyProvider(): array
-    {
-        $cases = [];
-        foreach (self::UNSTABLE_KEYS as $apiKey) {
-            $cases["key {$apiKey}"] = [$apiKey];
-        }
-
-        return $cases;
-    }
-
-    #[DataProvider('unstableKeyProvider')]
-    public function testTheBrokerClosesTheConnectionForAnUnstableApi(int $apiKey): void
-    {
-        $probe  = new RawApiProbe(self::firstBootstrapServer());
-        $result = $probe->send($apiKey, 0, '', 5200 + $apiKey, RawApiProbe::HEADER_V2);
-        $probe->close();
-
-        self::assertSame(
-            RawApiProbe::CLOSED,
-            $result['status'],
-            "The broker did not close the connection for the unstable api key {$apiKey}"
         );
     }
 
@@ -764,7 +787,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         self::assertSame(
             RawApiProbe::CLOSED,
             $result['status'],
-            'Error parsing request header. Our best guess of the apiKey is: 88'
+            'Error parsing request header. Our best guess of the apiKeyId is: 93'
         );
     }
 
@@ -810,7 +833,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
-     * The flexible v3 of this api is what the client itself sends, and the node answers it with a header v0
+     * The flexible v3 of this api is answered with a header v0
      *
      * The probe builds the frame by hand as it does for every other key, which is what makes this an independent
      * check of {@see \Protocol\Kafka\Protocol\BinarySchema}: the same bytes the engine produces, assembled
@@ -831,47 +854,43 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             'the error code follows the correlation id directly: no tag buffer, the response header stays v0'
         );
         self::assertSame(
-            62,
+            76,
             ord($body[2]),
-            'the compact count of the api array is 61 + 1, in a single byte'
+            'the compact count of the api array is 75 + 1, in a single byte'
         );
 
         $tail = substr($body, self::taggedSectionOffset());
-        self::assertSame(61, strlen($tail), 'three tagged fields of 23, 8 and 23 bytes, each behind a tag and a size');
+        self::assertSame(203, strlen($tail), 'three tagged fields of 23, 8 and 164 bytes, each behind a tag and a size');
         //  03                         three tagged fields
-        //  00 17                      tag 0, supported_features, 23 bytes:
+        //  00 17                      tag 0, supported_features, 23 bytes: the one feature whose minimum is not 0
         //    02                         one feature, as the compact count 1 + 1
         //    11 metadata.version        its name, as the compact length 16 + 1 and the bytes
-        //    00 01 00 15                min_version 1 (3.0-IV1), max_version 21 (3.9-IV0)
+        //    00 07 00 1e                min_version 7 (3.3-IV3), max_version 30 (4.3-IV0)
         //    00                         the tag buffer of the feature
         self::assertSame(
-            '03' . '0017' . '02' . '11' . bin2hex(self::METADATA_VERSION_FEATURE) . '0001' . '0015' . '00',
+            '03' . '0017' . '02' . '11' . bin2hex(self::METADATA_VERSION_FEATURE) . '0007' . '001e' . '00',
             bin2hex(substr($tail, 0, 26))
         );
         //  01 08                      tag 1, finalized_features_epoch, 8 bytes: the int64 epoch
         self::assertSame('0108', bin2hex(substr($tail, 26, 2)));
         self::assertGreaterThanOrEqual(0, (int) unpack('J', substr($tail, 28, 8))[1], 'the epoch of a KRaft node');
-        //  02 17                      tag 2, finalized_features, 23 bytes:
-        //    02 11 metadata.version     one feature, its name
-        //    00 15 00 15                max_version_level 21, min_version_level 21
-        //    00                         the tag buffer of the feature - and the end of the body
-        self::assertSame(
-            '0217' . '02' . '11' . bin2hex(self::METADATA_VERSION_FEATURE) . '0015' . '0015' . '00',
-            bin2hex(substr($tail, 36))
-        );
+        //  02 a4 01                   tag 2, finalized_features, 164 bytes (the size is an unsigned varint):
+        //    08                         seven features
+        //    0e group.version           00 01 00 01  max_version_level 1, min_version_level 1  00
+        //    …                          kraft, share, metadata (00 1e 00 1e), streams, transaction (00 02 00 02)
+        //                               and eligible.leader.replicas, in the order of the node's hash map
+        self::assertSame('02' . 'a401' . self::finalizedFeaturesOfTheNode(), bin2hex(substr($tail, 36)));
     }
 
     /**
-     * ApiVersions v4 (Kafka 3.9) is answered, and its one difference is a feature with a minimum of 0
+     * ApiVersions v4 (Kafka 3.9) is answered, and its one difference is the features with a minimum of 0
      *
      * The specification @ 3.9.2 says why the version exists: "Version 4 fixes KAFKA-17011, which blocked
      * SupportedFeatures.MinVersion in the response from being 0". The answer to a v3 request omits every supported
-     * feature whose minimum is 0 (`ApiVersionsResponse.Builder.maybeFilterSupportedFeatureKeys`), and on this node
-     * that is `kraft.version` (KIP-853, supported 0 to 1, finalized at 0 because the quorum is the static
-     * `controller.quorum.voters`): the v3 answer above lists one supported feature, the v4 answer lists two, and
-     * the finalized features are the same in both because a feature finalized at level 0 is not finalized at all.
-     * Everything in front of the tagged section - the api array and the throttle time - is byte for byte the v3
-     * answer.
+     * feature whose minimum is 0 (`ApiVersionsResponse.Builder.maybeFilterSupportedFeatureKeys`), and on the 4.3.1
+     * node that is six of the seven: the v3 answer above lists `metadata.version` alone, the v4 answer lists all
+     * seven, and the finalized features are the same in both. Everything in front of the tagged section - the api
+     * array and the throttle time - is byte for byte the v3 answer.
      */
     public function testApiVersionsVersionFourUnhidesTheSupportedFeaturesWithAMinimumOfZero(): void
     {
@@ -884,28 +903,67 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         self::assertSame(
             substr($versionThree, 0, self::taggedSectionOffset()),
             substr($body, 0, self::taggedSectionOffset()),
-            'the same 61 rows and the same throttle time'
+            'the same 75 rows and the same throttle time'
         );
 
         $tail = substr($body, self::taggedSectionOffset());
-        self::assertSame(80, strlen($tail), 'the supported-features tag grew from 23 to 42 bytes');
+        self::assertSame(345, strlen($tail), 'the supported-features tag grew from 23 to 164 bytes');
         //  03                         three tagged fields
-        //  00 2a                      tag 0, supported_features, 42 bytes:
-        //    03                         two features
-        //    0e kraft.version           00 00 00 01  min_version 0, max_version 1  00
-        //    11 metadata.version        00 01 00 15  min_version 1, max_version 21 00
+        //  00 a4 01                   tag 0, supported_features, 164 bytes:
+        //    08                         seven features
+        //    0e group.version           00 00 00 01  min_version 0, max_version 1  00
+        //    …                          kraft (0-1), metadata (7-30), share (0-1), streams (0-1), transaction (0-2)
+        //                               and eligible.leader.replicas (0-1)
+        $supported = '08';
+        foreach (
+            [
+                'group.version'                    => [0, 1],
+                self::KRAFT_VERSION_FEATURE        => [0, 1],
+                self::METADATA_VERSION_FEATURE     => [7, 30],
+                'share.version'                    => [0, 1],
+                'streams.version'                  => [0, 1],
+                'transaction.version'              => [0, 2],
+                'eligible.leader.replicas.version' => [0, 1],
+            ] as $feature => [$minVersion, $maxVersion]
+        ) {
+            $supported .= bin2hex(RawApiProbe::compactString($feature) . RawApiProbe::int16($minVersion)
+                . RawApiProbe::int16($maxVersion) . RawApiProbe::tagBuffer());
+        }
+        self::assertSame('03' . '00' . 'a401' . $supported, bin2hex(substr($tail, 0, 168)));
+        self::assertSame('0108', bin2hex(substr($tail, 168, 2)), 'tag 1, the epoch');
         self::assertSame(
-            '03' . '002a' . '03'
-            . '0e' . bin2hex('kraft.version') . '0000' . '0001' . '00'
-            . '11' . bin2hex(self::METADATA_VERSION_FEATURE) . '0001' . '0015' . '00',
-            bin2hex(substr($tail, 0, 45))
+            '02' . 'a401' . self::finalizedFeaturesOfTheNode(),
+            bin2hex(substr($tail, 178)),
+            'tag 2, the finalized features, unchanged'
         );
-        self::assertSame('0108', bin2hex(substr($tail, 45, 2)), 'tag 1, the epoch');
-        self::assertSame(
-            '0217' . '02' . '11' . bin2hex(self::METADATA_VERSION_FEATURE) . '0015' . '0015' . '00',
-            bin2hex(substr($tail, 55)),
-            'tag 2, the finalized features, unchanged: kraft.version is finalized at 0, which is "not finalized"'
-        );
+    }
+
+    /**
+     * The finalized features of the node as the tag 2 of an ApiVersions answer writes them, in hex
+     *
+     * Seven features, each a compact name, the `max_version_level`, the `min_version_level` and a tag buffer, in the
+     * order the node writes them (the iteration order of its map, which the names decide and which is therefore the
+     * same on every start); every level is the one `kafka-storage.sh format --standalone` finalizes by default.
+     */
+    private static function finalizedFeaturesOfTheNode(): string
+    {
+        $finalized = '08';
+        foreach (
+            [
+                'group.version'                    => 1,
+                self::KRAFT_VERSION_FEATURE        => 1,
+                'share.version'                    => 1,
+                self::METADATA_VERSION_FEATURE     => 30,
+                'streams.version'                  => 1,
+                'transaction.version'              => 2,
+                'eligible.leader.replicas.version' => 1,
+            ] as $feature => $level
+        ) {
+            $finalized .= bin2hex(RawApiProbe::compactString($feature) . RawApiProbe::int16($level)
+                . RawApiProbe::int16($level) . RawApiProbe::tagBuffer());
+        }
+
+        return $finalized;
     }
 
     /**
@@ -1071,12 +1129,12 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         $closed = $probe->send(self::UNKNOWN_API_KEY, 0, '', 6001, RawApiProbe::HEADER_V2);
         $probe->close();
 
-        $served = $this->probe(ApiKeys::METADATA, 12, 6002);
+        $served = $this->probe(ApiKeys::METADATA, 13, 6002);
 
         self::assertSame(
             RawApiProbe::CLOSED,
             $closed['status'],
-            'the api key 88 is above the table of Kafka 3.9.2'
+            'the api key 93 is above the table of Kafka 4.3.1'
         );
         self::assertSame(RawApiProbe::ANSWERED, $served['status']);
         self::assertSame(6002, $served['correlationId']);
@@ -1246,8 +1304,9 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * Kafka 2.8 (KIP-500) added the api for the controller listener; from 3.0 its specification lists `broker` as
      * well, and `KafkaApis` @ 3.9.2 dispatches it to `forwardToControllerOrFail` - a KRaft broker never handles
      * it itself. The controller answers **102** (BrokerIdNotRegistered) for {@see self::UNKNOWN_BROKER_ID} with
-     * the error message at its default, the empty string, and nothing happens to node 1, which the Metadata v12
-     * answer of the next connection still lists as the one broker of the cluster.
+     * the message `Broker ID 4242 is not currently registered` - the 3.9.2 node of the 3.x line left the message
+     * at its default, the empty string - and nothing happens to node 1, which the Metadata v13 answer of the next
+     * connection still lists as the one broker of the cluster.
      */
     public function testUnregisterBrokerRefusesABrokerIdThatIsNotRegistered(): void
     {
@@ -1257,19 +1316,24 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         self::assertSame(RawApiProbe::ANSWERED, $result['status']);
         //  00 00 00 00    throttle_time_ms
         //  00 66          error_code 102
-        //  01             error_message = "" (the default of the field, not null)
+        //  2b …           error_message, compact: "Broker ID 4242 is not currently registered"
         //  00             the tag buffer of the body
-        self::assertSame('00000000' . '0066' . '01' . '00', bin2hex($body));
+        self::assertSame(
+            '00000000' . '0066'
+            . bin2hex(RawApiProbe::compactString('Broker ID ' . self::UNKNOWN_BROKER_ID . ' is not currently registered'))
+            . '00',
+            bin2hex($body)
+        );
         self::assertSame(KafkaException::BROKER_ID_NOT_REGISTERED, self::errorCodeBehindTheThrottleTimeOf($body));
 
-        $metadata = $this->probe(ApiKeys::METADATA, 12, 9265);
+        $metadata = $this->probe(ApiKeys::METADATA, 13, 9265);
         self::assertSame(RawApiProbe::ANSWERED, $metadata['status']);
         //  00 00 00 00    throttle_time_ms
         //  02             [brokers] = one broker
         //  00 00 00 01    node_id 1
         self::assertSame(
             '00000000' . '02' . '00000001',
-            bin2hex(substr($this->responseBody($metadata['body'], ApiKeys::METADATA, 12), 0, 9)),
+            bin2hex(substr($this->responseBody($metadata['body'], ApiKeys::METADATA, 13), 0, 9)),
             'node 1 is still the one broker of the cluster'
         );
     }
@@ -1397,10 +1461,10 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * (InconsistentClusterId) with `The given id "not-this-cluster" doesn't match the cluster id "<id>"`, and
      * the same for the removal. With the real cluster id - or a null one, which the check accepts - the same
      * frame is refused one step later with **42** (InvalidRequest) and `Add voter request didn't include a
-     * valid voter`, because the all-zero directory id is not a directory id; and a frame that names a *valid*
-     * voter never reaches the quorum either, see
-     * {@see self::testTheRaftVoterApisAreRefusedBecauseTheKraftVersionFeatureIsZero()}. The quorum of the
-     * container stays `[{id: 1, endpoints: [CONTROLLER://localhost:9096]}]` in every case.
+     * valid voter`, because the all-zero directory id is not a directory id. A frame that names a *valid* voter
+     * reaches the quorum on this node, whose `kraft.version` is 1, and is refused by the voter codes of KIP-853, see
+     * {@see self::testAnAddRaftVoterOfAVoterTheQuorumHasIsTheDuplicateVoter()}. The quorum of the container stays
+     * `[{id: 1, endpoints: [CONTROLLER://localhost:9096]}]` in every case.
      *
      * @return array<string, array{int}>
      */
@@ -1428,58 +1492,65 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
-     * A well-formed AddRaftVoter or RemoveRaftVoter is refused **35**, and the three voter codes stay unreachable
+     * A well-formed AddRaftVoter of the node's own id is the **126**, and nothing is added
      *
-     * This is the measurement the error codes 125 to 127 (`InvalidVoterKey`, `DuplicateVoter`, `VoterNotFound`)
-     * hang on, and the answer is that a 3.9.2 node with the default configuration never writes one of them. The
-     * reconfiguration of KIP-853 is gated on the **`kraft.version` feature**: the node supports 0 to 1 and has
-     * finalized **0**, which is the static `controller.quorum.voters` of KIP-595, and `KafkaRaftClient` refuses
-     * every reconfiguration of such a quorum before it compares a voter at all:
-     *
-     * * with the **foreign** cluster id, the **104** of the test above - the cluster id is checked first;
-     * * with the real cluster id (or a **null** one, which `hasValidClusterId` accepts) and a voter whose
-     *   directory id is the zero uuid or whose listener array is empty, **42** (`InvalidRequest`) and
-     *   `Add voter request didn't include a valid voter` / `Remove voter request didn't include a valid voter`;
-     * * with the real cluster id and a **valid** voter key - a random directory id and one endpoint - **35**
-     *   (`UnsupportedVersion`) and `Cluster doesn't support adding voter because the kraft.version feature is 0`,
-     *   the removal saying `removing voter` in the same sentence.
-     *
-     * The voter named here is {@see self::UNKNOWN_BROKER_ID} with a directory id drawn at random, so the frame
-     * could not describe a node of this cluster even if the feature allowed it; the request changes nothing.
+     * The 3.9.2 node of the 3.x line finalized `kraft.version` 0 and refused every well-formed frame with the 35
+     * `Cluster doesn't support adding voter because the kraft.version feature is 0`. The 4.3.1 node is formatted
+     * with `--standalone` and finalizes `kraft.version` **1**, so the frame reaches the checks of
+     * `AddVoterHandler.handleAddVoterRequest` @ 4.3.1: the cluster id, the high watermark, the feature, the pending
+     * reconfiguration, and then the voter id - and the id 1 is the one voter of the quorum, so the answer is **126**
+     * (`DuplicateVoter`), `The voter id for ReplicaKey(id=1, directoryId=…) is already part of the set of voters
+     * [ReplicaKey(id=1, directoryId=…)]`, at v0 and at the v1 of Kafka 4.2 (`ack_when_committed`) alike. A voter the
+     * quorum does not have would be asked for its ApiVersions and has to catch up with the log before the handler
+     * appends anything; the probe never names one.
      */
-    #[DataProvider('raftVoterApiProvider')]
-    public function testTheRaftVoterApisAreRefusedBecauseTheKraftVersionFeatureIsZero(int $apiKey): void
+    public function testAnAddRaftVoterOfAVoterTheQuorumHasIsTheDuplicateVoter(): void
     {
-        $clusterId  = $this->admin()->describeCluster()->clusterId;
-        $verb       = $apiKey === ApiKeys::ADD_RAFT_VOTER ? 'adding' : 'removing';
-        $directory  = random_bytes(16);
-        $wellFormed = $apiKey === ApiKeys::ADD_RAFT_VOTER
-            ? RawApiProbe::compactString($clusterId) . RawApiProbe::int32(1000)
-                . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $directory
+        $clusterId = $this->admin()->describeCluster()->clusterId;
+
+        foreach ([0, 1] as $version) {
+            $body = RawApiProbe::compactString($clusterId) . RawApiProbe::int32(1000) . RawApiProbe::int32(1)
+                . random_bytes(16)
                 . RawApiProbe::compactArray(1) . RawApiProbe::compactString('CONTROLLER')
                 . RawApiProbe::compactString('localhost') . pack('n', 9097) . RawApiProbe::tagBuffer()
-                . RawApiProbe::tagBuffer()
-            : RawApiProbe::compactString($clusterId) . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $directory
+                . ($version >= 1 ? RawApiProbe::boolean(true) : '')
                 . RawApiProbe::tagBuffer();
 
+            $probe  = new RawApiProbe(self::firstBootstrapServer());
+            $result = $probe->send(ApiKeys::ADD_RAFT_VOTER, $version, $body, 9300 + $version, RawApiProbe::HEADER_V2);
+            $probe->close();
+
+            $answer = $this->responseBody($result['body'], ApiKeys::ADD_RAFT_VOTER, $version);
+
+            self::assertSame(RawApiProbe::ANSWERED, $result['status']);
+            self::assertSame(0, self::throttleTimeOf($answer));
+            self::assertSame(KafkaException::DUPLICATE_VOTER, self::errorCodeBehindTheThrottleTimeOf($answer));
+            self::assertStringContainsString('is already part of the set of voters', $answer);
+        }
+    }
+
+    /**
+     * A well-formed RemoveRaftVoter of a voter the quorum does not have is the **127**
+     *
+     * The same node, the same checks, and the voter {@see self::UNKNOWN_BROKER_ID} with a random directory id:
+     * `RemoveVoterHandler` @ 4.3.1 answers **127** (`VoterNotFound`) with `Cannot remove voter ReplicaKey(id=4242,
+     * …) from the set of voters [ReplicaKey(id=1, …)]`. The probe never names the one voter of the quorum.
+     */
+    public function testARemoveRaftVoterOfAnUnknownVoterIsTheVoterNotFound(): void
+    {
+        $clusterId = $this->admin()->describeCluster()->clusterId;
+        $body      = RawApiProbe::compactString($clusterId) . RawApiProbe::int32(self::UNKNOWN_BROKER_ID)
+            . random_bytes(16) . RawApiProbe::tagBuffer();
+
         $probe  = new RawApiProbe(self::firstBootstrapServer());
-        $result = $probe->send($apiKey, 0, $wellFormed, 9300 + $apiKey, RawApiProbe::HEADER_V2);
+        $result = $probe->send(ApiKeys::REMOVE_RAFT_VOTER, 0, $body, 9381, RawApiProbe::HEADER_V2);
         $probe->close();
 
-        $body = $this->responseBody($result['body'], $apiKey, 0);
+        $answer = $this->responseBody($result['body'], ApiKeys::REMOVE_RAFT_VOTER, 0);
 
         self::assertSame(RawApiProbe::ANSWERED, $result['status']);
-        self::assertSame(0, self::throttleTimeOf($body));
-        self::assertSame(
-            KafkaException::UNSUPPORTED_VERSION,
-            self::errorCodeBehindTheThrottleTimeOf($body),
-            'the reconfiguration of KIP-853 needs the kraft.version feature at the level 1'
-        );
-        self::assertStringContainsString(
-            "Cluster doesn't support {$verb} voter because the kraft.version feature is 0",
-            $body,
-            'the codes 125 to 127 are never reached on a quorum with a static voter set'
-        );
+        self::assertSame(KafkaException::VOTER_NOT_FOUND, self::errorCodeBehindTheThrottleTimeOf($answer));
+        self::assertStringContainsString('Cannot remove voter ReplicaKey(id=' . self::UNKNOWN_BROKER_ID, $answer);
     }
 
     /**
@@ -1577,7 +1648,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * Returns the offset of the tagged-field section in a flexible ApiVersions answer of this node
      *
      * The error code, the compact count of the api array, seven bytes per row (three int16 and the tag buffer of
-     * the row) and the throttle time: `2 + 1 + 61 * 7 + 4`.
+     * the row) and the throttle time: `2 + 1 + 75 * 7 + 4`.
      */
     private static function taggedSectionOffset(): int
     {
@@ -1621,8 +1692,10 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             ApiKeys::FETCH => RawApiProbe::int32(100) . RawApiProbe::int32(0) . RawApiProbe::int32(1048576)
                 . RawApiProbe::int8(0) . RawApiProbe::int32(0) . RawApiProbe::int32(-1)
                 . $emptyArray . $emptyArray . RawApiProbe::compactString('') . $tag,
-            // v7 (KIP-734), v8 (KIP-405) and v9 (KIP-1005) added timestamps a partition can ask for, not fields
-            ApiKeys::OFFSETS => RawApiProbe::int32(-1) . RawApiProbe::int8(0) . $emptyArray . $tag,
+            // v7 (KIP-734), v8 (KIP-405), v9 (KIP-1005) and v11 (KIP-1023) added timestamps a partition can ask
+            // for, not fields; v10 (KIP-1075) added the `timeout_ms` of an asynchronous remote lookup at the end
+            ApiKeys::OFFSETS => RawApiProbe::int32(-1) . RawApiProbe::int8(0) . $emptyArray . RawApiProbe::int32(1000)
+                . $tag,
             // An empty topic array is "no topic" since v1; `allow_auto_topic_creation` is false so that the probe
             // creates nothing, the cluster authorized operations of KIP-430 left the body with v11 and the topic
             // authorized operations are not asked for; v12 (Kafka 3.1) made the topic id of a request usable
@@ -1732,8 +1805,10 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             // An empty partition list, never the null array that would elect a leader for every partition of the
             // cluster; 0 is the preferred-leader election of KIP-183
             ApiKeys::ELECT_LEADERS => RawApiProbe::int8(0) . $emptyArray . RawApiProbe::int32(1000) . $tag,
-            // No partition to reassign and none to list - the null array would answer every reassignment there is
-            ApiKeys::ALTER_PARTITION_REASSIGNMENTS => RawApiProbe::int32(1000) . $emptyArray . $tag,
+            // No partition to reassign and none to list - the null array would answer every reassignment there is;
+            // v1 (Kafka 4.1) added `allow_replication_factor_change` behind the timeout
+            ApiKeys::ALTER_PARTITION_REASSIGNMENTS => RawApiProbe::int32(1000) . RawApiProbe::boolean(true)
+                . $emptyArray . $tag,
             ApiKeys::LIST_PARTITION_REASSIGNMENTS  => RawApiProbe::int32(1000) . $emptyArray . $tag,
             // No quota component to match and no quota to alter (KIP-546)
             ApiKeys::DESCRIBE_CLIENT_QUOTAS => $emptyArray . RawApiProbe::boolean(false) . $tag,
@@ -1747,7 +1822,9 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             ApiKeys::UPDATE_FEATURES => RawApiProbe::int32(1000) . $emptyArray . RawApiProbe::boolean(true) . $tag,
             // Nothing to authorize (KIP-700); the endpoint type 1 of v1 (KIP-919, Kafka 3.7) asks for the brokers,
             // and 2 - the controllers - is refused on this listener with 114 (MismatchedEndpointType)
-            ApiKeys::DESCRIBE_CLUSTER => RawApiProbe::boolean(false) . RawApiProbe::int8(1) . $tag,
+            // v2 (KIP-1073, Kafka 4.0) added `include_fenced_brokers`
+            ApiKeys::DESCRIBE_CLUSTER => RawApiProbe::boolean(false) . RawApiProbe::int8(1)
+                . RawApiProbe::boolean(false) . $tag,
             // No topic to describe (KIP-664)
             ApiKeys::DESCRIBE_PRODUCERS => $emptyArray . $tag,
             // A broker id no node of the cluster has, so the controller answers 102 and unregisters nothing
@@ -1755,17 +1832,20 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             // No transactional id to describe (KIP-664), and a ListTransactions that filters nothing: no state, no
             // producer id and the `duration_filter` -1 of v1 (KIP-994, Kafka 3.8) that means "any duration"
             ApiKeys::DESCRIBE_TRANSACTIONS => $emptyArray . $tag,
-            ApiKeys::LIST_TRANSACTIONS     => $emptyArray . $emptyArray . RawApiProbe::int64(-1) . $tag,
+            // v2 (KIP-1152, Kafka 4.1) added the null `transactional_id_pattern` of "any id"
+            ApiKeys::LIST_TRANSACTIONS     => $emptyArray . $emptyArray . RawApiProbe::int64(-1) . $nullString
+                . $tag,
             // A leave (member epoch -1) of a member of a group that does not exist: 69, and no group is created
             // (KIP-848). Everything else at its default: null instance and rack id, rebalance timeout -1, null
-            // subscription, null assignor, null partitions
+            // subscription, the null `subscribed_topic_regex` of v1 (Kafka 4.0), null assignor, null partitions
             ApiKeys::CONSUMER_GROUP_HEARTBEAT => RawApiProbe::compactString($this->groupId)
                 . RawApiProbe::compactString('probe-member') . RawApiProbe::int32(-1) . $nullString . $nullString
-                . RawApiProbe::int32(-1) . $nullString . $nullString . $nullString . $tag,
+                . RawApiProbe::int32(-1) . $nullString . $nullString . $nullString . $nullString . $tag,
             // No group to describe (KIP-848), and no authorized operations asked for
             ApiKeys::CONSUMER_GROUP_DESCRIBE => $emptyArray . RawApiProbe::boolean(false) . $tag,
-            // The one api of the table without a field (KIP-714): a tag buffer is its whole body
-            ApiKeys::LIST_CLIENT_METRICS_RESOURCES => $tag,
+            // v0 had no field (KIP-714); v1 (KIP-1142, Kafka 4.1, when the api became ListConfigResources) asks for
+            // resource types, and the empty array is every type the node lists
+            ApiKeys::LIST_CLIENT_METRICS_RESOURCES => ($apiVersion >= 1 ? $emptyArray : '') . $tag,
             // One topic that does not exist - the empty array would describe every topic of the cluster - the
             // default page size 2000 and a null cursor (Kafka 3.8)
             ApiKeys::DESCRIBE_TOPIC_PARTITIONS => RawApiProbe::compactArray(1)
@@ -1773,10 +1853,48 @@ final class ApiVersionProbeTest extends IntegrationTestCase
                 . RawApiProbe::int32(2000) . RawApiProbe::nullStruct() . $tag,
             // The cluster id of another cluster, so that the controller answers 104 before it reads the voter: a
             // timeout of 1 ms, the voter id nobody has, the all-zero directory id and no listener (KIP-853)
+            // v1 (Kafka 4.2) added `ack_when_committed`
             ApiKeys::ADD_RAFT_VOTER => RawApiProbe::compactString(self::FOREIGN_CLUSTER_ID) . RawApiProbe::int32(1)
-                . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $zeroUuid . $emptyArray . $tag,
+                . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $zeroUuid . $emptyArray
+                . ($apiVersion >= 1 ? RawApiProbe::boolean(true) : '') . $tag,
             ApiKeys::REMOVE_RAFT_VOTER => RawApiProbe::compactString(self::FOREIGN_CLUSTER_ID)
                 . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $zeroUuid . $tag,
+            // The share groups of KIP-932 (v1 of Kafka 4.1, v2 of ShareFetch and ShareAcknowledge Kafka 4.2): the
+            // leave (epoch -1) of a member of a group that does not exist is the 69 and creates nothing, no group
+            // to describe, and a ShareFetch or ShareAcknowledge of a session that does not exist is the 122
+            // (`ShareSessionNotFound`) - no wait (`max_wait_ms` 0), no topic, no acknowledgement
+            ApiKeys::SHARE_GROUP_HEARTBEAT => RawApiProbe::compactString($this->groupId)
+                . RawApiProbe::compactString('probe-member') . RawApiProbe::int32(-1) . $nullString . $nullString
+                . $tag,
+            ApiKeys::SHARE_GROUP_DESCRIBE => $emptyArray . RawApiProbe::boolean(false) . $tag,
+            ApiKeys::SHARE_FETCH => RawApiProbe::compactString($this->groupId)
+                . RawApiProbe::compactString('probe-member') . RawApiProbe::int32(-1) . RawApiProbe::int32(0)
+                . RawApiProbe::int32(0) . RawApiProbe::int32(1048576) . RawApiProbe::int32(10)
+                . RawApiProbe::int32(10) . RawApiProbe::int8(0) . RawApiProbe::boolean(false)
+                . $emptyArray . $emptyArray . $tag,
+            ApiKeys::SHARE_ACKNOWLEDGE => RawApiProbe::compactString($this->groupId)
+                . RawApiProbe::compactString('probe-member') . RawApiProbe::int32(-1) . RawApiProbe::boolean(false)
+                . $emptyArray . $tag,
+            // The share-group state apis of the share coordinator (KIP-932), a group id and no partition: nothing
+            // is initialized, read, written or deleted
+            ApiKeys::INITIALIZE_SHARE_GROUP_STATE,
+            ApiKeys::READ_SHARE_GROUP_STATE,
+            ApiKeys::WRITE_SHARE_GROUP_STATE,
+            ApiKeys::DELETE_SHARE_GROUP_STATE,
+            ApiKeys::READ_SHARE_GROUP_STATE_SUMMARY => RawApiProbe::compactString($this->groupId) . $emptyArray . $tag,
+            // The streams groups of KIP-1071 (out of this line): the leave of a member of a group that does not
+            // exist - member epoch -1, endpoint information epoch -1, every nullable field null, including the
+            // two nullable structures `topology` and `user_endpoint` - and no group to describe
+            ApiKeys::STREAMS_GROUP_HEARTBEAT => RawApiProbe::compactString($this->groupId)
+                . RawApiProbe::compactString('probe-member') . RawApiProbe::int32(-1) . RawApiProbe::int32(-1)
+                . $nullString . $nullString . RawApiProbe::int32(-1) . RawApiProbe::nullStruct()
+                . $nullString . $nullString . $nullString . $nullString . RawApiProbe::nullStruct()
+                . $nullString . $nullString . $nullString . RawApiProbe::boolean(false) . $tag,
+            ApiKeys::STREAMS_GROUP_DESCRIBE => $emptyArray . RawApiProbe::boolean(false) . $tag,
+            // The share-group offsets of KIP-932: no group to describe, no partition to alter or delete
+            ApiKeys::DESCRIBE_SHARE_GROUP_OFFSETS => $emptyArray . $tag,
+            ApiKeys::ALTER_SHARE_GROUP_OFFSETS,
+            ApiKeys::DELETE_SHARE_GROUP_OFFSETS => RawApiProbe::compactString($this->groupId) . $emptyArray . $tag,
             default => '',
         };
     }

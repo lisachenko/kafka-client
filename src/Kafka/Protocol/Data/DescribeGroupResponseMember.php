@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * member by. It is `null` for a dynamic member, and {@see DescribeGroupResponseMemberV0} is the entry of the
  * versions 0 to 3, which have no such field.
  *
- * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 class DescribeGroupResponseMember implements BinarySchemaInterface
 {

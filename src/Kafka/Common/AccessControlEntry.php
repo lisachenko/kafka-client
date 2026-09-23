@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * tagged-field section of its own; inside a created acl and inside a matching acl of a DeleteAcls answer its four
  * fields are fields of the structure around it, where an {@see \Protocol\Kafka\Protocol\InlineStruct} embeds it.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 class AccessControlEntry implements BinarySchemaInterface
 {

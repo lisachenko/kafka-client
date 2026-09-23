@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Data\ListTransactionsResponseTransactionState;
  * what the coordinator selects, not what it reports; {@see ListTransactionsResponseV0} is that identical frame
  * read at the version below.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 and v1)"
  */
 class ListTransactionsResponse extends AbstractResponse
 {

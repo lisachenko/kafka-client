@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The class inherits {@see FetchResponse::FLEXIBLE_VERSION} (12) and is therefore **not** flexible: the engine
  * asks `VERSION >= FLEXIBLE_VERSION`, and 11 is not.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)" and
  *      "Flexible versions in the engine (KIP-482)"
  */
 final class FetchResponseV11 extends FetchResponse

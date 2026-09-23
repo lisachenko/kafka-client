@@ -64,7 +64,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopicV0;
  * The epoch a client asks with is the `partition_leader_epoch` that the record batches of the partition carry
  * ({@see \Protocol\Kafka\Common\Record\RecordBatch::$partitionLeaderEpoch}), which is the other half of KIP-101.
  *
- * @see docs/protocol/3.9.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v4)" and
+ * @see docs/protocol/4.3.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v4)" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetForLeaderEpochRequest extends AbstractRequest

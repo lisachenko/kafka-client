@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Data\DescribeProducersRequestTopic;
  * **The request goes to the leader of each partition**: the state lives in the log, so a broker that does not
  * lead the partition answers it with 3 (`UnknownTopicOrPartition`) and not with 6.
  *
- * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeProducers API (key 61, v0)"
  */
 class DescribeProducersRequest extends AbstractRequest
 {

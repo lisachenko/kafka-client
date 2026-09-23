@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The request goes to the **coordinator** of every group it names, as every group api does, and a broker that
  * does not coordinate one of them answers that entry - not the frame - with the 16 `NotCoordinatorForGroup`.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
  */
 class ConsumerGroupDescribeRequest extends AbstractRequest
 {

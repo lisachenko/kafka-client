@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * answer of version 4 is this frame, and this class only lowers the version constant that
  * {@see CreateTopicsResponse::getScheme()} follows.
  *
- * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/4.3.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsResponseV3 extends CreateTopicsResponse
 {

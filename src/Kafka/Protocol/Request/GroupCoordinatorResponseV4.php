@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version 5 answer, which {@see GroupCoordinatorResponseV5} decodes; {@see GroupCoordinatorResponse} decodes the
  * version 6 of Kafka 3.9, whose layout is the same one once more.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class GroupCoordinatorResponseV4 extends GroupCoordinatorResponse
 {

@@ -19,7 +19,7 @@ use RecursiveIteratorIterator;
 use SplFileInfo;
 
 /**
- * Keeps `docs/protocol/3.9.md` and `docs/protocol/vectors/*.json` from drifting apart.
+ * Keeps `docs/protocol/4.3.md` and `docs/protocol/vectors/*.json` from drifting apart.
  *
  * Every vector is documented twice: as an annotated hex dump in the protocol document, introduced by an
  * `<!-- vector: <id> -->` marker, and as raw hex plus decoded fields in the vector file that {@see ProtocolVectorTest}

@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `delete.topic.enable` is false; a request of this version is answered with the **42** `INVALID_REQUEST`
  * of the lines below instead (`KafkaApis.handleDeleteTopicsRequest` @ 2.8.2).
  *
- * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 final class DeleteTopicsRequestV2 extends DeleteTopicsRequest
 {

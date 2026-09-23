@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
  * below are the version 0 ones, i.e. {@see DescribeClusterRequestV0} and {@see DescribeClusterResponseV0}; the
  * `endpoint_type` that KIP-919 added to the version 1 is {@see ClientMetricsAndEndpointTypeTest}.
  *
- * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0 and v1)" and "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 and v1)" and "DescribeProducers API (key 61, v0)"
  */
 #[CoversClass(DescribeClusterRequestV0::class)]
 #[CoversClass(DescribeClusterResponseV0::class)]

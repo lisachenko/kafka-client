@@ -73,7 +73,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * OffsetCommit **v9** and an OffsetFetch **v9** of this member send in the field a classic member fills with its
  * generation id; the call sites of {@see \Protocol\Kafka\Consumer\KafkaConsumer} need no change for it.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
  * @see \Protocol\Kafka\Consumer\ConsumerConfig::GROUP_PROTOCOL
  */
 final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInterface

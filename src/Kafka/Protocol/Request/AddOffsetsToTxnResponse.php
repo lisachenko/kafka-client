@@ -55,7 +55,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * to verify. The 120 of the offsets belongs to the {@see TxnOffsetCommitResponse} that follows.
  * {@see AddOffsetsToTxnResponseV3} is the frame of Kafka 2.8.
  *
- * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
  */
 class AddOffsetsToTxnResponse extends AbstractResponse
 {

@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\NullableStruct;
  * are configuration errors and no retry helps. **25** `UnknownMemberId` is the same rejoin as the 110, and the
  * three coordinator codes **14**, **15** and **16** are the retriable ones every group api has.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
  */
 class ConsumerGroupHeartbeatResponse extends AbstractResponse
 {

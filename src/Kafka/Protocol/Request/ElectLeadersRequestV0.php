@@ -30,7 +30,7 @@ use Protocol\Kafka\Admin\ElectionType;
  * The constructor is the one of {@see ElectLeadersRequest} and its `$electionType` is ignored here - the byte has
  * no place in this frame - so a caller that means the unclean election has to send the version 1.
  *
- * @see docs/protocol/3.9.md, section "ElectLeaders API (key 43, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 final class ElectLeadersRequestV0 extends ElectLeadersRequest
 {

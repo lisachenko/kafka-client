@@ -105,7 +105,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)", "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)", "The leader discovery of KIP-951 (v10)"
  *      and "The abortable transaction error of KIP-890 (v11)"
  */
 class ProduceResponse extends AbstractResponse

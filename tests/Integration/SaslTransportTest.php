@@ -63,7 +63,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the `super.users` of the node, while the SASL user `acltest` authenticates just as well and is then refused by
  * every api it asks for. Authentication is what this suite measures; authorization belongs to the ACL apis.
  *
- * @see docs/protocol/3.9.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
+ * @see docs/protocol/4.3.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]
@@ -86,7 +86,7 @@ final class SaslTransportTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t8-sasl';
 
     /**
-     * Credentials of `docker/kafka-3.9.2/jaas.conf`
+     * Credentials of `docker/kafka-4.3.1/jaas.conf`
      */
     private const string USERNAME = 'kafkatest';
 
@@ -153,7 +153,7 @@ final class SaslTransportTest extends IntegrationTestCase
         $records = [[null, 'authenticated'], ['key', 'with SASL/PLAIN']];
 
         // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/3.9.md
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/4.3.md
         new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,
@@ -718,7 +718,7 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     private static function saslBrokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-3.9.2/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-4.3.1/ssl/broker.crt';
     }
 
     /**

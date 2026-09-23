@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **The producer epoch is an int32 here** although it is an int16 everywhere else in the protocol - in
  * `ProducerState` of the specification it is written wide, and the broker sends the same value in both places.
  *
- * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeProducers API (key 61, v0)"
  */
 class ProducerState implements BinarySchemaInterface
 {

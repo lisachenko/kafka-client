@@ -146,7 +146,7 @@ final class Cluster
      *
      * @throws AllBrokersNotAvailableException If the cluster did not advertise a single broker in time
      *
-     * @see docs/protocol/3.9.md, section "Cluster readiness"
+     * @see docs/protocol/4.3.md, section "Cluster readiness"
      */
     public static function bootstrap(array $configuration, ?string $topic = null): Cluster
     {
@@ -314,7 +314,7 @@ final class Cluster
      * name a topic by that id. A topic the cluster does not know yet, and a topic whose answer carried the zero
      * id, are both `null` here - the caller reloads the metadata and asks again, it never falls back to the name.
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     public function topicIdOf(string $topic): ?string
     {
@@ -360,7 +360,7 @@ final class Cluster
      *
      * @param string $topicId The 16 raw bytes of the topic id
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     public function topicNameById(string $topicId): ?string
     {

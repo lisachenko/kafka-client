@@ -57,7 +57,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`EndTxnRequest.json` @ 3.8.1), no field, the flexible encoding of the version 3. It is the version this client
  * sends; {@see EndTxnRequestV3} is the same frame with the version field of Kafka 2.8.
  *
- * @see docs/protocol/3.9.md, section "EndTxn API (key 26, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "EndTxn API (key 26, v0 to v4)"
  */
 class EndTxnRequest extends AbstractRequest
 {

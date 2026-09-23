@@ -101,7 +101,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * answers a version 5 of the SASL user `acltest` the same top-level 31. {@see AddPartitionsToTxnRequestV4} keeps
  * the frame of Kafka 3.5.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 class AddPartitionsToTxnRequest extends AbstractRequest
 {

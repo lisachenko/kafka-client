@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   OffsetFetch Response (Version: 3 and 4) => throttle_time_ms [responses] error_code
  * </pre>
  *
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 final class OffsetFetchResponseV4 extends OffsetFetchResponse
 {

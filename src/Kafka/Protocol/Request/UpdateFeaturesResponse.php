@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\Data\UpdatableFeatureResult;
  * a request the controller looked at and wrote nothing for. {@see UpdateFeaturesResponseV0} is the same shape one
  * api version lower.
  *
- * @see docs/protocol/3.9.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
  *      run of KIP-778 (v1)"
  */
 class UpdateFeaturesResponse extends AbstractResponse

@@ -22,8 +22,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * as the **22** `IllegalGeneration` instead, and the **113** `StaleMemberEpoch` of a member of a KIP-848 group,
  * which can never reach a version 8 answer because such a member may not send a version 8 request.
  *
- * @see docs/protocol/3.9.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 final class OffsetCommitResponseV8 extends OffsetCommitResponse
 {

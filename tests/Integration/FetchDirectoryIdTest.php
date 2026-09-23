@@ -63,7 +63,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  *
  * Every topic of this class is named `t2-39-…`, so that it can run next to the other suites on the shared node.
  *
- * @see docs/protocol/3.9.md, sections "The replica directory id of KIP-853 (v17)" and "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, sections "The replica directory id of KIP-853 (v17)" and "Fetch API (key 1, v0 to v17)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]

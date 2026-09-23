@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * frame with the error code 56, and {@see FetchRequest} (version 7), which carries the incremental fetch sessions
  * of KIP-227. This class only lowers the version constant that {@see FetchRequest::getScheme()} follows.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v17)"
  */
 final class FetchRequestV5 extends FetchRequest
 {

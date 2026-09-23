@@ -72,7 +72,7 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
  * code 48 and `Partition was not added to the transaction`. Every test here adds its partitions first, as the
  * {@see TransactionManager} does.
  *
- * @see docs/protocol/3.9.md, section "Transactions"
+ * @see docs/protocol/4.3.md, section "Transactions"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]

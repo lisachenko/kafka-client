@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * This client names topics by their name, so the id is {@see self::NO_TOPIC_ID} in everything it sends; the
  * structure exists because the version 6 has no other way of saying "this topic".
  *
- * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 class DeleteTopicsRequestTopic implements BinarySchemaInterface
 {

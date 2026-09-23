@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol;
  * does not understand, which is what the Java client does with a message it re-serializes without its
  * `_unknownTaggedFields`.
  *
- * @see docs/protocol/3.9.md, section "Implementation model"
+ * @see docs/protocol/4.3.md, section "Implementation model"
  */
 trait PreservesUnknownTaggedFields
 {

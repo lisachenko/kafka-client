@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * and its whole comment is "Version 10 is the same as version 9 (KIP-951)" - and what it buys is in the answer,
  * see {@see ProduceResponse::$nodeEndpoints}.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)" and "The leader discovery of KIP-951 (v10)"
  */
 final class ProduceRequestV9 extends ProduceRequest
 {

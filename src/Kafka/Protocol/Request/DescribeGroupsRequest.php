@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * leaves that bit set at {@see \Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata::OPERATIONS_NOT_REQUESTED}.
  * {@see DescribeGroupsRequestV2} is the frame without the flag.
  *
- * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {

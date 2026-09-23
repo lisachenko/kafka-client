@@ -63,7 +63,7 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  * expired as well on this node, where a 2.8.2 broker answered 66 for it - see
  * {@see self::testATokenThatRanOutOfItsMaximumLifetimeCanNotBeRenewedButCanStillBeExpired()}.
  *
- * @see docs/protocol/3.9.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v3)",
+ * @see docs/protocol/4.3.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v3)",
  *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
  *      "DescribeDelegationToken API (key 41, v0 to v3)"
  */
@@ -88,7 +88,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t7-tokens';
 
     /**
-     * The two users of `docker/kafka-3.9.2/jaas.conf`
+     * The two users of `docker/kafka-4.3.1/jaas.conf`
      */
     private const string OWNER_USER = 'kafkatest';
 
@@ -445,7 +445,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
      * `DelegationTokenManager.filterToken` @ 3.9.2 asks it for `DESCRIBE_TOKENS` on the `User` resource of the
      * owner first and falls back to "owner or renewer" only when that is refused. `super.users` decides the
      * question here: `admin` and `kafkatest` are super users and see everything, while `acltest` - the one SASL
-     * user of `docker/kafka-3.9.2/jaas.conf` that is not listed there - sees its own tokens and nothing else, and
+     * user of `docker/kafka-4.3.1/jaas.conf` that is not listed there - sees its own tokens and nothing else, and
      * is answered with an **empty array rather than an error** for a foreign owner.
      *
      * Renewing is not affected by any of it: it checks owner-or-renewer only.

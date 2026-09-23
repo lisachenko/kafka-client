@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * REQUEST - a topic the broker does not know at all is reported here as well, with the error code 3 for each of its
  * partitions, and never left out.
  *
- * @see docs/protocol/3.9.md, section "DeleteRecords API (key 21, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DeleteRecords API (key 21, v0 to v2)"
  */
 class DeleteRecordsResponseTopic implements BinarySchemaInterface
 {

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * partition the cluster does not have, **39** `InvalidReplicaAssignment` for an empty replica list or a broker
  * that is not alive, and **85** `NoReassignmentInProgress` for a cancellation that had nothing to cancel.
  *
- * @see docs/protocol/3.9.md, section "AlterPartitionReassignments API (key 45, v0)"
+ * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0)"
  */
 class ReassignablePartitionResponse implements BinarySchemaInterface
 {

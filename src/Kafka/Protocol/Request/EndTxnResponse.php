@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The producer id and the epoch of the **version 5** are Kafka 3.9's. {@see EndTxnResponseV3} is the frame of
  * Kafka 2.8.
  *
- * @see docs/protocol/3.9.md, section "EndTxn API (key 26, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "EndTxn API (key 26, v0 to v4)"
  */
 class EndTxnResponse extends AbstractResponse
 {

@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see AddPartitionsToTxnResponseTopic} with its `partition_errors`, and a partition that is part of the
  * transaction is still reported with the error code 0.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 class AddPartitionsToTxnResult implements BinarySchemaInterface
 {

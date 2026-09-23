@@ -22,8 +22,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * nothing but the version of the request they answer, and what the higher number buys is the **113** and the
  * **25** a group entry may carry. This class is the answer of a broker below Kafka 3.7.
  *
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
- * @see docs/protocol/3.9.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
  */
 final class OffsetFetchResponseV8 extends OffsetFetchResponse
 {

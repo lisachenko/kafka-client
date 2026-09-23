@@ -32,7 +32,7 @@ use InvalidArgumentException;
  * so {@see self::key()} is what a result of {@see AdminClient::describeConfigs()} is indexed by, and what
  * {@see AdminClient::alterConfigs()} takes as the key of its argument.
  *
- * @see docs/protocol/3.9.md, sections "DescribeConfigs API (key 32, v0 to v4)" and "AlterConfigs API (key 33, v0 to v2)"
+ * @see docs/protocol/4.3.md, sections "DescribeConfigs API (key 32, v0 to v4)" and "AlterConfigs API (key 33, v0 to v2)"
  */
 final class ConfigResource
 {

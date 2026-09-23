@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * @since Version 10 of the Produce API (Kafka 3.7, KIP-951)
  *
- * @see docs/protocol/3.9.md, section "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/4.3.md, section "The leader discovery of KIP-951 (v10)"
  */
 class ProduceResponseNodeEndpoint implements BinarySchemaInterface
 {

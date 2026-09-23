@@ -57,7 +57,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
  * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
  *
- * @see docs/protocol/3.9.md, section "SaslAuthenticate API (key 36, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "SaslAuthenticate API (key 36, v0 to v2)"
  * @see \Protocol\Kafka\IO\SocketStream::authenticate()
  */
 class SaslAuthenticateRequest extends AbstractRequest

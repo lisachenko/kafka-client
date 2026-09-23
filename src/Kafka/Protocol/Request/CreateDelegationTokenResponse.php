@@ -78,7 +78,7 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * request and the requester is the caller. {@see CreateDelegationTokenResponseV2} decodes the answer of every
  * version below 3, where {@see self::$tokenRequester} stays the owner.
  *
- * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 class CreateDelegationTokenResponse extends AbstractResponse
 {

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * flexible encoding, and a promise that the sender understands the error code **120**. The version 4 of KIP-588
  * is what a client sends to a broker below Kafka 3.8.
  *
- * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 final class InitProducerIdRequestV4 extends InitProducerIdRequest
 {

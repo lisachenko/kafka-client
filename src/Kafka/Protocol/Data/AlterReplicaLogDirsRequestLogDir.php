@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * at all, because `Partition.maybeCreateFutureReplica` only creates one when the destination differs from the
  * current directory.
  *
- * @see docs/protocol/3.9.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 class AlterReplicaLogDirsRequestLogDir implements BinarySchemaInterface
 {

@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the broker which operations the client may perform on each group; {@see DescribeGroupsRequest} sends that
  * frame, and this class is the request of every version below it.
  *
- * @see docs/protocol/3.9.md, section "The authorized operations of a group (v3, KIP-430)"
+ * @see docs/protocol/4.3.md, section "The authorized operations of a group (v3, KIP-430)"
  */
 final class DescribeGroupsRequestV2 extends DescribeGroupsRequest
 {

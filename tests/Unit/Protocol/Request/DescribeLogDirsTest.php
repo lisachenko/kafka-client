@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
  * code its version 3 gained in Kafka 3.2 and for the volume sizes of KIP-827 that its version 4 gained in Kafka
  * 3.3.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 #[CoversClass(DescribeLogDirsRequest::class)]
 #[CoversClass(DescribeLogDirsRequestV3::class)]

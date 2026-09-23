@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\DescribeClusterBroker;
  * `"default": "1"` of the schema and says nothing. {@see DescribeClusterResponseV0} is the answer one version
  * lower, which has no type at all.
  *
- * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
  *      (v1)"
  */
 class DescribeClusterResponse extends AbstractResponse

@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Data\ClientMetricsResource;
  * on the cluster: `KafkaApis.handleListClientMetricsResources` @ 3.9.2 checks that operation before it asks its
  * `ClientMetricsManager` anything.
  *
- * @see docs/protocol/3.9.md, section "ListClientMetricsResources API (key 74, v0)"
+ * @see docs/protocol/4.3.md, section "ListClientMetricsResources API (key 74, v0)"
  */
 class ListClientMetricsResourcesResponse extends AbstractResponse
 {

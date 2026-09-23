@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\ElectLeadersResponseV1;
  * else: the `election_type` byte of {@see ElectionType} is a field of the version 1 that Kafka 2.4 adds, and so is
  * the top-level error code of the answer. Everything this version reports is per partition.
  *
- * @see docs/protocol/3.9.md, section "ElectLeaders API (key 43, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 #[CoversClass(ElectLeadersRequest::class)]
 #[CoversClass(ElectLeadersRequestV0::class)]

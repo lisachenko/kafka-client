@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * from `request.topics().isEmpty()`), which is the opposite of what an empty array means in most other apis of
  * this protocol and the same as the null topic array of Metadata.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 class DescribeTopicPartitionsRequestTopic implements BinarySchemaInterface
 {

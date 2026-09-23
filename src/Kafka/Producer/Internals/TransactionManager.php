@@ -111,7 +111,7 @@ use Throwable;
  * again" and "your records are there and we disagree about them" visible at all.
  *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/3.9.md, sections "InitProducerId API (key 22, v0 to v5)" and "The idempotent producer"
+ * @see docs/protocol/4.3.md, sections "InitProducerId API (key 22, v0 to v5)" and "The idempotent producer"
  */
 class TransactionManager
 {

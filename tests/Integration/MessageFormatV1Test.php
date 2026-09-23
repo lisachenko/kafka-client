@@ -47,7 +47,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * a Produce v2, the node accepts and up-converts them on append, and it converts its v2 log back down for a
  * Fetch v1 (magic 0) or a Fetch v2 (magic 1) on the way out.
  *
- * @see docs/protocol/3.9.md, sections "MessageSet and Message" and "What the broker converts, and when"
+ * @see docs/protocol/4.3.md, sections "MessageSet and Message" and "What the broker converts, and when"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]
@@ -379,7 +379,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
-            'docker', 'exec', $container === false || $container === '' ? 'kafka-3-9-2' : $container,
+            'docker', 'exec', $container === false || $container === '' ? 'kafka-4-3-1' : $container,
             '/opt/kafka/bin/kafka-topics.sh', '--bootstrap-server', 'localhost:9092',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];
@@ -414,7 +414,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
         $topic ??= $this->topic;
         $stream = $this->connect();
         // A message set of the formats v0 and v1 may only travel in a request below version 3, see
-        // docs/protocol/3.9.md, section "Produce API (key 0, v0 to v11)"
+        // docs/protocol/4.3.md, section "Produce API (key 0, v0 to v11)"
         new ProduceRequestV2(
             [$topic => [self::PARTITION => $messageSet]],
             1,

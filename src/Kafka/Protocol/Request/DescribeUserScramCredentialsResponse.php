@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Data\DescribeUserScramCredentialsResult;
  * **No answer ever carries a password.** The credential of a user is a salted password, and the api describes only
  * its mechanism and iteration count.
  *
- * @see docs/protocol/3.9.md, section "DescribeUserScramCredentials API (key 50, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeUserScramCredentials API (key 50, v0)"
  */
 class DescribeUserScramCredentialsResponse extends AbstractResponse
 {

@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * broker. This client subscribes by name, so the field is null in everything it produces.
  *
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponse
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
  */
 class ConsumerGroupDescribeMember implements BinarySchemaInterface
 {

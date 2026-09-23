@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Common;
  * `topic_authorized_operations` bitfield behind the partitions, see {@see TopicMetadata::$authorizedOperations};
  * this class is the entry without it.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v12)"
  */
 final class TopicMetadataV7 extends TopicMetadata
 {

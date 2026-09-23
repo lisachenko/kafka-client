@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\DescribeTransactionsResponse;
  * the request carries one of its own, and an entry that carries an error carries the defaults of the
  * specification behind it.
  *
- * @see docs/protocol/3.9.md, section "DescribeTransactions API (key 65, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTransactions API (key 65, v0)"
  */
 #[CoversClass(DescribeTransactionsRequest::class)]
 #[CoversClass(DescribeTransactionsResponse::class)]

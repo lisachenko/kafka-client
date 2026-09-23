@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `kafka-configs.sh --entity-type client-metrics --entity-name <name>` wrote; its contents are read with
  * DescribeConfigs on the resource type `CLIENT_METRICS`.
  *
- * @see docs/protocol/3.9.md, section "ListClientMetricsResources API (key 74, v0)"
+ * @see docs/protocol/4.3.md, section "ListClientMetricsResources API (key 74, v0)"
  */
 class ClientMetricsResource implements BinarySchemaInterface
 {

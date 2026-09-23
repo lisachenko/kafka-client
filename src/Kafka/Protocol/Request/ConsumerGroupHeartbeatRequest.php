@@ -70,7 +70,7 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatTopicPartitions;
  * opposite of the classic protocol, where the coordinator hands one out in the answer of a first JoinGroup. A
  * request that names none is still accepted and answered with a generated id, see the response class.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
  */
 class ConsumerGroupHeartbeatRequest extends AbstractRequest
 {

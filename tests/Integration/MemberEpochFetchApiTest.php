@@ -65,8 +65,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see self::tearDownAfterClass()} - every KIP-848 member with the leave heartbeat of the epoch -1 first, because
  * a group that still holds a member is not deletable.
  *
- * @see docs/protocol/3.9.md, section "The member id and epoch of KIP-848 (v9)"
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(OffsetFetchRequest::class)]

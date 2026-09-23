@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
  * `docs/protocol/vectors/`, and this class asserts what a caller sees of them - the version a class sends, the
  * one byte that separates the two DescribeCluster versions, and the shape of every client-metrics message.
  *
- * @see docs/protocol/3.9.md, sections "The endpoint type of KIP-919 (v1)" and "Client metrics (KIP-714) — wire
+ * @see docs/protocol/4.3.md, sections "The endpoint type of KIP-919 (v1)" and "Client metrics (KIP-714) — wire
  *      only"
  */
 #[CoversClass(DescribeClusterRequest::class)]

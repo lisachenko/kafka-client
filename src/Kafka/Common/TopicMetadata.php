@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **100** `UnknownTopicId`, a `null` name, the id that was asked for and no partition at all.
  * {@see TopicMetadataV10} keeps the entry whose name is never null.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Metadata by topic id (v12, KIP-516)"
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v12)" and "Metadata by topic id (v12, KIP-516)"
  */
 class TopicMetadata implements BinarySchemaInterface
 {

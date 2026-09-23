@@ -86,7 +86,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMemberV0;
  * assignment the generation already agreed on. Every other answer of the api carries `false`, including the
  * error ones. See "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)" in the document.
  *
- * @see docs/protocol/3.9.md, sections "JoinGroup API (key 11, v0 to v9)" and "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, sections "JoinGroup API (key 11, v0 to v9)" and "Quotas and throttle time"
  */
 class JoinGroupResponse extends AbstractResponse
 {

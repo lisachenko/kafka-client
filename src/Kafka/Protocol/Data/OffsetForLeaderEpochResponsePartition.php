@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * partition whose log was written by a broker below 0.11, or an epoch the leader has never heard of. That is the
  * offset a follower truncates to in KIP-101, instead of trusting the high watermark it had.
  *
- * @see docs/protocol/3.9.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 class OffsetForLeaderEpochResponsePartition implements BinarySchemaInterface
 {

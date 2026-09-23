@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see PatternType::WILDCARD_NAME} that stands for every resource of the type - or as a
  * {@see PatternType::PREFIXED} one, whose name is the prefix the covered resources start with.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 class ResourcePattern implements BinarySchemaInterface
 {

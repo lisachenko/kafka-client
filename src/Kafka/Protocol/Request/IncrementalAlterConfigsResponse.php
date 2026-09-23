@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsResponseResource;
  * **Kafka 2.4 added the version 1** (KIP-482), the same frame in the flexible encoding.
  * {@see IncrementalAlterConfigsResponseV0} is the one of Kafka 2.3.
  *
- * @see docs/protocol/3.9.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 class IncrementalAlterConfigsResponse extends AbstractResponse
 {

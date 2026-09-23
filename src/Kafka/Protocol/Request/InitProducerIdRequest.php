@@ -78,7 +78,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * **90** of KIP-588, at the version 5 as at the version 4.
  * {@see InitProducerIdRequestV4} is the same frame with the version field of Kafka 2.7.
  *
- * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 class InitProducerIdRequest extends AbstractRequest
 {

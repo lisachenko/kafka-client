@@ -22,8 +22,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * version is answered with {@see JoinGroupResponseV8}, which has no such flag, so its leader always computes the
  * assignment itself.
  *
- * @see docs/protocol/3.9.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
+ * @see docs/protocol/4.3.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupRequestV8 extends JoinGroupRequest
 {

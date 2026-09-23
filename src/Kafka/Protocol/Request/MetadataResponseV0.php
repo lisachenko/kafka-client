@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * neither a cluster id nor a controller id in between. The `clusterId` and `controllerId` properties of the parent
  * stay null for it.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v12)"
  */
 final class MetadataResponseV0 extends MetadataResponse
 {

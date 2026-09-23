@@ -69,7 +69,7 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
  * Every transaction of this class is opened with the version 3 the client sends and ended in the teardown, and
  * every topic it creates is deleted again.
  *
- * @see docs/protocol/3.9.md, sections "The transaction protocol v2 of KIP-890 (Kafka 3.8), and what a client reaches on this node", "InitProducerId API (key 22, v0 to v5)", "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)", "EndTxn API (key 26, v0 to v4)" and "TxnOffsetCommit API (key 28, v0 to v4)"
+ * @see docs/protocol/4.3.md, sections "The transaction protocol v2 of KIP-890 (Kafka 3.8), and what a client reaches on this node", "InitProducerId API (key 22, v0 to v5)", "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)", "EndTxn API (key 26, v0 to v4)" and "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
 #[CoversClass(InitProducerIdRequestV4::class)]

@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Data\LeaveGroupResponseMember;
  * the reason of that release travels in the **request** ({@see LeaveGroupRequest}). {@see LeaveGroupResponseV4}
  * therefore decodes the very same bytes one api version lower.
  *
- * @see docs/protocol/3.9.md, sections "The batch leave of KIP-345 (v3)", "LeaveGroup API (key 13, v0 to v5)" and
+ * @see docs/protocol/4.3.md, sections "The batch leave of KIP-345 (v3)", "LeaveGroup API (key 13, v0 to v5)" and
  *      "Quotas and throttle time"
  */
 class LeaveGroupResponse extends AbstractResponse

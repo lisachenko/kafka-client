@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * This class measures both halves against the container: what the conversion does to a magic 2 log, and what a
  * topic with the switch off answers instead.
  *
- * @see docs/protocol/3.9.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v17)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -214,7 +214,7 @@ final class DownConversionTest extends IntegrationTestCase
         }
 
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
         $command   = sprintf(
             'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create'
             . ' --if-not-exists --topic %s --partitions 1 --replication-factor 1%s 2>&1',

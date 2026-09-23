@@ -1,11 +1,58 @@
-# The 4.x line: Kafka 4.x on a KRaft node — the plan
+# The 4.x line: Kafka 4.0 to 4.3 on a 4.3.1 KRaft node — the plan
 
-**State: not started.** `main` is the 4.x line and, until the foundation ticket of the line lands, speaks exactly
-what the 3.x line delivered — Kafka **3.9.2** and the KIP-848 consumer protocol, on the 3.9.2 KRaft node — because
-`main` and `3.x` were identical when the owner branched `3.x` off at the end of the 3.x line. The line is built on
-`main` through an integration branch, as the 2.x and 3.x lines were, and merged into `main` as one pull request when
-it is complete; its release notes are then written above this plan, so that the file becomes the record of the line,
-as [`docs/handoff/3.x.md`](3.x.md) is for the 3.x line and [`docs/handoff/2.x.md`](2.x.md) for the 2.x line.
+**State: the foundation is in; current milestone: none yet.** The line is built on the integration branch
+`feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213), tickets
+#214 T1, #215 T2, #216 T3, #217 T4 and #218 T10) towards **Kafka 4.3.1**, and merged into `main` as one pull request
+when it is complete; its release notes are then written above this plan, so that the file becomes the record of the
+line, as [`docs/handoff/3.x.md`](3.x.md) is for the 3.x line and [`docs/handoff/2.x.md`](2.x.md) for the 2.x line.
+
+## Decisions taken at the start of the line (the owner's)
+
+1. **Kafka 4.3.1**, the last 4.x release when the line started (`git ls-remote --tags`: 4.4.0 at rc1, 4.2.2 at
+   release candidates only; archive.apache.org carries nothing newer). One KRaft combined node, `docker/kafka-4.3.1`,
+   container `kafka-4-3-1`, the four client listeners, the `StandardAuthorizer` and the SASL users of the 3.x node,
+   **formatted with the default features of the release** (a dynamic quorum, `format --standalone`).
+2. **Share groups (KIP-932) in, as a share-consumer surface**: 76–79 and 90–92 as client apis, the wire classes at
+   their minors (T3), a share consumer and its admin methods as the last wave; 83–87 wire only.
+3. **The raft-voter apis 80 and 81 get admin methods** on the `kraft.version` 1 node; 82 stays a probe.
+4. **Transactions v2 (KIP-890 part 2)**: the transactional producer moves to v2 on a node that finalizes
+   `transaction.version` 2, with the v1 path kept for a 3.x node.
+5. `group.protocol` of `KafkaConsumer` keeps the default `classic` (the Java default at 4.3.1 as well).
+6. Streams groups (KIP-1071) and client metrics beyond wire-only: out. Controller-only apis: probe only.
+7. The versions KIP-896 removed: classes and vectors stay, the client sends the highest version the node serves and
+   never one below its minimum, the integration suite stops sending what the node refuses.
+8. Tags: one per minor at the milestone commit, created by the owner after the final merge into `main`; no tag or
+   commit tables in the docs.
+
+## What the foundation measured
+
+* **The minors, from the tags** (`validVersions` of every `*Request.json` at `3.9.2`, `4.0.0`, `4.0.1`, `4.0.2`,
+  `4.1.0`, `4.1.2`, `4.2.0`, `4.2.1`, `4.3.0`, `4.3.1`; `Errors.java` and `ApiKeys.java` at the same tags):
+
+  | Milestone | What the minor adds (client-facing) |
+  |---|---|
+  | 4.0 | KIP-896 removes the versions below the 2.1 baseline; Produce v12, ListOffsets v10, Metadata v13, DescribeGroups v6, EndTxn v5, TxnOffsetCommit v5, UpdateFeatures v2, DescribeCluster v2, ConsumerGroupHeartbeat v1, ConsumerGroupDescribe v1; errors 128, 129 |
+  | 4.1 | keys 88, 89 (unstable), 90–92; Produce v13, Fetch v18, AlterPartitionReassignments v1, ListTransactions v2, key 74 v1, share groups 76–79 at v1 and 83–87 stable; OffsetCommit v10, OffsetFetch v10, InitProducerId v6 unstable; errors 130–133 |
+  | 4.2 | OffsetCommit v10, OffsetFetch v10 (topic ids), ListOffsets v11, ShareFetch v2, ShareAcknowledge v2, DescribeShareGroupOffsets v1, WriteShareGroupState v1, ReadShareGroupStateSummary v1, AddRaftVoter v1, WriteTxnMarkers v2; 88/89 stable |
+  | 4.3 | DescribeLogDirs v5 |
+
+  The bug-fix releases changed nothing but JoinGroup, whose v0 and v1 4.0.0 removed and **4.0.1 restored**.
+  InitProducerId v6 (KIP-939) is still unstable at 4.3.1. No api the client listener serves changed its flexible
+  range, and the only new field type is the `[]int16` of the streams topology.
+* **The node** (`docker/kafka-4.3.1`) finalizes seven features (`metadata.version` 4.3-IV0 = 30, `kraft.version` 1,
+  `transaction.version` 2, `group.version` 1, `share.version` 1, `streams.version` 1,
+  `eligible.leader.replicas.version` 1) and lists **75 keys** on its client listeners: 0–3, 8–51, 55, 57, 60, 61,
+  64–66, 68, 69, 74–81 and 83–92 — the `broker` set of `ApiKeys.java` @ 4.3.1 minus the telemetry apis 71/72. Keys
+  4–7 have no version; 52–54, 56, 58, 59, 62, 63, 67, 70, 73 and 82 are controller-only.
+* **KIP-896 on the wire**: every version below a minimum closes the connection with `UnsupportedVersionException`,
+  Produce v0–v2 included although the answer still lists Produce from 0 (KAFKA-18659); WriteTxnMarkers v0 dies in
+  the header parser. JoinGroup v0/v1 are served.
+* **What became reachable**: the 122 `ShareSessionNotFound` of a ShareFetch/ShareAcknowledge of an unknown session,
+  the 126 `DuplicateVoter` of an AddRaftVoter of voter 1 and the 127 `VoterNotFound` of a RemoveRaftVoter of an
+  unknown voter; UnregisterBroker's 102 now carries the message `Broker ID 4242 is not currently registered`.
+* **The baseline of the inherited suite** on the node, with an owner for every failure, is the comment of the epic;
+  the foundation fixed its own surface (`ApiVersionProbeTest`, `ProtocolFramingTest`, `ApiKeysTest`,
+  `KafkaExceptionTest`, `ApiVersionsTest`), the rest is the 4.0 wave of each ticket.
 
 This plan was written at the end of the 3.x line by its coordinator. **Everything it says about Kafka 4.x is a
 starting hypothesis to be verified at the release tags and against the node** — the 3.x plan was corrected in

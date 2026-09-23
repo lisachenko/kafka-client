@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * principal of its own connection. {@see CreateDelegationTokenResponseV1} is the same body in the encoding before
  * KIP-482.
  *
- * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 final class CreateDelegationTokenResponseV2 extends CreateDelegationTokenResponse
 {

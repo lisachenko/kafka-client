@@ -80,7 +80,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
  * (`TxnOffsetCommitRequest.json` @ 3.8.1), no field, the version 3 frame of KIP-447 unchanged. It is the version
  * this client sends; {@see TxnOffsetCommitRequestV3} is the same frame with the version field of Kafka 2.5.
  *
- * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {

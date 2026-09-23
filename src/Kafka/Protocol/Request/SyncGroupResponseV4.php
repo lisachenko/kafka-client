@@ -19,8 +19,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 5 (Kafka 2.5) put a nullable `protocol_type` and `protocol_name` between the error code and the
  * assignment, with which the coordinator tells a member what the group has settled on.
  *
- * @see docs/protocol/3.9.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
- * @see docs/protocol/3.9.md, section "SyncGroup API (key 14, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
+ * @see docs/protocol/4.3.md, section "SyncGroup API (key 14, v0 to v5)"
  */
 final class SyncGroupResponseV4 extends SyncGroupResponse
 {

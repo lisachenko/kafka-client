@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * to verify here, so the version 5 is answered exactly what this version is, the **90** of a fenced producer
  * included. The version 4 is what a broker below Kafka 3.8 answers.
  *
- * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 final class InitProducerIdResponseV4 extends InitProducerIdResponse
 {

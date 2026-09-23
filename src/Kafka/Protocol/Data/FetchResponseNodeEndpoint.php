@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * @since Version 16 of the Fetch API (Kafka 3.7, KIP-951)
  *
- * @see docs/protocol/3.9.md, section "The leader discovery of KIP-951 (v16)"
+ * @see docs/protocol/4.3.md, section "The leader discovery of KIP-951 (v16)"
  */
 class FetchResponseNodeEndpoint implements BinarySchemaInterface
 {

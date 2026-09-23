@@ -44,7 +44,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  *
  * The frames the node really sent for each of these are the vectors of `consumer-group-heartbeat.json`.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
  */
 #[CoversClass(ConsumerGroupHeartbeatCoordinator::class)]
 final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase

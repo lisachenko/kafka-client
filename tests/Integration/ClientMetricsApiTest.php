@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
  * without traffic, so there is nothing to clean up; the `client-metrics` configuration resource that the vectors
  * of these apis were captured against was written and removed by hand and is not recreated here.
  *
- * @see docs/protocol/3.9.md, section "Client metrics (KIP-714) — wire only"
+ * @see docs/protocol/4.3.md, section "Client metrics (KIP-714) — wire only"
  */
 #[CoversClass(GetTelemetrySubscriptionsRequest::class)]
 #[CoversClass(GetTelemetrySubscriptionsResponse::class)]

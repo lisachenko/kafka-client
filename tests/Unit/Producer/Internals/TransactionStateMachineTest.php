@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
  * `tests/Unit/Protocol/Request/TransactionApiTest.php` and by the wire vectors, and that a broker really behaves
  * this way by `tests/Integration/TransactionalProducerTest.php`.
  *
- * @see docs/protocol/3.9.md, section "Transactions"
+ * @see docs/protocol/4.3.md, section "Transactions"
  */
 #[CoversClass(TransactionManager::class)]
 #[CoversClass(TransactionState::class)]

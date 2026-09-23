@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 3 (Kafka 2.4, KIP-345) appended the member array of the batch it answers, see
  * {@see LeaveGroupResponse}; below it the error code of the single member *is* the error code of the answer.
  *
- * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
+ * @see docs/protocol/4.3.md, section "The batch leave of KIP-345 (v3)"
  */
 final class LeaveGroupResponseV2 extends LeaveGroupResponse
 {

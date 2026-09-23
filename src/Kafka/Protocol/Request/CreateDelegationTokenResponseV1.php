@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * of KIP-48 are the ones KIP-124 appended the field to instead of prepending it. Version 2 writes the very same
  * fields in the flexible encoding ({@see CreateDelegationTokenResponse}).
  *
- * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 final class CreateDelegationTokenResponseV1 extends CreateDelegationTokenResponse
 {

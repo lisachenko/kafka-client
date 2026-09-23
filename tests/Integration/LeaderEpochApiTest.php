@@ -70,7 +70,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * container: the value the broker reports, the fencing of an epoch the leader is not on, and the fields the lower
  * version of each api does not have.
  *
- * @see docs/protocol/3.9.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v12)" and
+ * @see docs/protocol/4.3.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v12)" and
  *      "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
@@ -566,7 +566,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
     private static function deleteTopic(string $topic): void
     {
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
 
         $output   = [];
         $exitCode = 0;
@@ -595,7 +595,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         }
 
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
         $command   = sprintf(
             'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create'
             . ' --if-not-exists --topic %s --partitions 1 --replication-factor 1%s 2>&1',

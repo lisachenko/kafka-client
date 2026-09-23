@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `flexibleVersions`, which is the "none" of the generator - so this structure carries no tagged-field section
  * although Kafka 2.4 added it.
  *
- * @see docs/protocol/3.9.md, section "OffsetDelete API (key 47, v0)"
+ * @see docs/protocol/4.3.md, section "OffsetDelete API (key 47, v0)"
  */
 class OffsetDeleteRequestPartition implements BinarySchemaInterface
 {

@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `log.retention.minutes` and `log.retention.hours`, while the synonyms of a broker option are that same option name
  * once per source it could have come from (dynamic broker, dynamic default broker, static broker).
  *
- * @see docs/protocol/3.9.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 class DescribeConfigsResponseConfigSynonym implements BinarySchemaInterface
 {

@@ -59,7 +59,7 @@ use UnexpectedValueException;
  * the ANSWER again: every partition entry of it carries a `committed_leader_epoch` behind the committed offset.
  * The request of v5 is still the body of v2, and v5 is the version this client sends.
  *
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]

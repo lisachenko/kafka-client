@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
  * tagged-field section at the end of every structure. That makes them the shortest illustration of what the
  * flexible encoding looks like in an api that carries strings and nested arrays.
  *
- * @see docs/protocol/3.9.md, sections "AlterPartitionReassignments API (key 45, v0)" and
+ * @see docs/protocol/4.3.md, sections "AlterPartitionReassignments API (key 45, v0)" and
  *      "ListPartitionReassignments API (key 46, v0)"
  */
 #[CoversClass(AlterPartitionReassignmentsRequest::class)]

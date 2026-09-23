@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * encoding, the top-level error code and session id of KIP-227 and the three tagged fields of a partition entry -
  * is the one of version 12.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "The topic ids of the fetch path
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)" and "The topic ids of the fetch path
  *      (v13, KIP-516)"
  */
 final class FetchResponseV12 extends FetchResponse

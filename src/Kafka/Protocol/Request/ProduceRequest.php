@@ -137,7 +137,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The abortable transaction error of
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)" and "The abortable transaction error of
  *      KIP-890 (v11)"
  */
 class ProduceRequest extends AbstractRequest

@@ -173,7 +173,7 @@ use Throwable;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/3.9.md
+ * @see docs/protocol/4.3.md
  */
 class Client
 {
@@ -595,7 +595,7 @@ class Client
             );
         }
 
-        // The wire format carries one opaque record set per topic-partition, see docs/protocol/3.9.md
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/4.3.md
         $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
@@ -3441,7 +3441,7 @@ class Client
      *
      * @return array<string, int|string>
      *
-     * @see docs/protocol/3.9.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
+     * @see docs/protocol/4.3.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
      *      KIP-951 (v16)"
      */
     private static function leaderHintOf(
@@ -3494,7 +3494,7 @@ class Client
      * @throws Common\Errors\GroupMaxSizeReachedException If the group is full (`group.consumer.max.size`)
      * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a (re-)join
      *
-     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
      */
     public function joinConsumerGroup(
         Node $coordinatorNode,
@@ -3552,7 +3552,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
      */
     public function consumerGroupHeartbeat(
         Node $coordinatorNode,
@@ -3603,7 +3603,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
      */
     public function leaveConsumerGroup(
         Node $coordinatorNode,

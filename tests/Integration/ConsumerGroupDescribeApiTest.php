@@ -50,7 +50,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group of this class carries the `t3-848-desc-` prefix and every member of it leaves with the epoch -1
  * before the group is deleted, in {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ConsumerGroupDescribeRequest::class)]

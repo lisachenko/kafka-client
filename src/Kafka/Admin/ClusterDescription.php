@@ -26,7 +26,7 @@ use Protocol\Kafka\Common\Node;
  * which one it is: {@see self::$endpointType} is the {@see EndpointType} the server answered with, and the nodes
  * are its brokers or its controllers accordingly.
  *
- * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
  *      (v1)"
  */
 final class ClusterDescription

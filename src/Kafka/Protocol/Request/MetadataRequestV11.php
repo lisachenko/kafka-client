@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * ignored ("Versions 10 and 11 should not use the topicId field or set topic name to null"), so a request of this
  * version names its topics by name, see {@see MetadataRequest}.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Metadata by topic id (v12, KIP-516)"
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v12)" and "Metadata by topic id (v12, KIP-516)"
  */
 final class MetadataRequestV11 extends MetadataRequest
 {

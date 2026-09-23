@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * is no "unchanged" to express here.
  *
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponse
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
  */
 class ConsumerGroupDescribeAssignment implements BinarySchemaInterface
 {

@@ -66,7 +66,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
  * `PARTITION_CHANGE_RECORD` into the metadata log about 90 ms after the answer of AlterReplicaLogDirs. The raft
  * log `__cluster_metadata-0` sits in the first directory and is never part of an answer of this api.
  *
- * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v4)" and
+ * @see docs/protocol/4.3.md, sections "DescribeLogDirs API (key 35, v0 to v4)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
@@ -92,7 +92,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
 final class LogDirsApiTest extends IntegrationTestCase
 {
     /**
-     * The two directories of `log.dirs` of `docker/kafka-3.9.2/start.sh`
+     * The two directories of `log.dirs` of `docker/kafka-4.3.1/start.sh`
      */
     private const string FIRST_DIR = '/tmp/kafka-logs';
 

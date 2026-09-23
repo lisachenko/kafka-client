@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Request\DescribeQuorumResponseV1;
  * It creates nothing on the broker and therefore has nothing to clean up: the metadata quorum is read-only from
  * the outside, and the topic it asks about on purpose is one that does not exist.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeQuorumRequest::class)]

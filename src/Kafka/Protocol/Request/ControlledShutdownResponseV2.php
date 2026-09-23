@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * "Versions 1 and 2 are the same as version 0" - so this one class reads all three. The version 3 of KIP-482 is the
  * same two fields in the flexible encoding.
  *
- * @see docs/protocol/3.9.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 final class ControlledShutdownResponseV2 extends ControlledShutdownResponse
 {

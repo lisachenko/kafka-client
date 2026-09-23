@@ -99,8 +99,8 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
  * epoch if using the consumer protocol": the same four bytes with a second meaning, so {@see self::$generationId}
  * keeps its published name and a classic member goes on writing its generation into it.
  *
- * @see docs/protocol/3.9.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {

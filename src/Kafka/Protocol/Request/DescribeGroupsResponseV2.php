@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 3 (KIP-430, Kafka 2.3) appended a 32-bit `authorized_operations` bit set to every group entry, which
  * {@see DescribeGroupsResponse} decodes; the answer of the versions 1 and 2 is this one.
  *
- * @see docs/protocol/3.9.md, section "The authorized operations of a group (v3, KIP-430)"
+ * @see docs/protocol/4.3.md, section "The authorized operations of a group (v3, KIP-430)"
  */
 final class DescribeGroupsResponseV2 extends DescribeGroupsResponse
 {

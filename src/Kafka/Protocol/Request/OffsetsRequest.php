@@ -129,7 +129,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * the end of the tiered part of it. Only the third is answered with a real timestamp; the other four do not read
  * a message and are answered with the timestamp -1.
  *
- * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v9), a.k.a. ListOffset" and
+ * @see docs/protocol/4.3.md, sections "Offsets API (key 2, v0 to v9), a.k.a. ListOffset" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest

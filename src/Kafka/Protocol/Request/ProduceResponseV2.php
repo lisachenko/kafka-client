@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version of the request it belongs to. It exists for the same reason {@see \Protocol\Kafka\Protocol\Request\FetchResponseV3}
  * does: the class of an answer states which request it was read back for.
  *
- * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v11)"
+ * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v11)"
  */
 final class ProduceResponseV2 extends ProduceResponse
 {

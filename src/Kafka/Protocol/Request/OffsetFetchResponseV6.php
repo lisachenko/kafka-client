@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * (`UnstableOffsetCommit`) that a partition of it can carry when the request asked for stable offsets, which is
  * why the version exists at all: a client that sends it promises to understand the 88 and to retry.
  *
- * @see docs/protocol/3.9.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 final class OffsetFetchResponseV6 extends OffsetFetchResponse
 {

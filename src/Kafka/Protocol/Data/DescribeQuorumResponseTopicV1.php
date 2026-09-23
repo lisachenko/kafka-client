@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * version selects is {@see DescribeQuorumResponsePartitionV1}, the partition without the error message of KIP-853,
  * whose voters and observers carry the two timestamps of KIP-836 and no directory id.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 final class DescribeQuorumResponseTopicV1 extends DescribeQuorumResponseTopic
 {

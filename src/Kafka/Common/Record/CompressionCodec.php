@@ -33,7 +33,7 @@ use Protocol\Kafka\Common\Errors\UnsupportedCompressionTypeException;
  * the xerial library and lz4 in the LZ4 frame format, whose header checksum depends on the message format of the
  * message that carries it, see {@see Lz4}.
  *
- * @see docs/protocol/3.9.md, section "MessageSet and Message"
+ * @see docs/protocol/4.3.md, section "MessageSet and Message"
  * @see kafka/message/CompressionCodec.scala @ 0.10.2.2
  */
 final class CompressionCodec

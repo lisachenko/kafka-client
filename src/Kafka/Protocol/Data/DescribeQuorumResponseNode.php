@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `controller.quorum.voters` of the node of this line - is in it all the same: the array is written from the
  * voter set the leader holds, and the directory ids of its replica states are the zero uuid.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 class DescribeQuorumResponseNode implements BinarySchemaInterface
 {

@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2: "Regardless of throttling, send the response
  * immediately") instead of holding the answer back for the throttle time.
  *
- * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 final class DeleteTopicsRequestV1 extends DeleteTopicsRequest
 {

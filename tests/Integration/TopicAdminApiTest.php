@@ -55,7 +55,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
  * broker answered with the wording of `ZkAdminManager` and `AdminZkClient`; the messages below are the ones the
  * node really sent, and the node id of the image is **1**, not the 0 of the ZooKeeper images of the lines below.
  *
- * @see docs/protocol/3.9.md, sections "CreateTopics API (key 19, v0 to v7)", "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, sections "CreateTopics API (key 19, v0 to v7)", "DeleteTopics API (key 20, v0 to v6)"
  *      and "CreatePartitions API (key 37, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]

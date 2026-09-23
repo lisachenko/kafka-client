@@ -54,7 +54,7 @@ use RuntimeException;
  * Every key of this class is named `t3-39-share-…`; not one of them is ever created, because a coordinator
  * lookup registers nothing - the broker only hashes the key onto a partition of an internal topic.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 #[CoversClass(GroupCoordinatorRequest::class)]
 #[CoversClass(GroupCoordinatorRequestV4::class)]

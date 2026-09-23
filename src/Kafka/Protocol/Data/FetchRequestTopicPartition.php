@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * the specification and is therefore not written at all, so a version 17 consumer entry is the version 12 entry
  * byte for byte; {@see FetchRequestTopicPartitionV12} keeps the entry of the versions 12 to 16.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "The leader epoch (KIP-320)",
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)", "The leader epoch (KIP-320)",
  *      "Epoch validation in the fetch itself (v12, KIP-595)" and "The replica directory id of KIP-853 (v17)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * producer whose epoch the coordinator has left behind - the code **90** `ProducerFenced` instead of the 47
  * `InvalidProducerEpoch` the version 3 is answered with.
  *
- * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 final class InitProducerIdRequestV3 extends InitProducerIdRequest
 {

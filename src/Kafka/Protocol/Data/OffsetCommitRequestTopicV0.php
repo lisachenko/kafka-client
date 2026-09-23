@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The topic entry itself is the same in every version, only its partition entries differ, so this class exists
  * solely to lower the version constant that selects the partition class.
  *
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 final class OffsetCommitRequestTopicV0 extends OffsetCommitRequestTopic
 {

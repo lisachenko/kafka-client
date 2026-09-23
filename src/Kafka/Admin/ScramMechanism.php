@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ScramCredentialInfo;
  * is the int8 that travels on the wire; the hash and the key length are RFC 5802 and RFC 7677 (`ScramMechanism`
  * @ 2.8.2: `SCRAM-SHA-256` is `SHA-256`/32 bytes, `SCRAM-SHA-512` is `SHA-512`/64).
  *
- * @see docs/protocol/3.9.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/4.3.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 enum ScramMechanism: int
 {

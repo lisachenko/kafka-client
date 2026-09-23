@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribedGroup;
  * together with **both** assignments, the one it owns and the one it is meant to own
  * ({@see ConsumerGroupDescribedGroup}, {@see \Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember}).
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
  */
 class ConsumerGroupDescribeResponse extends AbstractResponse
 {

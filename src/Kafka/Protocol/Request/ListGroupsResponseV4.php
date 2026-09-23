@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * and whose {@see \Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol::$groupType} stays null.
  * {@see ListGroupsResponse} decodes the answer with the type.
  *
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "ListGroups API (key 16, v0 to v5)"
  */
 final class ListGroupsResponseV4 extends ListGroupsResponse
 {

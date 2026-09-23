@@ -38,7 +38,7 @@ namespace Protocol\Kafka\Admin;
  *   NewTopic::withBrokerDefaults('events');
  * </code>
  *
- * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/4.3.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class NewTopic
 {

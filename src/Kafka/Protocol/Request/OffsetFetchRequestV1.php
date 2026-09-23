@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * offsets of every topic of the group. This class therefore only lowers the version constant that
  * {@see OffsetFetchRequest::getScheme()} follows.
  *
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 final class OffsetFetchRequestV1 extends OffsetFetchRequest
 {

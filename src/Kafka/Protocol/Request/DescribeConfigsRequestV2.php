@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * one more boolean. This class is the frame a broker below Kafka 2.6 understands; its `$includeDocumentation` is
  * ignored, because the byte has no place in it.
  *
- * @see docs/protocol/3.9.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class DescribeConfigsRequestV2 extends DescribeConfigsRequest
 {

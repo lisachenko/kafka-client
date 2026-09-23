@@ -52,7 +52,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see self::tearDownAfterClass()} - every member with a leave heartbeat of the epoch -1 first, because a group
  * that still holds one is not deletable.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(ConsumerGroupHeartbeatRequest::class)]

@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * **flexible** one and **version 3 (Kafka 3.3) adds the user resource type** of KIP-373 ("Version 3 adds the user
  * resource type" of `DeleteAclsRequest.json` @ 3.3.2). No field changed with it.
  *
- * @see docs/protocol/3.9.md, section "DeleteAcls API (key 31, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DeleteAcls API (key 31, v0 to v3)"
  */
 class DeleteAclsRequest extends AbstractRequest
 {

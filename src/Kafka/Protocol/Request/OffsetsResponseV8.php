@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * with {@see OffsetsRequestV8}, including the **35** `UNSUPPORTED_VERSION` a 3.9.2 broker answers such a request
  * per partition when it asks for {@see OffsetsRequest::LATEST_TIERED_TIMESTAMP}.
  *
- * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 final class OffsetsResponseV8 extends OffsetsResponse
 {

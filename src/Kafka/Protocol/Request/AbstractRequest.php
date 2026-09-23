@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * not know. {@see self::getHeaderVersion()} is the `ApiKeys.requestHeaderVersion()` of the Java client, including
  * its one exception: version 0 of ControlledShutdown carries no client id at all.
  *
- * @see docs/protocol/3.9.md, section "Requests"
+ * @see docs/protocol/4.3.md, section "Requests"
  */
 abstract class AbstractRequest extends AbstractProtocolMessage
 {

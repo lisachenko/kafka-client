@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * keeps the {@see self::UNKNOWN_BYTES} of the default. {@see DescribeLogDirsResponseLogDirV3} is the entry of
  * every version below 4.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 class DescribeLogDirsResponseLogDir implements BinarySchemaInterface
 {

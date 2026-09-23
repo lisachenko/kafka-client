@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\ListTransactionsResponseV0;
  * **Version 1 (Kafka 3.8, KIP-994)** appends the `duration_filter` int64 to the request and changes the answer in
  * nothing at all, which is why both versions of the answer are the same bytes read through two classes.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 and v1)"
  */
 #[CoversClass(ListTransactionsRequest::class)]
 #[CoversClass(ListTransactionsRequestV0::class)]

@@ -32,7 +32,7 @@ namespace Protocol\Kafka\Common;
  * The wildcard `*` is not a pattern type but a literal pattern whose **name** is `*`
  * ({@see self::WILDCARD_NAME}), which is what `kafka-acls.sh --topic '*'` writes.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 final class PatternType
 {

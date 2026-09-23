@@ -53,8 +53,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group and topic of this class carries the `t3-36-` prefix of the Kafka 3.6 wave and is removed again in
  * {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/3.9.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(OffsetCommitRequest::class)]

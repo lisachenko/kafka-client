@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Data\DeleteAclsResponseFilterResult;
  * is what a delete of an acl that was never written looks like. A principal that may not `Alter` the `CLUSTER`
  * resource is answered **31** in every filter result, with no matching acl.
  *
- * @see docs/protocol/3.9.md, section "DeleteAcls API (key 31, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DeleteAcls API (key 31, v0 to v3)"
  */
 class DeleteAclsResponse extends AbstractResponse
 {

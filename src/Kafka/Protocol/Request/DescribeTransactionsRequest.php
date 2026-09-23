@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * {@see \Protocol\Kafka\Admin\AdminClient::describeTransactions()} groups the ids by their coordinator and sends
  * one request per broker.
  *
- * @see docs/protocol/3.9.md, section "DescribeTransactions API (key 65, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTransactions API (key 65, v0)"
  */
 class DescribeTransactionsRequest extends AbstractRequest
 {

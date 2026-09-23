@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * {@see self::forGroup()} builds the "I am not in a group" form that the versions below 3 carry implicitly: the
  * generation -1 and the empty member id, which the coordinator accepts exactly as it accepted a v2 commit.
  *
- * @see docs/protocol/3.9.md, section "The consumer group metadata of a transactional commit (KIP-447)"
+ * @see docs/protocol/4.3.md, section "The consumer group metadata of a transactional commit (KIP-447)"
  */
 final class ConsumerGroupMetadata implements \Stringable
 {

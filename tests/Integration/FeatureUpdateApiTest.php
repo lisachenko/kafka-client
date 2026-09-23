@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
  * The one thing this class really writes is the deletion of a feature the controller has never finalized, which is
  * a `FeatureLevelRecord` with the level 0 - "disabled" - and changes nothing a later test can see.
  *
- * @see docs/protocol/3.9.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
  *      run of KIP-778 (v1)"
  */
 #[CoversClass(AdminClient::class)]

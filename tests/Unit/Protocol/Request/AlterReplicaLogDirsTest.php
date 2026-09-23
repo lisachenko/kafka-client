@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponseV1;
 /**
  * Byte-exact tests for the AlterReplicaLogDirs API of Kafka 1.0 (api key 34, v0, KIP-113).
  *
- * @see docs/protocol/3.9.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AlterReplicaLogDirsRequest::class)]
 #[CoversClass(AlterReplicaLogDirsRequestV1::class)]

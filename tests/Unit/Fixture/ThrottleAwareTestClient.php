@@ -24,7 +24,7 @@ use Protocol\Kafka\Client;
  * time, and the microseconds are recorded for the assertions.
  *
  * @see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT
- * @see docs/protocol/3.9.md, section "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, section "Quotas and throttle time"
  */
 final class ThrottleAwareTestClient extends Client
 {

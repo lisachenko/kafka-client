@@ -61,7 +61,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
  * `TransactionAbortable` at the version 4 where the version 3 is answered the **48** `InvalidTxnState`.
  * {@see TxnOffsetCommitResponseV3} is the frame of Kafka 2.5, and the one that still gets the 48.
  *
- * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {

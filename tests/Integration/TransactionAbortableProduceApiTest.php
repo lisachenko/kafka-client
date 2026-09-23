@@ -61,7 +61,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
  * Every topic, group and transactional id of this class is named `t2-38-…`, so that it can run next to the other
  * suites on the shared node.
  *
- * @see docs/protocol/3.9.md, sections "The abortable transaction error of KIP-890 (v11)" and "Produce API (key 0,
+ * @see docs/protocol/4.3.md, sections "The abortable transaction error of KIP-890 (v11)" and "Produce API (key 0,
  *      v0 to v11)"
  */
 #[CoversClass(ProduceRequest::class)]

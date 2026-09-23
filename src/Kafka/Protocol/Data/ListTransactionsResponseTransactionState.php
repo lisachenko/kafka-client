@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see \Protocol\Kafka\Protocol\Request\DescribeTransactionsRequest}. There is no per-entry error code either -
  * the whole answer of a broker carries one.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 and v1)"
  */
 class ListTransactionsResponseTransactionState implements BinarySchemaInterface
 {

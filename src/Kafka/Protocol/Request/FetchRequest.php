@@ -175,7 +175,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower
  * versions available.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
  *      "The topic ids of the fetch path (v13, KIP-516)", "The replica state of KIP-903 (v15)",
  *      "The leader discovery of KIP-951 (v16)" and "The replica directory id of KIP-853 (v17)"
  */

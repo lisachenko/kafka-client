@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The Java admin client calls the call `deleteConsumerGroups()`, which is the name
  * {@see \Protocol\Kafka\Admin\AdminClient::deleteConsumerGroups()} carries.
  *
- * @see docs/protocol/3.9.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 class DeleteGroupsRequest extends AbstractRequest
 {

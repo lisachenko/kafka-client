@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The controller answers one entry per topic of the request, in the order it received them, and every partition of
  * the request carries its own error - see {@see ReassignablePartitionResponse}.
  *
- * @see docs/protocol/3.9.md, section "AlterPartitionReassignments API (key 45, v0)"
+ * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0)"
  */
 class ReassignableTopicResponse implements BinarySchemaInterface
 {

@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the transaction" that `AddPartitionsToTxnManager` @ 3.9.2 maps it back to "for backward compatibility with
  * clients". Both frames are measured on the node, see the section of the document.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The abortable transaction error of
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)" and "The abortable transaction error of
  *      KIP-890 (v11)"
  */
 final class ProduceResponseV10 extends ProduceResponse

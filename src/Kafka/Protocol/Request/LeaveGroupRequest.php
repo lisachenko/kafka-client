@@ -60,8 +60,8 @@ use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMemberV3;
  * the {@see \Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember} class of **this** api version: a batch of
  * a {@see LeaveGroupRequestV4} therefore never writes a reason onto the wire, whatever the caller named.
  *
- * @see docs/protocol/3.9.md, section "The leave reason of KIP-800 (v5)"
- * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
+ * @see docs/protocol/4.3.md, section "The leave reason of KIP-800 (v5)"
+ * @see docs/protocol/4.3.md, section "The batch leave of KIP-345 (v3)"
  */
 class LeaveGroupRequest extends AbstractRequest
 {

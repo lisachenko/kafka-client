@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * was delivered: `KRaftMetadataCache.getTopicMetadataForDescribeTopicResponse` @ 3.9.2 begins the topic named
  * here at this partition index and every topic behind it at its partition 0.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 class DescribeTopicPartitionsCursor implements BinarySchemaInterface
 {

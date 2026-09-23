@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `replica_directory_id` of {@see FetchRequestTopicPartition::$replicaDirectoryId}. This class is the entry of
  * version 17, {@see FetchRequestTopicV13} the one of the versions 13 to 16.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "The topic ids of the fetch path
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)", "The topic ids of the fetch path
  *      (v13, KIP-516)" and "The replica directory id of KIP-853 (v17)"
  */
 class FetchRequestTopic implements BinarySchemaInterface

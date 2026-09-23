@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * {@see self::bindings()} flattens the group back into the {@see AclBinding} objects that
  * {@see \Protocol\Kafka\Admin\AdminClient::describeAcls()} answers with.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 class DescribeAclsResponseResource implements BinarySchemaInterface
 {

@@ -21,8 +21,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * single key and the highest one a broker below Kafka 3.0 serves. {@see GroupCoordinatorRequest} sends the batched
  * frame.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class GroupCoordinatorRequestV3 extends GroupCoordinatorRequest
 {

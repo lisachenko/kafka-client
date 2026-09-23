@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * the coordinator to hold back an offset whose transaction is still open. This version always reads the offset of
  * the last commit, pending or not.
  *
- * @see docs/protocol/3.9.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 final class OffsetFetchRequestV6 extends OffsetFetchRequest
 {

@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `PartitionIndexes` asks for no partition of that topic. A client that wants "everything" has to send the null
  * array on purpose.
  *
- * @see docs/protocol/3.9.md, section "ListPartitionReassignments API (key 46, v0)"
+ * @see docs/protocol/4.3.md, section "ListPartitionReassignments API (key 46, v0)"
  */
 class ListPartitionReassignmentsTopics implements BinarySchemaInterface
 {

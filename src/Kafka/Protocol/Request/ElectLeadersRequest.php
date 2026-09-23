@@ -60,7 +60,7 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersRequestTopicPartitions;
  * **Kafka 2.4 added the version 2** (KIP-482) right after the version 1 of KIP-460, and it changed no field: it is
  * the first **flexible** version of the api. {@see ElectLeadersRequestV1} is the same body in the old encoding.
  *
- * @see docs/protocol/3.9.md, section "ElectLeaders API (key 43, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 class ElectLeadersRequest extends AbstractRequest
 {

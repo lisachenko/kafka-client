@@ -61,7 +61,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
  * `group_instance_id`, version 8 (KIP-482) is that frame in the flexible encoding, and **version 9** (KIP-848,
  * Kafka 3.6) is the version 8 frame with another number in its header - the version this client sends.
  *
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]

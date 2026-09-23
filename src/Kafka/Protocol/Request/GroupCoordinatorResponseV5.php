@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE} be asked for at all - so this answer holds the very
  * bytes of a version 6 answer. {@see GroupCoordinatorResponse} decodes the version 6.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class GroupCoordinatorResponseV5 extends GroupCoordinatorResponse
 {

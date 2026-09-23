@@ -77,9 +77,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see self::tearDownAfterClass()} - every KIP-848 member with the leave heartbeat of the epoch -1 first,
  * because a group that still holds a member is not deletable.
  *
- * @see docs/protocol/3.9.md, section "The group types of KIP-848 (Kafka 3.8)"
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "The group types of KIP-848 (Kafka 3.8)"
+ * @see docs/protocol/4.3.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ListGroupsRequest::class)]

@@ -63,10 +63,10 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group, topic and instance id of this class carries the `t3-32-` prefix of the Kafka 3.2 wave, and the
  * groups are deleted in {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/3.9.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
- * @see docs/protocol/3.9.md, section "The leave reason of KIP-800 (v5)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
- * @see docs/protocol/3.9.md, section "LeaveGroup API (key 13, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
+ * @see docs/protocol/4.3.md, section "The leave reason of KIP-800 (v5)"
+ * @see docs/protocol/4.3.md, section "JoinGroup API (key 11, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "LeaveGroup API (key 13, v0 to v5)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]

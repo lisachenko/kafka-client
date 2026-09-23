@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Common;
  * carry `OfflineReplicas` ({@see PartitionMetadata::$offlineReplicas}), so this class only lowers the version
  * constant that {@see TopicMetadata::partitionClass()} follows.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v12)"
  */
 final class TopicMetadataV1 extends TopicMetadata
 {

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * writes the 120 here - this request adds a partition to the transaction instead of writing into one, so no
  * verification happens, and the two versions answer the same codes.
  *
- * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
  */
 final class AddOffsetsToTxnResponseV3 extends AddOffsetsToTxnResponse
 {

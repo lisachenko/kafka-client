@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Data\DescribeTopicPartitionsResponsePartition;
  * answer carries no endpoint at all, so resolving an id to a host needs a Metadata or DescribeCluster answer
  * next to this one.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 final class TopicPartitionInfo
 {

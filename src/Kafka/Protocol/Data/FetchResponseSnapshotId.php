@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Both fields default to `-1`, and the structure is left out of every answer that has no snapshot to name - which
  * is every answer a 2.8.2 broker in ZooKeeper mode sends.
  *
- * @see docs/protocol/3.9.md, section "Epoch validation in the fetch itself (v12, KIP-595)"
+ * @see docs/protocol/4.3.md, section "Epoch validation in the fetch itself (v12, KIP-595)"
  */
 class FetchResponseSnapshotId implements BinarySchemaInterface
 {

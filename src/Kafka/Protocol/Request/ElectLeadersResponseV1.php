@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The top-level error code of KIP-460 is in both versions; the version 2 writes the same fields compactly and ends
  * every structure in a tagged-field section.
  *
- * @see docs/protocol/3.9.md, section "ElectLeaders API (key 43, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 final class ElectLeadersResponseV1 extends ElectLeadersResponse
 {

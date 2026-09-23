@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see OffsetCommitRequestTopicV2}, {@see OffsetCommitRequestTopicV1} and {@see OffsetCommitRequestTopicV0}
  * lower.
  *
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 class OffsetCommitRequestTopic implements BinarySchemaInterface
 {

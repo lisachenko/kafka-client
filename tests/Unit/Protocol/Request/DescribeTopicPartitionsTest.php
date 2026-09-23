@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Request\DescribeTopicPartitionsResponse;
  * `cursor`, and the answer hands the next cursor back. Both cursors are **nullable structures**, the shape this
  * protocol had not used before - one int8 in front of the structure, `-1` for null and `1` for present.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 #[CoversClass(DescribeTopicPartitionsRequest::class)]
 #[CoversClass(DescribeTopicPartitionsResponse::class)]

@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 15 of the same release (KIP-903) deprecates the `replica_id` and puts the tagged `replica_state` in its
  * place, which is the only wire difference between the two, see {@see FetchRequest::$replicaState}.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "The tiered-storage error of KIP-405 (v14)"
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)", "The tiered-storage error of KIP-405 (v14)"
  *      and "The replica state of KIP-903 (v15)"
  */
 final class FetchRequestV14 extends FetchRequest

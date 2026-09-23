@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
  * The three ACL apis (keys 29, 30 and 31) at the version 3 of Kafka 3.3, against the `StandardAuthorizer` of the node.
  *
  * This is the first line of the repository that implements them, and the only reason it can is the authorizer of
- * `docker/kafka-3.9.2`: `authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer` with
+ * `docker/kafka-4.3.1`: `authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer` with
  * `super.users=User:ANONYMOUS;User:admin;User:kafkatest` and `allow.everyone.if.no.acl.found=false`. The PLAINTEXT
  * listener every other suite uses is therefore a super user, and the SASL user `acltest` is the one principal an
  * acl can be written for - which is what makes the last test of this class possible: an acl that really changes
@@ -58,7 +58,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
  * **The node is shared, so this class leaves no acl behind.** Every test writes acls of its own resources
  * (`t4-33-*`) and the tear down removes every acl that names them, whatever the test did with them.
  *
- * @see docs/protocol/3.9.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/4.3.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
  *      and "DeleteAcls API (key 31, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]

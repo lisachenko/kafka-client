@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.4 made the version 1 the first flexible one of this api and added no field, so this class only lowers
  * the version constant: the version 0 is what a broker below Kafka 2.4 speaks.
  *
- * @see docs/protocol/3.9.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 final class IncrementalAlterConfigsRequestV0 extends IncrementalAlterConfigsRequest
 {

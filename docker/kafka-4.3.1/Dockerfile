@@ -1,4 +1,4 @@
-# Apache Kafka 3.9.2 (Scala 2.13) in KRaft mode - one combined node (broker + controller), no ZooKeeper - for
+# Apache Kafka 4.3.1 (Scala 2.13) in KRaft mode - one combined node (broker + controller), no ZooKeeper - for
 # wire-protocol testing.
 #
 # The node listens on PLAINTEXT (9092), SSL (9093), SASL_PLAINTEXT (9094) and SASL_SSL (9095) for the clients, and on
@@ -9,9 +9,9 @@
 # broker.crt is the CA file that the SSL integration tests hand to the client. Do not use these keys anywhere else.
 FROM eclipse-temurin:17-jre
 
-ARG KAFKA_VERSION=3.9.2
+ARG KAFKA_VERSION=4.3.1
 ARG SCALA_VERSION=2.13
-ARG KAFKA_DIST=kafka_2.13-3.9.2
+ARG KAFKA_DIST=kafka_2.13-4.3.1
 
 # Extra CA certificates of a sandbox proxy, see ca/README.md (the directory is normally empty)
 COPY ca/ /usr/local/share/ca-certificates/extra/

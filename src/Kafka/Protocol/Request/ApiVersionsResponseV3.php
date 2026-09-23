@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * It is what a broker of Kafka 2.4 to 3.8 answers, and the class the version 3 wire vectors are replayed through.
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 final class ApiVersionsResponseV3 extends ApiVersionsResponse
 {

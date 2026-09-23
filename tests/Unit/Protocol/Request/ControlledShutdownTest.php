@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\ControlledShutdownResponseV2;
  * The versions differ in their header alone: version 1, added by Kafka 0.9, carries the client id of the common
  * request header, version 0 has no client id at all.
  *
- * @see docs/protocol/3.9.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 #[CoversClass(ControlledShutdownRequest::class)]
 #[CoversClass(ControlledShutdownRequestV0::class)]

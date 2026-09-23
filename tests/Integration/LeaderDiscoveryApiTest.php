@@ -63,7 +63,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
  *
  * Every topic of this class is named `t2-37-…`, so that it can run next to the other suites on the shared node.
  *
- * @see docs/protocol/3.9.md, sections "The leader discovery of KIP-951 (v10)", "The leader discovery of KIP-951
+ * @see docs/protocol/4.3.md, sections "The leader discovery of KIP-951 (v10)", "The leader discovery of KIP-951
  *      (v16)", "Produce API (key 0, v0 to v11)" and "Fetch API (key 1, v0 to v17)"
  */
 #[CoversClass(ProduceRequest::class)]

@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * an empty `OptionalLong` there - and for a directory the broker could not measure. Two directories of the same
  * filesystem answer the same two numbers, which is what the two log directories of the node of this line do.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 final class LogDirInfo
 {

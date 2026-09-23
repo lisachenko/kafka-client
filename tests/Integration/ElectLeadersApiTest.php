@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
  * answered the generic message of the error code 3. The code itself is unchanged, and so is the 84 of a partition
  * that needs no election.
  *
- * @see docs/protocol/3.9.md, section "ElectLeaders API (key 43, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]

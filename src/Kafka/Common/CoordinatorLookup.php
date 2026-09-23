@@ -50,7 +50,7 @@ use UnexpectedValueException;
  * the rest of a batch only; the keys that are already answered are answered again, which costs nothing but the
  * bytes.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class CoordinatorLookup
 {

@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see \Protocol\Kafka\Protocol\Request\MetadataRequest::byTopicIds()}. The frame of the entry did not
  * change at all between 10 and 12, so this one class writes every one of them.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)", "Topic ids (v10, KIP-516)",
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v12)", "Topic ids (v10, KIP-516)",
  *      "Metadata by topic id (v12, KIP-516)" and "Flexible versions in the engine (KIP-482)"
  */
 class MetadataRequestTopic implements BinarySchemaInterface

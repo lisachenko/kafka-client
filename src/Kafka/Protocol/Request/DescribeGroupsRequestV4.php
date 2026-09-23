@@ -21,8 +21,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 5 (KIP-482) is the same frame written with the compact types and a tagged-field section, which
  * {@see DescribeGroupsRequest} sends.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 final class DescribeGroupsRequestV4 extends DescribeGroupsRequest
 {

@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\DescribeClientQuotasResponseEntry;
  * sense of - an unknown entity type, an unknown match type, a duplicated entity type - and **35**
  * (UnsupportedVersionException) when a request reaches a broker that has no quota cache to answer from.
  *
- * @see docs/protocol/3.9.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 class DescribeClientQuotasResponse extends AbstractResponse
 {

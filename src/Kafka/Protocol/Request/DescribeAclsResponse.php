@@ -48,7 +48,7 @@ use Protocol\Kafka\Protocol\Data\DescribeAclsResponseResource;
  * throttle time and the resources and nothing else, so the field arrives as the compact `01` and never as the
  * null `00` - measured on the node for the foundation of this line.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 class DescribeAclsResponse extends AbstractResponse
 {

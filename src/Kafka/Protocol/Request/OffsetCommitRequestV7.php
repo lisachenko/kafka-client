@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * types and a tagged-field section per structure, which {@see OffsetCommitRequestV8} is, and version 9 (Kafka
  * 3.6, KIP-848) is those same bytes one number higher, which {@see OffsetCommitRequest} sends.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 final class OffsetCommitRequestV7 extends OffsetCommitRequest
 {

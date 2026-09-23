@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * sends it in every request of the protocol and must not leave its group when it is closed, which is what keeps
  * its partitions across a restart.
  *
- * @see docs/protocol/3.9.md, sections "The member id of a first join (v4, KIP-394)" and
+ * @see docs/protocol/4.3.md, sections "The member id of a first join (v4, KIP-394)" and
  *      "Static membership (KIP-345)"
  */
 #[CoversClass(ConsumerCoordinator::class)]

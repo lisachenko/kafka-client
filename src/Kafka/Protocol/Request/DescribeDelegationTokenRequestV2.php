@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the version 2 is what a broker below Kafka 3.3 is asked with, and its answer names no requester
  * ({@see DescribeDelegationTokenResponseV2}).
  *
- * @see docs/protocol/3.9.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 final class DescribeDelegationTokenRequestV2 extends DescribeDelegationTokenRequest
 {

@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\Data\FeatureUpdateKeyV0;
  * answers what it *would* do without writing anything. {@see UpdateFeaturesRequestV0} is the frame below that,
  * with the boolean and without the dry run.
  *
- * @see docs/protocol/3.9.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
  *      run of KIP-778 (v1)"
  */
 class UpdateFeaturesRequest extends AbstractRequest

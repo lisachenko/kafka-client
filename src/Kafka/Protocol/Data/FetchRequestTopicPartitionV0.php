@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * exist below it, so this class only lowers the version constant that
  * {@see FetchRequestTopicPartition::getScheme()} follows.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v17)"
  */
 final class FetchRequestTopicPartitionV0 extends FetchRequestTopicPartition
 {

@@ -111,8 +111,8 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * {@see JoinGroupRequestV8} sends the very same bytes one api version lower and is answered with
  * {@see JoinGroupResponseV8}, whose answer has no such flag.
  *
- * @see docs/protocol/3.9.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
+ * @see docs/protocol/4.3.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 class JoinGroupRequest extends AbstractRequest
 {

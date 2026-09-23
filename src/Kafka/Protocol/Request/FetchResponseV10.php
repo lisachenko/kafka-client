@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 11 (Kafka 2.3, KIP-392) inserted the `preferred_read_replica` between the aborted transactions and the
  * record set of every partition, see {@see \Protocol\Kafka\Protocol\Data\FetchResponsePartition::$preferredReadReplica}.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v17)"
  */
 final class FetchResponseV10 extends FetchResponse
 {

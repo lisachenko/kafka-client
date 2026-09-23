@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * ({@see \Protocol\Kafka\Protocol\Data\DescribeQuorumResponseReplicaStateV0}): a voter or an observer is its id
  * and its log end offset, and when the leader last heard from it is not in the answer.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
  *      replica state (v1, KIP-836)"
  */
 final class DescribeQuorumResponseV0 extends DescribeQuorumResponse

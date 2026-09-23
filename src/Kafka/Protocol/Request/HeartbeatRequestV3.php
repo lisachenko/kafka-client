@@ -19,8 +19,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 4 (Kafka 2.4, KIP-482) added no field: it is this frame written with the **compact** types and a
  * tagged-field section, which {@see HeartbeatRequest} sends.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "Heartbeat API (key 12, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "Heartbeat API (key 12, v0 to v4)"
  */
 final class HeartbeatRequestV3 extends HeartbeatRequest
 {

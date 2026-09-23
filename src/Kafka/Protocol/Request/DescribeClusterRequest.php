@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * answers **114** (`MismatchedEndpointType`) and a byte the enum has no case for is **115**
  * (`UnsupportedEndpointType`); {@see DescribeClusterRequestV0} is the frame below that, which cannot ask at all.
  *
- * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
  *      (v1)"
  */
 class DescribeClusterRequest extends AbstractRequest

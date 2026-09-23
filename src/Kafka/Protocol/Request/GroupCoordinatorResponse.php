@@ -74,7 +74,7 @@ use UnexpectedValueException;
  * `__transaction_state` for a transactional id - the answer is the error code 15 (GroupCoordinatorNotAvailable)
  * with the coordinator `-1:"":-1`, so the lookup is worth retrying.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 class GroupCoordinatorResponse extends AbstractResponse
 {

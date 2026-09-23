@@ -1,5 +1,5 @@
-PHP Native Apache Kafka Client — 3.x (Kafka 3.9.2)
-==================================================
+PHP Native Apache Kafka Client — 4.x (towards Kafka 4.3.1)
+==========================================================
 
 ![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=main)
 [![Code Coverage](https://img.shields.io/codecov/c/github/lisachenko/kafka-client/main)](https://app.codecov.io/gh/lisachenko/kafka-client)
@@ -11,16 +11,18 @@ protocol — no `ext-rdkafka` required. It ships a Producer, a Consumer and a lo
 client, designed to stay close in spirit to the official Java client's API while feeling
 natural in PHP.
 
-**This branch is the 4.x line and is being built towards the Apache Kafka 4.x wire protocol**, one Kafka
-minor at a time, on top of the finished 3.x line (branched off as `3.x`). Today it speaks **Kafka 3.9.2** and the
-**KIP-848 consumer protocol** — everything the 3.x line delivered, verified against a 3.9.2 **KRaft** node — and
-the version of every api the client sends is listed under
+**This branch is the 4.x line and is being built towards the Apache Kafka 4.3.1 wire protocol**, one Kafka
+minor at a time (4.0, 4.1, 4.2, 4.3), on top of the finished 3.x line (branched off as `3.x`), with the **KIP-932
+share consumer** as its last wave. Its foundation is in: the node of the line is a Kafka **4.3.1** **KRaft** node,
+the api keys 88 to 92 and the error codes 128 to 133 are declared, and the inherited suite runs against it. The
+client still sends what the 3.x line delivered — Kafka 3.9.2 and the **KIP-848 consumer protocol** — until the
+milestones of the line raise it, and the version of every api the client sends is listed under
 [Supported Kafka protocol versions](#supported-kafka-protocol-versions). `main` is the top of the cascade:
 the frozen protocol snapshots below it live on `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x`
 (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every
 wire vector those lines captured is replayed against the classes of this branch. The grammar this branch
-implements is written down, byte for byte, in [docs/protocol/3.9.md](docs/protocol/3.9.md), verified against
-a real Kafka 3.9.2 node running in KRaft mode; the plan of the 4.x line is
+implements is written down, byte for byte, in [docs/protocol/4.3.md](docs/protocol/4.3.md), verified against
+a real Kafka 4.3.1 node running in KRaft mode (the frames of the 3.x line were captured on a 3.9.2 one); the plan of the 4.x line is
 [docs/handoff/main.md](docs/handoff/main.md), and the records of the finished lines are
 [docs/handoff/3.x.md](docs/handoff/3.x.md), [docs/handoff/2.x.md](docs/handoff/2.x.md) and
 [docs/handoff/1.x.md](docs/handoff/1.x.md).
@@ -174,7 +176,7 @@ wrote there was deleted by `deleteRecords()` or by a retention run. That one the
 records fell below the start of the log, so the partition is numbered from the sequence 0 again
 and the batch is sent once more, under the same producer id and without touching any other
 partition. All three are documented, with what a real 1.1.1 broker answers, in
-[docs/protocol/3.9.md](docs/protocol/3.9.md), section "The idempotent producer".
+[docs/protocol/4.3.md](docs/protocol/4.3.md), section "The idempotent producer".
 
 ### Transactions
 
@@ -247,7 +249,7 @@ $producer->commitTransaction();
 The consumer of that loop runs with `enable.auto.commit = false` and `read_committed`. A runnable
 version is [examples/transactional-producer.php](examples/transactional-producer.php); the wire
 protocol behind it — the five apis 24 to 28, the control batches and the last stable offset — is in
-[docs/protocol/3.9.md](docs/protocol/3.9.md), section "Transactions".
+[docs/protocol/4.3.md](docs/protocol/4.3.md), section "Transactions".
 
 Consumer API
 ------------
@@ -731,7 +733,7 @@ ones, one that authenticates learns the SASL ones. They never mix, and there is 
 listener about another.
 
 [examples/ssl.php](examples/ssl.php) produces and consumes over the SSL listener of `docker-compose.yml`, whose
-self-signed certificate is checked in as `docker/kafka-3.9.2/ssl/broker.crt`.
+self-signed certificate is checked in as `docker/kafka-4.3.1/ssl/broker.crt`.
 
 **SASL/PLAIN works on this branch.** Kafka 0.9 did have SASL, but only GSSAPI (Kerberos) and
 negotiated *outside* the Kafka protocol; Kafka 0.10.0 (KIP-43) added the `SaslHandshake` request
@@ -768,78 +770,79 @@ document and its "SaslAuthenticate API (key 36, v0)" section.
 Supported Kafka protocol versions
 ----------------------------------
 
-This branch is the **4.x line**, built towards the Kafka 4.x wire protocol on top of the finished **3.x line**
-(its record is [docs/handoff/3.x.md](docs/handoff/3.x.md)). Today it speaks **Kafka 3.9.2** — everything
-Kafka 3.0 to 3.9 added, and the KIP-848 consumer protocol — and the table below lists the version of every api
-the client sends; what Kafka 4.x adds arrives one gated milestone at a time (the plan is
-[docs/handoff/main.md](docs/handoff/main.md)). The frozen protocol snapshots of the lines below live on `3.x`
-(Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x`
-(Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
+This branch is the **4.x line**, built towards the Kafka **4.3.1** wire protocol on top of the finished **3.x
+line** (its record is [docs/handoff/3.x.md](docs/handoff/3.x.md)). Today the client speaks **Kafka 3.9.2** —
+everything Kafka 3.0 to 3.9 added, and the KIP-848 consumer protocol — against a **4.3.1** node, and the table
+below lists the version of every api the client sends; what Kafka 4.0 to 4.3 add arrives one gated milestone at a
+time (the plan is [docs/handoff/main.md](docs/handoff/main.md)). The frozen protocol snapshots of the lines below
+live on `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka
+0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
 
 Kafka 0.10.0 added the **ApiVersions** request (key 18), so this line does not have to guess what
-its broker speaks. The table below is the literal answer of the 3.9.2 container — a **KRaft** node,
-broker and controller in one process — on its client listeners: **61 apis**, the keys 0–3, 8–51, 55, 57,
-60, 61, 64–66, 68, 69, 74, 75, 80 and 81. The ZooKeeper-only apis 4–7 and 56, the controller-only apis
-52–54, 58, 59, 62, 63, 67, 70, 73 and 82, the client-metrics apis 71 and 72 (hidden while the node has no
-telemetry plugin) and the early-access share-group apis 76–79 and 83–87 (hidden without
-`unstable.api.versions.enable`) are not in it. The answer is read with `Client::apiVersions()` and pinned
-by `tests/Integration/ApiVersionProbeTest.php`, which sends one real frame of every key at its maximum
-version and one above it.
+its broker speaks. The "Versions served" column is the literal answer of the 4.3.1 container — a **KRaft**
+node, broker and controller in one process — on its client listeners: **75 apis**, the keys 0–3, 8–51, 55,
+57, 60, 61, 64–66, 68, 69, 74–81 and 83–92. The ZooKeeper apis 4–7 have no version any more, the
+controller-only apis 52–54, 56, 58, 59, 62, 63, 67, 70, 73 and 82 live on the controller listener, and the
+client-metrics apis 71 and 72 are hidden while the node has no telemetry plugin. **Kafka 4.0 removed the
+versions below the Kafka 2.1 baseline** (KIP-896): fifteen rows start above v0, and every removed version —
+Produce v0 to v2 too, which the answer still lists — closes the connection. The answer is read with
+`Client::apiVersions()` and pinned by `tests/Integration/ApiVersionProbeTest.php`, which sends one real frame
+of every key at its maximum version, one above it and one below every minimum.
 
-The "main" column lists the versions this client has a class for; the one in **bold** is the version
-it sends, and a version the node serves that the current milestone has not reached yet is named as
-**not yet implemented on this line** — with the KIP-848 consumer wave, the last one of the line, there is
-none left: every key the node serves on a client listener has a class here. The `2.x` column is where the
-line started.
+The "main" column lists the versions this client has a class for; the one in **bold** is the version it
+sends, and a version the node serves that the current milestone has not reached yet is **not yet implemented
+on this line** until its milestone lands. The share-group apis 76–79 and 90–92, the share-group state apis
+83–87 and the streams-group apis 88 and 89 are in the "leaves out" table below until their milestones. The
+`2.x` column is where the 3.x line started.
 
-| Api key | API | Versions in 3.9.2 | Client-facing | `2.x` | `main` (3.x, towards Kafka 3.9.2) |
+| Api key | API | Versions served by 4.3.1 | Client-facing | `2.x` | `main` (4.x, towards Kafka 4.3.1) |
 |---|---|---|---|---|---|
-| 0 | Produce | v0 … v11 | yes | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0) | v0 … v10, **v11** (the promise to understand the **120** `TransactionAbortable` of KIP-890, Kafka 3.8, which the node answers a transactional partition the coordinator has not verified where a v10 is answered the 48; `ProduceRequestV10`/`ProduceResponseV10` keep the leader discovery of KIP-951, `ProduceRequestV9` the flexible v9 and `ProduceResponsePartitionV8` its partition entry; **v2** for `message.format.version` below 0.11.0) |
-| 1 | Fetch | v0 … v17 | yes | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) | v0 … v16 and **v17** (the tagged `replica_directory_id` of KIP-853, Kafka 3.9, in every partition entry — the log directory a **follower** fetches for, left off the wire by a consumer whose zero uuid is the default of the field; the tagged `node_endpoints` of the answer, KIP-951, Kafka 3.7, which the node writes for the 6 of a follower fetch; every topic named by its **topic id**, KIP-516, Kafka 3.1; session-less in `fetchPartitions()`, with an incremental fetch session per broker in the consumer; `FetchRequestV12` keeps the frame that names its topics, `FetchRequestV13` to `FetchRequestV16` the versions below) |
-| 2 | Offsets (ListOffsets) | v0 … v9 | yes | v0 … v5, **v6** | v0 … v8 and **v9** (the last tiered offset `-5` of KIP-1005, Kafka 3.9, `AdminClient::listLatestTieredOffsets()`; the local log start offset `-4` of KIP-405, Kafka 3.5, `AdminClient::listEarliestLocalOffsets()`; `OffsetsRequestV8` keeps the version of the local log start offset and `OffsetsRequestV7` the one of the max timestamp `-3` of KIP-734, Kafka 3.0) |
-| 3 | Metadata | v0 … v12 | yes | v0 … v10, **v11** (v10 with the topic ids of KIP-516) | v0 … v11, **v12** (a request **by topic id**, `MetadataRequest::byTopicIds()`, KIP-516, Kafka 3.1; `MetadataRequestV11` keeps the version below it) |
-| 4 | LeaderAndIsr | not on the client listener of a KRaft node | broker→broker | no | no |
-| 5 | StopReplica | not on the client listener of a KRaft node | broker→broker | no | no |
-| 6 | UpdateMetadata | not on the client listener of a KRaft node | broker→broker | no | no |
-| 7 | ControlledShutdown | not on the client listener of a KRaft node | controller | v0 … v2, **v3** | v0 … v2, **v3** — wire only: the classes and the vectors stay, `controlledShutdown()` is gone from the admin client |
-| 8 | OffsetCommit | v0 … v9 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v8, **v9** (Kafka 3.6, the v8 frame that may carry the 69 of an unknown group and the 113 of a KIP-848 member epoch; `OffsetCommitRequestV8` keeps the flexible v8) |
-| 9 | OffsetFetch | v0 … v9 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8** (several groups in one request, Kafka 3.0), **v9** (the member id and member epoch of KIP-848 per group entry, Kafka 3.7 — the version this client sends; `OffsetFetchRequestV8` keeps the batch of Kafka 3.0) |
+| 0 | Produce | v3 … v13 (v0 … v2 listed, refused) | yes | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0) | v0 … v10, **v11** (the promise to understand the **120** `TransactionAbortable` of KIP-890, Kafka 3.8, which the node answers a transactional partition the coordinator has not verified where a v10 is answered the 48; `ProduceRequestV10`/`ProduceResponseV10` keep the leader discovery of KIP-951, `ProduceRequestV9` the flexible v9 and `ProduceResponsePartitionV8` its partition entry; **v2** for `message.format.version` below 0.11.0) |
+| 1 | Fetch | v4 … v18 | yes | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) | v0 … v16 and **v17** (the tagged `replica_directory_id` of KIP-853, Kafka 3.9, in every partition entry — the log directory a **follower** fetches for, left off the wire by a consumer whose zero uuid is the default of the field; the tagged `node_endpoints` of the answer, KIP-951, Kafka 3.7, which the node writes for the 6 of a follower fetch; every topic named by its **topic id**, KIP-516, Kafka 3.1; session-less in `fetchPartitions()`, with an incremental fetch session per broker in the consumer; `FetchRequestV12` keeps the frame that names its topics, `FetchRequestV13` to `FetchRequestV16` the versions below) |
+| 2 | Offsets (ListOffsets) | v1 … v11 | yes | v0 … v5, **v6** | v0 … v8 and **v9** (the last tiered offset `-5` of KIP-1005, Kafka 3.9, `AdminClient::listLatestTieredOffsets()`; the local log start offset `-4` of KIP-405, Kafka 3.5, `AdminClient::listEarliestLocalOffsets()`; `OffsetsRequestV8` keeps the version of the local log start offset and `OffsetsRequestV7` the one of the max timestamp `-3` of KIP-734, Kafka 3.0) |
+| 3 | Metadata | v0 … v13 | yes | v0 … v10, **v11** (v10 with the topic ids of KIP-516) | v0 … v11, **v12** (a request **by topic id**, `MetadataRequest::byTopicIds()`, KIP-516, Kafka 3.1; `MetadataRequestV11` keeps the version below it) |
+| 4 | LeaderAndIsr | none — removed with ZooKeeper in 4.0 | broker→broker | no | no |
+| 5 | StopReplica | none — removed with ZooKeeper in 4.0 | broker→broker | no | no |
+| 6 | UpdateMetadata | none — removed with ZooKeeper in 4.0 | broker→broker | no | no |
+| 7 | ControlledShutdown | none — removed with ZooKeeper in 4.0 | controller | v0 … v2, **v3** | v0 … v2, **v3** — wire only: the classes and the vectors stay, `controlledShutdown()` is gone from the admin client |
+| 8 | OffsetCommit | v2 … v10 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v8, **v9** (Kafka 3.6, the v8 frame that may carry the 69 of an unknown group and the 113 of a KIP-848 member epoch; `OffsetCommitRequestV8` keeps the flexible v8) |
+| 9 | OffsetFetch | v1 … v10 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8** (several groups in one request, Kafka 3.0), **v9** (the member id and member epoch of KIP-848 per group entry, Kafka 3.7 — the version this client sends; `OffsetFetchRequestV8` keeps the batch of Kafka 3.0) |
 | 10 | GroupCoordinator (FindCoordinator) | v0 … v6 | yes | v0 … v2, **v3** | v0 … v3, **v4** (the `coordinator_keys` batch of KIP-699, Kafka 3.0; `GroupCoordinatorRequestV3` keeps the single key), **v5** (the same frame with the promise of the code 120 of KIP-890, Kafka 3.8), **v6** (the third coordinator type of KIP-932, Kafka 3.9, the version this client sends: `COORDINATOR_TYPE_SHARE` is a constant and a measurement — the node answers a share lookup the **15** of a coordinator it does not have, and the versions below it the **42**; `GroupCoordinatorRequestV5`/`ResponseV5` and the V4 pair keep the versions below) |
 | 11 | JoinGroup | v0 … v9 | yes | v0 … v6, **v7** | v0 … v8, **v9** (the `reason` of KIP-800 at v8, the `skip_assignment` of KIP-814 at v9, Kafka 3.2; `JoinGroupRequestV7`/`V8` keep the versions below) |
 | 12 | Heartbeat | v0 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
 | 13 | LeaveGroup | v0 … v5 | yes | v0 … v3, **v4** | v0 … v4, **v5** (the `reason` of KIP-800 per member, Kafka 3.2; `LeaveGroupRequestV4` keeps the version below) |
 | 14 | SyncGroup | v0 … v5 | yes | v0 … v4, **v5** | v0 … v4, **v5** |
-| 15 | DescribeGroups | v0 … v5 | yes | v0 … v4, **v5** | v0 … v4, **v5** |
+| 15 | DescribeGroups | v0 … v6 | yes | v0 … v4, **v5** | v0 … v4, **v5** |
 | 16 | ListGroups | v0 … v5 | yes | v0 … v3, **v4** | v0 … v3, **v4** (the states filter and the group state of KIP-518), **v5** (the `types_filter` of the request and the `group_type` of every entry, KIP-848, Kafka 3.8, the version this client sends; `ListGroupsRequestV4`/`ResponseV4` and `ListGroupResponseProtocolV4` keep the version below) |
 | 17 | SaslHandshake | v0, v1 | yes | v0, **v1** | v0, **v1** |
 | 18 | ApiVersions | v0 … v4 | yes | v0 … v2, **v3** | v0 … v3, **v4** (Kafka 3.9, KAFKA-17011: the v3 frame, and the answer reports a supported feature whose `min_version` is 0 — `kraft.version` on a KRaft node; `ApiVersionsRequestV3`/`ResponseV3` keep the version below) |
-| 19 | CreateTopics | v0 … v7 | controller | v0 … v6, **v7** | v0 … v6, **v7** |
-| 20 | DeleteTopics | v0 … v6 | controller | v0 … v5, **v6** | v0 … v5, **v6** |
+| 19 | CreateTopics | v2 … v7 | controller | v0 … v6, **v7** | v0 … v6, **v7** |
+| 20 | DeleteTopics | v1 … v6 | controller | v0 … v5, **v6** | v0 … v5, **v6** |
 | 21 | DeleteRecords | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 22 | InitProducerId | v0 … v5 | yes | v0 … v3, **v4** | v0 … v4, **v5** (the code 120 of KIP-890, Kafka 3.8, which a 3.9.2 coordinator never answers here — a fenced producer is still the 90; `InitProducerIdRequestV4`/`ResponseV4` keep the frame of KIP-588) |
-| 23 | OffsetForLeaderEpoch | v0 … v4 | broker→broker | v0 … v3, **v4** (classes, vectors and the consumer's truncation detection) | v0 … v3, **v4** (classes, vectors and the consumer's truncation detection) |
+| 23 | OffsetForLeaderEpoch | v2, v3, v4 | broker→broker | v0 … v3, **v4** (classes, vectors and the consumer's truncation detection) | v0 … v3, **v4** (classes, vectors and the consumer's truncation detection) |
 | 24 | AddPartitionsToTxn | v0 … v5 | yes up to v3, **broker→broker from v4** | v0 … v2, **v3** | v0 … v2, **v3** (the frame `Client::addPartitionsToTxn()` sends), **v4** and **v5** (classes and vectors only — Kafka 3.5/3.8, KIP-890 made it a broker api: the node authorizes every version from 4 on as `CLUSTER_ACTION` and answers a client the top-level 31 at both, and the 120 of a `verify_only` at both; `AddPartitionsToTxnRequestV4`/`ResponseV4` keep the version below the v5) |
 | 25 | AddOffsetsToTxn | v0 … v4 | yes | v0 … v2, **v3** | v0 … v3, **v4** (the code 120 of KIP-890, Kafka 3.8, which this api never carries: it adds a partition instead of writing into one, and an unknown producer id is the 49; `AddOffsetsToTxnRequestV3`/`ResponseV3` keep the version below) |
-| 26 | EndTxn | v0 … v4 | yes | v0 … v2, **v3** | v0 … v3, **v4** (the code 120 of KIP-890, Kafka 3.8; an abort of a committed transaction is still the 48, a fenced producer the 90; `EndTxnRequestV3`/`ResponseV3` keep the version below); **v5 (4.0) is beyond this line** |
-| 27 | WriteTxnMarkers | v0, v1 | broker→broker | v0, **v1** (classes and vectors; a broker→broker api, probed only) | v0, **v1** (classes and vectors; a broker→broker api, probed only) |
-| 28 | TxnOffsetCommit | v0 … v4 | yes | v0 … v2, **v3** | v0 … v3, **v4** — the one client api of the five that really gets the **120** on this node (KIP-890, Kafka 3.8): a commit whose `__consumer_offsets` partition the transaction does not hold is answered 120 where the v3 is answered 48; `TxnOffsetCommitRequestV3`/`ResponseV3` keep the version below |
-| 29 | DescribeAcls | v0 … v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::describeAcls()`) |
-| 30 | CreateAcls | v0 … v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::createAcls()`) |
-| 31 | DeleteAcls | v0 … v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::deleteAcls()`) |
-| 32 | DescribeConfigs | v0 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
+| 26 | EndTxn | v0 … v5 | yes | v0 … v2, **v3** | v0 … v3, **v4** (the code 120 of KIP-890, Kafka 3.8; an abort of a committed transaction is still the 48, a fenced producer the 90; `EndTxnRequestV3`/`ResponseV3` keep the version below); **v5 (4.0) is beyond this line** |
+| 27 | WriteTxnMarkers | v1, v2 | broker→broker | v0, **v1** (classes and vectors; a broker→broker api, probed only) | v0, **v1** (classes and vectors; a broker→broker api, probed only) |
+| 28 | TxnOffsetCommit | v0 … v5 | yes | v0 … v2, **v3** | v0 … v3, **v4** — the one client api of the five that really gets the **120** on this node (KIP-890, Kafka 3.8): a commit whose `__consumer_offsets` partition the transaction does not hold is answered 120 where the v3 is answered 48; `TxnOffsetCommitRequestV3`/`ResponseV3` keep the version below |
+| 29 | DescribeAcls | v1, v2, v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::describeAcls()`) |
+| 30 | CreateAcls | v1, v2, v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::createAcls()`) |
+| 31 | DeleteAcls | v1, v2, v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::deleteAcls()`) |
+| 32 | DescribeConfigs | v1 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
 | 33 | AlterConfigs | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
-| 34 | AlterReplicaLogDirs | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
-| 35 | DescribeLogDirs | v0 … v4 | yes | v0, v1, **v2** | v0 … v3, **v4** (the top-level error code of Kafka 3.2, the volume sizes of KIP-827, Kafka 3.3) |
+| 34 | AlterReplicaLogDirs | v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
+| 35 | DescribeLogDirs | v1 … v5 | yes | v0, v1, **v2** | v0 … v3, **v4** (the top-level error code of Kafka 3.2, the volume sizes of KIP-827, Kafka 3.3) |
 | 36 | SaslAuthenticate | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 37 | CreatePartitions | v0 … v3 | controller | v0 … v2, **v3** | v0 … v2, **v3** |
-| 38 | CreateDelegationToken | v0 … v3 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (a token for another principal, KIP-373, Kafka 3.3) |
-| 39 | RenewDelegationToken | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
-| 40 | ExpireDelegationToken | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
-| 41 | DescribeDelegationToken | v0 … v3 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (the token requester, KIP-373, Kafka 3.3) |
+| 38 | CreateDelegationToken | v1, v2, v3 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (a token for another principal, KIP-373, Kafka 3.3) |
+| 39 | RenewDelegationToken | v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
+| 40 | ExpireDelegationToken | v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
+| 41 | DescribeDelegationToken | v1, v2, v3 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (the token requester, KIP-373, Kafka 3.3) |
 | 42 | DeleteGroups | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 43 | ElectLeaders | v0, v1, v2 | controller | v0, v1, **v2** | v0, v1, **v2** |
 | 44 | IncrementalAlterConfigs | v0, v1 | yes | v0 (Kafka 2.3), **v1** | v0 (Kafka 2.3), **v1** |
-| 45 | AlterPartitionReassignments | v0 | controller | **v0** (Kafka 2.4) | **v0** (Kafka 2.4) |
+| 45 | AlterPartitionReassignments | v0, v1 | controller | **v0** (Kafka 2.4) | **v0** (Kafka 2.4) |
 | 46 | ListPartitionReassignments | v0 | controller | **v0** (Kafka 2.4) | **v0** (Kafka 2.4) |
 | 47 | OffsetDelete | v0 | yes | **v0** (Kafka 2.4) | **v0** (Kafka 2.4) |
 | 48 | DescribeClientQuotas | v0, v1 | yes | v0, **v1** | v0, **v1** |
@@ -848,21 +851,21 @@ line started.
 | 51 | AlterUserScramCredentials | v0 | yes | **v0** (Kafka 2.7) | **v0** (Kafka 2.7) |
 | 55 | DescribeQuorum | v0, v1, v2 | broker (a raft api the client listener serves) | – | **v0, v1, v2** (`AdminClient::describeMetadataQuorum()`, Kafka 2.7 / 3.3 / 3.9; the nodes, the directory ids and the two error messages of KIP-853, `Admin\QuorumNode` and `Admin\RaftVoterEndpoint`; `DescribeQuorumRequestV1`/`ResponseV1` and the `V0` classes keep the versions below) |
 | 56 | AlterIsr | not on the client listener of a KRaft node | broker→controller | no — broker→controller, probed only | no — broker→controller, probed only |
-| 57 | UpdateFeatures | v0, v1 | controller | **v0** (Kafka 2.7) | **v0, v1** (Kafka 2.7 / 3.3, the `upgrade_type` and the `validate_only` of KIP-778) |
-| 60 | DescribeCluster | v0, v1 | yes | **v0** (Kafka 2.8) | **v0, v1** (Kafka 2.8 / 3.7, the `endpoint_type` of KIP-919 and the codes 114 and 115; `DescribeClusterRequestV0` keeps the frame below) |
+| 57 | UpdateFeatures | v0, v1, v2 | controller | **v0** (Kafka 2.7) | **v0, v1** (Kafka 2.7 / 3.3, the `upgrade_type` and the `validate_only` of KIP-778) |
+| 60 | DescribeCluster | v0, v1, v2 | yes | **v0** (Kafka 2.8) | **v0, v1** (Kafka 2.8 / 3.7, the `endpoint_type` of KIP-919 and the codes 114 and 115; `DescribeClusterRequestV0` keeps the frame below) |
 | 61 | DescribeProducers | v0 | yes | **v0** (Kafka 2.8) | **v0** (Kafka 2.8) |
 | 64 | UnregisterBroker | v0 | controller | – | no — a controller api, probed only (Kafka 2.8) |
 | 65 | DescribeTransactions | v0 | yes | – | **v0** (`AdminClient::describeTransactions()`, Kafka 3.0) |
-| 66 | ListTransactions | v0, v1 | yes | – | **v0, v1** (`AdminClient::listTransactions()`, Kafka 3.0; the duration filter of KIP-994, Kafka 3.8; `ListTransactionsRequestV0` keeps the version below) |
-| 68 | ConsumerGroupHeartbeat | v0 | yes | – | **v0** (Kafka 3.5, KIP-848) — the whole membership protocol of the new consumer in one api, in place of JoinGroup, SyncGroup, Heartbeat and LeaveGroup: a consumer with `group.protocol=consumer` sends it from `Consumer\Internals\ConsumerGroupHeartbeatCoordinator` through `Client::joinConsumerGroup()`, `::consumerGroupHeartbeat()` and `::leaveConsumerGroup()`, with `ConsumerGroupHeartbeatRequest::forJoin()`/`forHeartbeat()`/`forLeave()` for the delta encoding of the frame |
-| 69 | ConsumerGroupDescribe | v0 | yes | – | **v0** (Kafka 3.7, KIP-848) — the DescribeGroups of the new protocol (`AdminClient::describeConsumerGroups()`, `::describeConsumerGroup()`): the group and assignment epochs, the server-side assignor and both assignments of every member. Key 15 answers a group of this type the state `Dead`, so an admin client routes by the `group_type` of a ListGroups v5 |
+| 66 | ListTransactions | v0, v1, v2 | yes | – | **v0, v1** (`AdminClient::listTransactions()`, Kafka 3.0; the duration filter of KIP-994, Kafka 3.8; `ListTransactionsRequestV0` keeps the version below) |
+| 68 | ConsumerGroupHeartbeat | v0, v1 | yes | – | **v0** (Kafka 3.5, KIP-848) — the whole membership protocol of the new consumer in one api, in place of JoinGroup, SyncGroup, Heartbeat and LeaveGroup: a consumer with `group.protocol=consumer` sends it from `Consumer\Internals\ConsumerGroupHeartbeatCoordinator` through `Client::joinConsumerGroup()`, `::consumerGroupHeartbeat()` and `::leaveConsumerGroup()`, with `ConsumerGroupHeartbeatRequest::forJoin()`/`forHeartbeat()`/`forLeave()` for the delta encoding of the frame |
+| 69 | ConsumerGroupDescribe | v0, v1 | yes | – | **v0** (Kafka 3.7, KIP-848) — the DescribeGroups of the new protocol (`AdminClient::describeConsumerGroups()`, `::describeConsumerGroup()`): the group and assignment epochs, the server-side assignor and both assignments of every member. Key 15 answers a group of this type the state `Dead`, so an admin client routes by the `group_type` of a ListGroups v5 |
 | 71 | GetTelemetrySubscriptions | v0 | yes (hidden without a telemetry plugin) | – | **v0, wire only** (Kafka 3.7, KIP-714) — classes and vectors, no client method |
 | 72 | PushTelemetry | v0 | yes (hidden without a telemetry plugin) | – | **v0, wire only** (Kafka 3.7, KIP-714) |
-| 74 | ListClientMetricsResources | v0 | yes | – | **v0, wire only** (Kafka 3.7, KIP-714) — classes and vectors, no client method |
+| 74 | ListClientMetricsResources | v0, v1 | yes | – | **v0, wire only** (Kafka 3.7, KIP-714) — classes and vectors, no client method |
 | 75 | DescribeTopicPartitions | v0 | yes | – | **v0** (`AdminClient::describeTopicPartitions()`, the paging api of KIP-966, Kafka 3.8) |
-| 80 | AddRaftVoter | v0 | yes (a raft api the client listener serves, forwarded to the controller) | – | no — probed only (Kafka 3.9, KIP-853): a foreign cluster id is the 104, an unreadable voter key the 42, and a well-formed one the **35**, because the node has finalized `kraft.version` at 0 |
+| 80 | AddRaftVoter | v0, v1 | yes (a raft api the client listener serves, forwarded to the controller) | – | no — probed only (Kafka 3.9, KIP-853): a foreign cluster id is the 104, an unreadable voter key the 42, and a well-formed one the **35**, because the node has finalized `kraft.version` at 0 |
 | 81 | RemoveRaftVoter | v0 | yes (a raft api the client listener serves, forwarded to the controller) | – | no — probed only (Kafka 3.9, KIP-853), refused exactly like the key 80 |
-| 82 | UpdateRaftVoter | v0 | controller | – | no — a controller api, probed only (Kafka 3.9); every version of it closes a client connection |
+| 82 | UpdateRaftVoter | not on the client listener of a KRaft node | controller | – | no — a controller api, probed only (Kafka 3.9); every version of it closes a client connection |
 | 76–79, 83–87 | The share-group apis (KIP-932) | v0 | no — unstable, hidden without `unstable.api.versions.enable` | – | no — **out by decision** (Kafka 3.9): every frame of them closes the connection, and their error codes 121 to 124 stay declared |
 
 The lower versions of every api are kept because their frames are what the wire vectors of the
@@ -983,18 +986,19 @@ current milestone):
 | **KIP-853: the directory id of a follower fetch** (Fetch v17, the tagged `replica_directory_id` of every partition entry; `Data\FetchRequestTopicPartition::$replicaDirectoryId`, `FetchRequest::getReplicaDirectoryId()`) | 3.9 | – | – | – | – | – | – | **yes** — the wire; a consumer writes nothing and its frame does not change, and a fetch of an ordinary topic never reads the field: only `KafkaRaftClient` does, for `__cluster_metadata` on the controller listener |
 | **KIP-1005: the last tiered offset** (ListOffsets v9, the target time `-5`; `OffsetsRequest::LATEST_TIERED_TIMESTAMP`, `AdminClient::listLatestTieredOffsets()`) | 3.9 | – | – | – | – | – | – | **yes** — the wire; without remote storage the node answers the offset `-1` with the error code 0, on a filled log as on an empty one |
 | **KIP-932 (the coordinator type of a share group)** (FindCoordinator v6, `COORDINATOR_TYPE_SHARE`) | 3.9 | – | – | – | – | – | – | **wire only** — the version and the constant; the type 2 is legal from v6 and answered the **15** `CoordinatorNotAvailable` by a 3.9.2 node, which has no share coordinator, and the **42** below it. Share groups themselves (76–79, 83–87) are out of this line |
-| Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
+| Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 133** (the constants of 4.3.1, declared by the foundation of the 4.x line; 105 is 3.0's, 128 is 4.0's) |
 
-What this line leaves out **by design** (the owner's decisions for the 3.x line; everything else the 3.9.2
-node serves is "not yet" until its milestone lands):
+What this line leaves out **by design** (the owner's decisions for the 3.x and the 4.x line; everything else the
+4.3.1 node serves is "not yet" until its milestone lands):
 
 | Feature                                          | Arrived in | On this branch                        |
 |--------------------------------------------------|------------|---------------------------------------|
 | SASL/SCRAM, SASL/GSSAPI and SASL/OAUTHBEARER    | 0.10.2 / 0.9 / 2.0 | no — PLAIN only, which is why a delegation token can be issued but not used |
 | ACL apis `DescribeAcls`/`CreateAcls`/`DeleteAcls` | 0.11       | **yes** — at the version 3 of Kafka 3.3, against the `StandardAuthorizer` of the 3.9.2 KRaft node (`AdminClient::describeAcls()`, `createAcls()`, `deleteAcls()`) |
 | Replication apis `LeaderAndIsr`/`StopReplica`/`UpdateMetadata`/`AlterIsr` | 0.8 / 2.7 | no — only a ZooKeeper controller sends them, and a KRaft node does not even list them on its client listeners |
-| The KRaft controller apis (52–54, 58, 59, 62–64, 67, 70, 73, 80–82) | 2.7 … 3.9 | no — probed only; of the ones a KRaft node lists on its client listeners, **64** answers the 102 of an unknown broker id and **80/81** the 35 of a quorum whose `kraft.version` is 0, and the rest live on the controller listener. **DescribeQuorum (55) is the exception and is implemented**, at v0 to v2 |
-| Share groups (76–79 and their state apis 83–87, KIP-932) | 3.9 | no — early access in 3.9, hidden without `unstable.api.versions.enable`: a frame of any of the nine **closes the connection**, and the error codes 121 to 124 are declared and unreachable; the 4.x line implements them |
+| The KRaft controller apis (52–54, 58, 59, 62–64, 67, 70, 73, 80–82) | 2.7 … 3.9 | no — probed only; of the ones a KRaft node lists on its client listeners, **64** answers the 102 of an unknown broker id, and the rest live on the controller listener. **DescribeQuorum (55) is implemented**, at v0 to v2, and **AddRaftVoter (80) and RemoveRaftVoter (81) get admin methods on the 4.x line** (the 4.3.1 node runs a dynamic quorum, `kraft.version` 1, and answers the 126 and the 127 of KIP-853) — not yet implemented |
+| Share groups (76–79, 90–92 and their state apis 83–87, KIP-932) | 3.9 (early access) / 4.1 / GA 4.2 | **in on the 4.x line**, not yet implemented: the wire at the 4.1 and 4.2 milestones and a share consumer as the last wave; the state apis 83–87 wire only. The 4.3.1 node serves all twelve (`share.version` 1) and answers a ShareFetch of an unknown session with the **122** |
+| Streams groups (88, 89, KIP-1071) | 4.1 / GA 4.2 | no — out by decision: declared and probed, the codes 130 to 132 declared |
 | Client metrics (71, 72, 74, KIP-714) | 3.7 | **the wire classes are implemented** — `GetTelemetrySubscriptionsRequest`/`Response`, `PushTelemetryRequest`/`Response`, `ListClientMetricsResourcesRequest`/`Response` and `Data\ClientMetricsResource`, with 26 vectors of what a node **without** a telemetry receiver plugin answers (the generated client instance id, the 300000 ms default interval, the 89 of asking twice, the 117 of a foreign subscription id, the 118 of an oversized blob); there is no client method and no telemetry emitter, so nothing of this package ever sends them |
 | Tiered storage (KIP-405, KIP-1005) | 3.5, 3.9 | **the wire halves are implemented** — Fetch **v14** (the error code 109 `OffsetMovedToTieredStorage`, `Errors\OffsetMovedToTieredStorageException`), ListOffsets **v8** (the target time `-4`, `AdminClient::listEarliestLocalOffsets()`) and ListOffsets **v9** (the target time `-5`, `AdminClient::listLatestTieredOffsets()`); the container has no remote storage, so the 109 is declared, `-4` equals `-2` and `-5` answers the offset -1 with the error code 0 on it; the remote-storage RPCs of KIP-405 are broker-internal and have no client-facing api key, so nothing of the feature is left out |
 | `offsets.storage = zookeeper` (OffsetCommit/OffsetFetch v0) | 0.8.1 | removed from this line — the option and its code path are gone; the classes stay for the wire vectors of the lines below, and a KRaft node answers both v0 requests with 35 `UnsupportedVersion` |
@@ -1083,16 +1087,16 @@ is skipped when it is unset:
 | Variable | Default | What it runs |
 |---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | – | the whole integration suite, over the PLAINTEXT listener |
-| `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-3.9.2/ssl/broker.crt`) |
+| `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-4.3.1/ssl/broker.crt`) |
 | `KAFKA_SASL_BOOTSTRAP_SERVERS` | – | the SASL/PLAIN tests over `SASL_PLAINTEXT` (`127.0.0.1:9094`) |
 | `KAFKA_SASL_SSL_BOOTSTRAP_SERVERS` | – | the same exchange inside TLS (`127.0.0.1:9095`) |
-| `KAFKA_CONTAINER` | `kafka-3-9-2` | the container the log dumps and the topic tools of a few tests run their scripts in (the quotas are set through the wire since this line) |
+| `KAFKA_CONTAINER` | `kafka-4-3-1` | the container the log dumps and the topic tools of a few tests run their scripts in (the quotas are set through the wire since this line) |
 
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
 accepted — through the request and response classes and checks that the annotated dumps of
-[docs/protocol/3.9.md](docs/protocol/3.9.md) still hold the same bytes, and that every
-`@see docs/protocol/3.9.md, section "…"` of the sources names a heading that exists, so the
+[docs/protocol/4.3.md](docs/protocol/4.3.md) still hold the same bytes, and that every
+`@see docs/protocol/4.3.md, section "…"` of the sources names a heading that exists, so the
 document and the code cannot drift apart.
 
 Examples

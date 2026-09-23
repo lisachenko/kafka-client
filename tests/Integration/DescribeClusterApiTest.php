@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV0;
  *
  * It creates nothing on the broker and therefore has nothing to clean up.
  *
- * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "DescribeCluster API (key 60, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeClusterRequest::class)]

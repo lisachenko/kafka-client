@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * adds user resource type" of `CreateAclsRequest.json` @ 3.3.2) - the version a client has to send to write an
  * acl on a {@see \Protocol\Kafka\Common\ResourceType::USER} resource. No field changed with it.
  *
- * @see docs/protocol/3.9.md, section "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateAcls API (key 30, v0 to v3)"
  */
 class CreateAclsRequest extends AbstractRequest
 {

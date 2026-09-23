@@ -80,9 +80,9 @@ use UnexpectedValueException;
  * The topics of such an entry are empty, exactly as they are for every other group-level error of this api.
  * {@see OffsetFetchResponseV8} decodes the same bytes one api version lower.
  *
- * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v9)", "Stable offsets and the 88 of KIP-447
+ * @see docs/protocol/4.3.md, sections "OffsetFetch API (key 9, v0 to v9)", "Stable offsets and the 88 of KIP-447
  *      (Kafka 2.5)" and "Quotas and throttle time"
- * @see docs/protocol/3.9.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
  */
 class OffsetFetchResponse extends AbstractResponse
 {

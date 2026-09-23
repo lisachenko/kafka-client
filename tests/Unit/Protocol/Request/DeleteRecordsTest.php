@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\DeleteRecordsResponseV1;
 /**
  * Byte-exact tests for the DeleteRecords API of Kafka 0.11 (api key 21, v0).
  *
- * @see docs/protocol/3.9.md, section "DeleteRecords API (key 21, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DeleteRecords API (key 21, v0 to v2)"
  */
 #[CoversClass(DeleteRecordsRequest::class)]
 #[CoversClass(DeleteRecordsRequestV0::class)]

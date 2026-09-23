@@ -72,8 +72,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * garbage or runs off the end of the frame, so a green round trip through the version classes is the proof that the
  * field sits where the specification says it does.
  *
- * @see docs/protocol/3.9.md, sections "Quotas and throttle time" and "GroupCoordinator API (key 10, v0 to v6)"
- * @see docs/protocol/3.9.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
+ * @see docs/protocol/4.3.md, sections "Quotas and throttle time" and "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(GroupCoordinatorRequest::class)]

@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2: "Regardless of throttling, send the response
  * immediately") instead of holding the answer back for the throttle time.
  *
- * @see docs/protocol/3.9.md, section "RenewDelegationToken API (key 39, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "RenewDelegationToken API (key 39, v0 to v2)"
  */
 final class RenewDelegationTokenRequestV0 extends RenewDelegationTokenRequest
 {

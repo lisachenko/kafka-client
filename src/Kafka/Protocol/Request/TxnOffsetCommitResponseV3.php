@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `AddPartitionsToTxnManager` @ 3.9.2 maps the code back "for backward compatibility with clients" whose
  * version does not promise to understand it.
  *
- * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 final class TxnOffsetCommitResponseV3 extends TxnOffsetCommitResponse
 {

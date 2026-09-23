@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see DescribeQuorumResponseV1}, which has no top-level nodes, no error message and no directory id in a
  * replica state.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 final class DescribeQuorumRequestV1 extends DescribeQuorumRequest
 {

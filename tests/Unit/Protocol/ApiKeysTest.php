@@ -19,9 +19,9 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use ReflectionClass;
 
 /**
- * Verifies that the api keys of this branch are exactly the ones of Kafka 2.8.2.
+ * Verifies that the api keys of this branch are exactly the ones of Kafka 4.3.1.
  *
- * The list mirrors `org.apache.kafka.common.protocol.ApiKeys` @ 2.8.2, which ends at key 64. The names are the
+ * The list mirrors `org.apache.kafka.common.protocol.ApiKeys` @ 4.3.1, which ends at key 92. The names are the
  * ones of the pre-schema `main` branch wherever the concept exists there: key 10 is GroupCoordinator here, although
  * 0.11 renamed the api to FindCoordinator and the 0.8.2 sources called it ConsumerMetadata; the keys 34 to 42 carry
  * the names of the Java client.
@@ -32,11 +32,11 @@ use ReflectionClass;
 final class ApiKeysTest extends TestCase
 {
     /**
-     * Every api key of Kafka 2.8.2, in the order of org.apache.kafka.common.protocol.ApiKeys
+     * Every api key of Kafka 4.3.1, in the order of org.apache.kafka.common.protocol.ApiKeys
      *
      * @var array<string, int>
      */
-    private const array KEYS_OF_KAFKA_3_9_2 = [
+    private const array KEYS_OF_KAFKA_4_3_1 = [
         'PRODUCE'                 => 0,
         'FETCH'                   => 1,
         'OFFSETS'                 => 2,
@@ -125,14 +125,19 @@ final class ApiKeysTest extends TestCase
         'WRITE_SHARE_GROUP_STATE'         => 85,
         'DELETE_SHARE_GROUP_STATE'        => 86,
         'READ_SHARE_GROUP_STATE_SUMMARY'  => 87,
+        'STREAMS_GROUP_HEARTBEAT'         => 88,
+        'STREAMS_GROUP_DESCRIBE'          => 89,
+        'DESCRIBE_SHARE_GROUP_OFFSETS'    => 90,
+        'ALTER_SHARE_GROUP_OFFSETS'       => 91,
+        'DELETE_SHARE_GROUP_OFFSETS'      => 92,
     ];
 
-    public function testTheApiKeysAreExactlyTheOnesOfKafka392(): void
+    public function testTheApiKeysAreExactlyTheOnesOfKafka431(): void
     {
         self::assertSame(
-            self::KEYS_OF_KAFKA_3_9_2,
+            self::KEYS_OF_KAFKA_4_3_1,
             new ReflectionClass(ApiKeys::class)->getConstants(),
-            'The branch declares an api key that Kafka 3.9.2 does not have, or misses one that it has'
+            'The branch declares an api key that Kafka 4.3.1 does not have, or misses one that it has'
         );
     }
 
@@ -239,16 +244,31 @@ final class ApiKeysTest extends TestCase
     }
 
     /**
-     * `ApiKeys.java` @ 3.9.2 ends at ReadShareGroupStateSummary (87); the keys Kafka 4.x adds must not appear on this
+     * The keys 88 to 92 of `ApiKeys.java` @ 4.3.1, read at the release tags: all of them Kafka 4.1 - the streams-group
+     * apis of KIP-1071 (88, 89) and the share-group offset apis of KIP-932 (90 to 92)
+     */
+    public function testTheKeysOfKafka4AreDeclared(): void
+    {
+        self::assertSame(88, ApiKeys::STREAMS_GROUP_HEARTBEAT);
+        self::assertSame(89, ApiKeys::STREAMS_GROUP_DESCRIBE);
+        self::assertSame(90, ApiKeys::DESCRIBE_SHARE_GROUP_OFFSETS);
+        self::assertSame(91, ApiKeys::ALTER_SHARE_GROUP_OFFSETS);
+        self::assertSame(92, ApiKeys::DELETE_SHARE_GROUP_OFFSETS);
+    }
+
+    /**
+     * `ApiKeys.java` @ 4.3.1 ends at DeleteShareGroupOffsets (92); a key of a later Kafka must not appear on this
      * branch. ElectPreferredLeaders is the 2.2 name of ElectLeaders (43), AlterIsr the published name of key 56 (the
-     * Java client renamed it AlterPartition in 3.2), and neither is a key of its own
+     * Java client renamed it AlterPartition in 3.2), ListConfigResources the 4.1 name of key 74 (published here as
+     * ListClientMetricsResources), and none is a key of its own
      */
     public function testNoApiKeyOfALaterKafkaIsDeclared(): void
     {
         $keys = new ReflectionClass(ApiKeys::class)->getConstants();
 
-        self::assertSame(range(0, 87), array_values($keys));
+        self::assertSame(range(0, 92), array_values($keys));
         self::assertNotContains('ELECT_PREFERRED_LEADERS', array_keys($keys));
         self::assertNotContains('ALTER_PARTITION', array_keys($keys));
+        self::assertNotContains('LIST_CONFIG_RESOURCES', array_keys($keys));
     }
 }

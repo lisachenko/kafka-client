@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * a request of this version with an empty member id is answered with the error code 79 (`MemberIdRequired`) and
  * the id the coordinator assigned.
  *
- * @see docs/protocol/3.9.md, section "The member id of a first join (v4, KIP-394)"
+ * @see docs/protocol/4.3.md, section "The member id of a first join (v4, KIP-394)"
  */
 final class JoinGroupRequestV4 extends JoinGroupRequest
 {

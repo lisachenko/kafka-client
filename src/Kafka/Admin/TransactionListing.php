@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Admin;
  * epoch, the timeout, the start time and the partitions it touches - needs
  * {@see AdminClient::describeTransactions()}, which asks the coordinator of that id.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 and v1)"
  */
 final class TransactionListing
 {

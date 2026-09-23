@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * into a `coordinators` array, one entry per key of the request; this version answers the one key its request
  * named. {@see GroupCoordinatorResponse} decodes the batched answer.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class GroupCoordinatorResponseV3 extends GroupCoordinatorResponse
 {

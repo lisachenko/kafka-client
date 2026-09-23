@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * nullable, so this is the last version whose {@see self::$groupProtocol} is always a string - the empty one of
  * `GroupCoordinator.NoProtocol` when the answer carries an error.
  *
- * @see docs/protocol/3.9.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
+ * @see docs/protocol/4.3.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupResponseV6 extends JoinGroupResponse
 {

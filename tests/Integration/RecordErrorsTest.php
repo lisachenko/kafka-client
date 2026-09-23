@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * their **batch index** and adds a partition-wide message. The condition is produced here with the cheapest
  * validation a client can trigger: a record without a key on a `cleanup.policy=compact` topic.
  *
- * @see docs/protocol/3.9.md, section "The record errors of a refused batch (v8, KIP-467)"
+ * @see docs/protocol/4.3.md, section "The record errors of a refused batch (v8, KIP-467)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
@@ -219,7 +219,7 @@ final class RecordErrorsTest extends IntegrationTestCase
     private static function deleteTopic(string $topic): void
     {
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
 
         $output   = [];
         $exitCode = 0;
@@ -248,7 +248,7 @@ final class RecordErrorsTest extends IntegrationTestCase
         }
 
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
         $command   = sprintf(
             'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create'
             . ' --if-not-exists --topic %s --partitions 1 --replication-factor 1%s 2>&1',

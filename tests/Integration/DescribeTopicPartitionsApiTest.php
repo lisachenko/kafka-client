@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  *
  * The node is shared, so every topic of this class carries the prefix `t1-38-dtp-` and is deleted again.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeTopicPartitionsRequest::class)]

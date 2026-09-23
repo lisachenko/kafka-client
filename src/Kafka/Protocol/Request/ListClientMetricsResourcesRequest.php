@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  *
  * **This client never sends it**: the client-metrics apis are wire only on this line, by decision of the owner.
  *
- * @see docs/protocol/3.9.md, section "ListClientMetricsResources API (key 74, v0)"
+ * @see docs/protocol/4.3.md, section "ListClientMetricsResources API (key 74, v0)"
  */
 class ListClientMetricsResourcesRequest extends AbstractRequest
 {

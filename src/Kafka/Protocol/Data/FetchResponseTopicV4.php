@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * `LogStartOffset`, so this class only lowers the version constant that
  * {@see FetchResponseTopic::partitionClass()} follows.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v17)"
  */
 final class FetchResponseTopicV4 extends FetchResponseTopic
 {

@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version 1 is the last field of both versions, and only the answer of version 2 is different
  * ({@see CreateTopicsResponseV1}).
  *
- * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/4.3.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsRequestV1 extends CreateTopicsRequest
 {

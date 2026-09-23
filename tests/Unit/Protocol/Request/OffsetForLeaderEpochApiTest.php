@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV3;
  * position validation of a consumer; Kafka 2.3 added a `replica_id` at the head of the request (KIP-392), because
  * a consumer may now validate against a follower.
  *
- * @see docs/protocol/3.9.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 #[CoversClass(OffsetForLeaderEpochRequest::class)]
 #[CoversClass(OffsetForLeaderEpochResponse::class)]

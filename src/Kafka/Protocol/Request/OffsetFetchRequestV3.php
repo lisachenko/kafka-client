@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * honours the `throttle_time_ms` of an answer itself, because a throttled broker of 2.0 and above answers first
  * and mutes the channel afterwards. The nullable topic array is the one of version 2.
  *
- * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v9)" and "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, sections "OffsetFetch API (key 9, v0 to v9)" and "Quotas and throttle time"
  */
 final class OffsetFetchRequestV3 extends OffsetFetchRequest
 {

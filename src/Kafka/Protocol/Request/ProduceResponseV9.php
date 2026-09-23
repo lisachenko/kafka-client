@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Its partition entry is {@see \Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV8}, the entry without the
  * tagged `current_leader`, and the body carries no `node_endpoints`, see {@see ProduceResponse}.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)" and "The leader discovery of KIP-951 (v10)"
  */
 final class ProduceResponseV9 extends ProduceResponse
 {

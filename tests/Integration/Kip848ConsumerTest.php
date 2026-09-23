@@ -43,8 +43,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The classic path of the same consumer is untouched and is covered by {@see ConsumerGroupTest}; the two are
  * compared here only where the difference is the point, i.e. at the incremental rebalance.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
- * @see docs/protocol/3.9.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(ConsumerGroupHeartbeatCoordinator::class)]

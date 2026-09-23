@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Admin;
  * `FinalizedVersionRange` of the Java admin client. The finalized range is what {@see AdminClient::updateFeatures()}
  * changes, and it is always within the supported range of every broker of the cluster.
  *
- * @see docs/protocol/3.9.md, section "UpdateFeatures API (key 57, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "UpdateFeatures API (key 57, v0 and v1)"
  */
 final class FinalizedVersionRange
 {

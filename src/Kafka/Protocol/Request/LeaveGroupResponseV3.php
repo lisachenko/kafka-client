@@ -18,8 +18,8 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * Version 4 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding, see {@see LeaveGroupResponse}.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "LeaveGroup API (key 13, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "LeaveGroup API (key 13, v0 to v5)"
  */
 final class LeaveGroupResponseV3 extends LeaveGroupResponse
 {

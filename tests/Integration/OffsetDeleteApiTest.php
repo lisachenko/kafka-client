@@ -49,7 +49,7 @@ use Throwable;
  *
  * Every group and every topic of this class carries a `t1-` prefix of its own and is created by the class itself.
  *
- * @see docs/protocol/3.9.md, section "OffsetDelete API (key 47, v0)"
+ * @see docs/protocol/4.3.md, section "OffsetDelete API (key 47, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]

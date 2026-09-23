@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\CreateAclsResponseResult;
  * | 42   | InvalidRequest              | The creation is not a concrete acl - a filter value in one of its seven fields |
  * | 54   | SecurityDisabled            | The broker has no `authorizer.class.name` at all                    |
  *
- * @see docs/protocol/3.9.md, section "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateAcls API (key 30, v0 to v3)"
  */
 class CreateAclsResponse extends AbstractResponse
 {

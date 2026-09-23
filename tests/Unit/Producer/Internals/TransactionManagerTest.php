@@ -34,7 +34,7 @@ use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
  * The bookkeeping of the idempotent producer: one producer id, one sequence and one acknowledged offset per
  * topic-partition, the three error codes of KIP-98 and the fourth one Kafka 1.0 added, 59 `UnknownProducerId`.
  *
- * @see docs/protocol/3.9.md, section "The idempotent producer"
+ * @see docs/protocol/4.3.md, section "The idempotent producer"
  */
 #[CoversClass(TransactionManager::class)]
 #[CoversClass(ProducerIdAndEpoch::class)]

@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * partition entry, i.e. the entry of KIP-467 without the tagged `current_leader` that version 10 (Kafka 3.7,
  * KIP-951) added, see {@see ProduceResponseTopic}.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)" and "The leader discovery of KIP-951 (v10)"
  */
 final class ProduceResponseTopicV8 extends ProduceResponseTopic
 {

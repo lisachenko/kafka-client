@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The version 2 of KIP-588 adds no field: what it changes is the error code a fenced producer is answered with -
  * the **90** `ProducerFenced` instead of the 47 `InvalidProducerEpoch`.
  *
- * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
  */
 final class AddOffsetsToTxnResponseV1 extends AddOffsetsToTxnResponse
 {

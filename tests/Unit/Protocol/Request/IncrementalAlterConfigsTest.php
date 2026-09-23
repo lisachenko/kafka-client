@@ -34,9 +34,9 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponseV0;
  *
  * The api that replaces AlterConfigs: every entry of a resource carries an **operation** between the option name
  * and its value, and an option the request does not name keeps the value it has. The frames below were captured on
- * the `kafka-3-9-2` container.
+ * the `kafka-4-3-1` container.
  *
- * @see docs/protocol/3.9.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 #[CoversClass(IncrementalAlterConfigsRequest::class)]
 #[CoversClass(IncrementalAlterConfigsResponse::class)]
