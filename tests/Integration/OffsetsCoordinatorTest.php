@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
@@ -40,24 +41,33 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV1;
 use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 
 /**
  * Verifies the GroupCoordinator, OffsetCommit and OffsetFetch APIs against a real Kafka 0.9.0.1 broker.
  *
  * The offsets of a group live in the internal `__consumer_offsets` topic of the cluster and are written by its
- * coordinator. The version 0 of the two apis addressed the ZooKeeper storage of Kafka 0.8.1 instead, which a KRaft
- * node cannot serve - it answers every v0 partition with the error code 35 - so this line has no `offsets.storage`
- * option any more and this suite exercises the versions the coordinator answers (1 and up).
+ * coordinator. The version 0 of the two apis addressed the ZooKeeper storage of Kafka 0.8.1 instead, which a 3.9.2
+ * KRaft node answered with the error code 35, and Kafka 4.0 removed the versions below the 2.1 baseline of KIP-896
+ * altogether: a 4.3.1 node closes the connection on OffsetCommit v0 and v1 and on OffsetFetch v0, so this suite
+ * exercises the versions the coordinator still answers - OffsetCommit 2 and up, OffsetFetch 1 and up.
  *
  * @see docs/protocol/4.3.md, sections "GroupCoordinator API (key 10, v0 to v6)",
  *      "OffsetCommit API (key 8, v0 to v9)" and "OffsetFetch API (key 9, v0 to v9)"
@@ -81,6 +91,13 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 #[CoversClass(OffsetFetchResponsePartition::class)]
 final class OffsetsCoordinatorTest extends IntegrationTestCase
 {
+    /**
+     * Every group this class created, deleted in {@see self::tearDownAfterClass()}
+     *
+     * @var list<string>
+     */
+    private static array $groupsOfTheClass = [];
+
     /**
      * `offset.metadata.max.bytes` of a 0.9.0.1 broker; a longer metadata string is answered with the error code 12
      */
@@ -357,41 +374,82 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         self::assertSame($metadata, $offsets[$topic]->partitions[0]->metadata);
     }
 
-    public function testVersion1CommitIsStillAcceptedAndCarriesItsOwnTimestamp(): void
+    /**
+     * KIP-896 (Kafka 4.0) removed OffsetCommit v0 and v1 and OffsetFetch v0, and a 4.3.1 node closes the connection
+     * on each of them - `validVersions` is `2-10` and `1-10` in the two `*Request.json` @ 4.0.0 (v10 arrived with
+     * 4.1) - while the lowest versions it still serves are answered as they always were
+     */
+    public function testTheVersionsKafkaFourRemovedCloseTheConnection(): void
     {
         $groupId = self::uniqueGroupName();
         $topic   = $this->createTopic();
-        $stream  = $this->coordinatorStream($groupId);
 
-        // The commit timestamp of version 1 is the point the retention is counted from; -1 asks for the receive time
-        new OffsetCommitRequestV1(
+        $removed = [
+            'OffsetCommit v0' => [
+                new OffsetCommitRequestV0($groupId, [$topic => [0 => 77]], 'kafka-client-t6', 1),
+                OffsetCommitResponseV0::class,
+            ],
+            'OffsetCommit v1' => [
+                new OffsetCommitRequestV1(
+                    $groupId,
+                    OffsetCommitRequest::DEFAULT_GENERATION_ID,
+                    OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+                    [$topic => [0 => new OffsetCommitRequestPartitionV1(0, 77, 'by version 1')]],
+                    'kafka-client-t6',
+                    2
+                ),
+                OffsetCommitResponseV1::class,
+            ],
+            'OffsetFetch v0'  => [
+                new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 3),
+                OffsetFetchResponseV0::class,
+            ],
+        ];
+        foreach ($removed as $label => [$request, $responseClass]) {
+            $stream = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 5000]);
+            $request->writeTo($stream);
+
+            try {
+                $responseClass::unpack($stream);
+                self::fail("{$label} is below the minimum of the node and must not be answered");
+            } catch (NetworkException $exception) {
+                self::assertStringContainsString('stream', strtolower($exception->getMessage()), $label);
+            }
+        }
+
+        // the lowest versions the node serves: a commit of version 2 and a fetch of version 1
+        $stream = $this->coordinatorStream($groupId);
+        new OffsetCommitRequestV2(
             $groupId,
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
-            [$topic => [0 => new OffsetCommitRequestPartitionV1(0, 77, 'by version 1')]],
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME,
+            [$topic => [0 => 78]],
             'kafka-client-t6',
-            1
+            4
         )->writeTo($stream);
-        $response = OffsetCommitResponseV1::unpack($stream);
 
-        self::assertSame(KafkaException::NO_ERROR, $response->topics[$topic]->partitions[0]->errorCode);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            OffsetCommitResponseV2::unpack($stream)->topics[$topic]->partitions[0]->errorCode
+        );
 
-        $offsets = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
+        new OffsetFetchRequestV1($groupId, [$topic => [0]], 'kafka-client-t6', 5)->writeTo($stream);
 
-        self::assertSame(77, $offsets[$topic]->partitions[0]->offset);
-        self::assertSame('by version 1', $offsets[$topic]->partitions[0]->metadata);
+        self::assertSame(78, OffsetFetchResponseV1::unpack($stream)->topics[$topic]->partitions[0]->offset);
     }
 
     /**
-     * What the `retention_time` of a v2 to v4 commit still does on a 2.8.2 broker, and what KIP-211 changed
+     * What the `retention_time` of a v2 to v4 commit still does on a 4.3.1 node, and what KIP-211 changed
      *
      * The field is on the wire up to version 4 and gone from version 5 on, and it is what decides the **value
-     * schema** the coordinator writes the offset with: `GroupMetadataManager.offsetCommitValue` @ 2.8.2 picks the
-     * schema **v1** - the only one that has an `expire_timestamp` - as soon as the request brought a retention of
-     * its own, and the schema **v3** otherwise, because `inter.broker.protocol.version` of the container is above
-     * `2.1-IV1`. A commit that leaves the field at -1 therefore carries no expiry at all any more: KIP-211 expires
-     * the offsets of a group `offsets.retention.minutes` after the group itself became empty, not a fixed time
-     * after the commit, which is what a 0.11 or 1.1 broker stored here.
+     * schema** the coordinator writes the offset with: `GroupCoordinatorRecordHelpers.offsetCommitValueVersion`
+     * @ 4.3.1 picks the schema **v1** - the only one that has an `expire_timestamp` - as soon as the request brought
+     * a retention of its own, and the schema **v4** otherwise: the first flexible version of `OffsetCommitValue`,
+     * which Kafka 4.1 started to write for the tagged `topicId` of KIP-848 (4.0.0 still wrote the v3 of the 2.x and
+     * 3.x lines, `GroupMetadataManager.offsetCommitValue` @ 2.8.2). A commit that leaves the field at -1 therefore
+     * carries no expiry at all: KIP-211 expires the offsets of a group `offsets.retention.minutes` after the group
+     * itself became empty, not a fixed time after the commit, which is what a 0.11 or 1.1 broker stored here.
      */
     public function testRetentionTimeOfVersion2DecidesTheValueSchemaOfTheStoredOffset(): void
     {
@@ -427,8 +485,8 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         self::assertSame(5, $offsetOfDefault);
         self::assertSame(6, $offsetOfExplicit);
-        self::assertSame(3, $schemaOfDefault, 'retention_time = -1 is written with the value schema v3 (KIP-211)');
-        self::assertNull($expiryOfDefault, 'the value schema v3 has no expire_timestamp at all');
+        self::assertSame(4, $schemaOfDefault, 'retention_time = -1 is written with the value schema v4 (KIP-211)');
+        self::assertNull($expiryOfDefault, 'the value schema v4 has no expire_timestamp at all');
         self::assertSame(-1, $epochOfDefault, 'and its committed leader epoch is the -1 of a commit without one');
         self::assertSame(
             1,
@@ -447,8 +505,9 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
      *
      * The field has the versions `2-4` in `OffsetCommitRequest.json` @ 2.8.2 - it is not sent as -1 - so a v5
      * request cannot ask for a retention of its own at all, whatever a caller passes. The offset is then written
-     * with the `__consumer_offsets` value schema **v3**, which has no `expire_timestamp` field: the offsets of the
-     * group expire `offsets.retention.minutes` after the GROUP became empty, not a fixed time after this commit.
+     * with the `__consumer_offsets` value schema **v4** of a 4.3.1 node, which has no `expire_timestamp` field: the
+     * offsets of the group expire `offsets.retention.minutes` after the GROUP became empty, not a fixed time after
+     * this commit.
      */
     public function testVersion5SendsNoRetentionTimeAndTheOffsetIsStoredWithoutAnExpiry(): void
     {
@@ -483,8 +542,8 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         [$offset, , , $expiry, $valueSchema, $leaderEpoch] = $stored[0];
 
         self::assertSame(9, $offset);
-        self::assertSame(3, $valueSchema, 'a commit without a retention is written with the value schema v3');
-        self::assertNull($expiry, 'and the value schema v3 has no expire_timestamp at all');
+        self::assertSame(4, $valueSchema, 'a commit without a retention is written with the value schema v4');
+        self::assertNull($expiry, 'and the value schema v4 has no expire_timestamp at all');
         self::assertSame(-1, $leaderEpoch, 'a v5 frame has no leader epoch either, so the stored one is -1');
     }
 
@@ -492,7 +551,8 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
      * The `committed_leader_epoch` of OffsetCommit v6 and OffsetFetch v5 (KIP-320, Kafka 2.1)
      *
      * The epoch travels through the coordinator untouched: it is stored in the `leaderEpoch` field of the
-     * `__consumer_offsets` value schema v3 and handed back by every OffsetFetch from version 5 on. An offset
+     * `__consumer_offsets` value schema v4 (v3 on the nodes up to 4.0) and handed back by every OffsetFetch from
+     * version 5 on. An offset
      * committed with a frame below v6 has no epoch, and the answer reports the -1 of "not known" for it.
      */
     public function testTheLeaderEpochOfACommittedOffsetSurvivesTheRoundTrip(): void
@@ -513,7 +573,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         [, , , , $valueSchema, $storedEpoch] = $this->readStoredOffsets($groupId, $topic, 0)[0];
 
-        self::assertSame(3, $valueSchema, 'the value schema v3 is the one with a leaderEpoch field');
+        self::assertSame(4, $valueSchema, 'the value schema v4 carries the leaderEpoch field of v3');
         self::assertSame(0, $storedEpoch, 'and the coordinator stored the epoch of the commit in it');
 
         // The same partition committed with a version 4 frame, which has no field for the epoch
@@ -761,12 +821,14 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
      * Decodes one message of `__consumer_offsets` into the group, topic and partition it belongs to and its value.
      *
      * Key (version 0 and 1) => version int16 group string topic string partition int32
-     * Value                 => version int16 offset int64 [leaderEpoch int32, version 3 only] metadata string
+     * Value                 => version int16 offset int64 [leaderEpoch int32, version 3 and up] metadata string
      *                          commitTimestamp int64 [expireTimestamp int64, version 1 only]
+     *                          [tagged fields, version 4: tag 0 is the topicId]
      *
-     * `OffsetCommitValue.json` @ 2.8.2 has the four versions 0 to 3: version 1 is the only one with an
-     * `expire_timestamp` and version 3 the only one with a `leaderEpoch`, and which of them the coordinator writes
-     * follows `inter.broker.protocol.version` and the `retention_time` of the request, see
+     * `OffsetCommitValue.json` @ 4.3.1 has the five versions 0 to 4: version 1 is the only one with an
+     * `expire_timestamp`, version 3 added the `leaderEpoch`, and version 4 is the first flexible one - the metadata
+     * is a compact string and the record ends in a tagged-field section whose tag 0 is the `topicId`. Which of them
+     * the coordinator writes follows the `retention_time` of the request, see
      * {@see self::testRetentionTimeOfVersion2DecidesTheValueSchemaOfTheStoredOffset}.
      *
      * Everything else - the group metadata messages of the membership protocol, whose key version is 2 - is skipped.
@@ -798,9 +860,18 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             $leaderEpoch    = unpack('lepoch', strrev(substr($value, $offsetInValue, 4)))['epoch'];
             $offsetInValue += 4;
         }
-        $metadataLength = unpack('nlength', substr($value, $offsetInValue, 2))['length'];
-        $metadata       = $metadataLength === 0xFFFF ? null : substr($value, $offsetInValue + 2, $metadataLength);
-        $offsetInValue += 2 + ($metadataLength === 0xFFFF ? 0 : $metadataLength);
+        if ($valueVersion >= 4) {
+            // The first flexible version: the metadata is a compact string, its unsigned varint length plus one
+            [$compactLength, $varintSize] = self::unsignedVarint($value, $offsetInValue);
+            $metadata                     = $compactLength === 0
+                ? null
+                : substr($value, $offsetInValue + $varintSize, $compactLength - 1);
+            $offsetInValue               += $varintSize + max(0, $compactLength - 1);
+        } else {
+            $metadataLength = unpack('nlength', substr($value, $offsetInValue, 2))['length'];
+            $metadata       = $metadataLength === 0xFFFF ? null : substr($value, $offsetInValue + 2, $metadataLength);
+            $offsetInValue += 2 + ($metadataLength === 0xFFFF ? 0 : $metadataLength);
+        }
         $commit         = unpack('Jtimestamp', substr($value, $offsetInValue, 8))['timestamp'];
         $offsetInValue += 8;
         $expiry         = $valueVersion === 1
@@ -808,6 +879,26 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             : null;
 
         return [$group, $topic, $partition, [$offset, $metadata, $commit, $expiry, $valueVersion, $leaderEpoch]];
+    }
+
+    /**
+     * Reads the unsigned varint of a compact length at the given position
+     *
+     * @return array{int, int} The value and the number of bytes it took
+     */
+    private static function unsignedVarint(string $buffer, int $position): array
+    {
+        $value = 0;
+        $shift = 0;
+        $size  = 0;
+        do {
+            $byte   = ord($buffer[$position + $size]);
+            $value |= ($byte & 0x7F) << $shift;
+            $shift += 7;
+            $size++;
+        } while (($byte & 0x80) !== 0);
+
+        return [$value, $size];
     }
 
     /**
@@ -874,6 +965,38 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
      */
     private static function uniqueGroupName(): string
     {
-        return 't6-group-' . bin2hex(random_bytes(6));
+        $groupId                  = 't6-group-' . bin2hex(random_bytes(6));
+        self::$groupsOfTheClass[] = $groupId;
+
+        return $groupId;
+    }
+
+    /**
+     * Deletes the groups this class created, once their members are gone - best effort, one group at a time
+     *
+     * The node is shared by every suite of the line, and a group that is left behind stays in `__consumer_offsets`
+     * with its committed offsets until `offsets.retention.minutes` expires them; a group that still has a member -
+     * a static one waits out its session - is answered the 68 `NonEmptyGroup` and left to the reaper.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        $groups                 = self::$groupsOfTheClass;
+        self::$groupsOfTheClass = [];
+        if ($groups !== [] && self::bootstrapServers() !== []) {
+            $configuration = [
+                ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+                ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+                ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
+            ];
+            foreach ($groups as $groupId) {
+                try {
+                    new AdminClient(Cluster::bootstrap($configuration), $configuration)->deleteConsumerGroups([$groupId]);
+                } catch (KafkaException) {
+                    // A group with a member left, or one that was never created, must not fail a green suite
+                }
+            }
+        }
+
+        parent::tearDownAfterClass();
     }
 }

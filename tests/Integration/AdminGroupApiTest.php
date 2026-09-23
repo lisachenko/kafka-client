@@ -28,7 +28,9 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV5;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV5;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
@@ -46,7 +48,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The broker is shared with the other suites and coordinates their groups too, so every assertion here is about the
  * groups of this class and never about the whole answer.
  *
- * @see docs/protocol/4.3.md, sections "DescribeGroups API (key 15, v0 to v5)", "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/4.3.md, sections "DescribeGroups API (key 15, v0 to v6)", "ListGroups API (key 16, v0 to v5)"
  *      and "DeleteGroups API (key 42, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
@@ -187,11 +189,26 @@ final class AdminGroupApiTest extends IntegrationTestCase
         self::assertCount(1, $group->members, 'the members are already known in this state');
     }
 
-    public function testDescribeGroupReportsAnUnknownGroupAsDeadWithoutAnError(): void
+    /**
+     * An unknown group is the 69 of DescribeGroups v6 (KIP-1043, Kafka 4.0), where the versions up to 5 answered the
+     * state `Dead` with the error code 0 - which version 5 still does on the same node
+     */
+    public function testDescribeGroupReportsAnUnknownGroupWithTheSixtyNine(): void
     {
-        $group = $this->admin->describeGroup($this->uniqueGroupId());
+        $groupId = $this->uniqueGroupId();
 
-        self::assertSame(KafkaException::NO_ERROR, $group->errorCode, 'an unknown group is not an error');
+        try {
+            $this->admin->describeGroup($groupId);
+            self::fail('an unknown group is an error from DescribeGroups v6 on');
+        } catch (GroupIdNotFoundException $exception) {
+            self::assertStringContainsString("Group {$groupId} not found.", $exception->getMessage());
+        }
+
+        $stream = $this->admin->findCoordinator($groupId)->getConnection($this->configuration());
+        new DescribeGroupsRequestV5([$groupId], 't4-admin', 5)->writeTo($stream);
+        $group = DescribeGroupsResponseV5::unpack($stream)->groups[$groupId];
+
+        self::assertSame(KafkaException::NO_ERROR, $group->errorCode, 'version 5 did not call it an error');
         self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $group->state);
         self::assertSame('', $group->protocolType);
         self::assertSame('', $group->protocol);
@@ -300,11 +317,10 @@ final class AdminGroupApiTest extends IntegrationTestCase
             $this->admin->listGroupOffsets($groupId),
             'the coordinator wrote a tombstone for every offset the group had committed'
         );
-        self::assertSame(
-            DescribeGroupResponseMetadata::STATE_DEAD,
-            $this->admin->describeGroup($groupId)->state,
-            'and describes it like a group that never existed'
-        );
+        $this->expectException(GroupIdNotFoundException::class);
+
+        // and describes it like a group that never existed: the 69 of DescribeGroups v6
+        $this->admin->describeGroup($groupId);
     }
 
     public function testAGroupWithAMemberIsRefusedWithNonEmptyGroup(): void

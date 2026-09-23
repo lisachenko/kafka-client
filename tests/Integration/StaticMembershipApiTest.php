@@ -17,6 +17,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\MemberToRemove;
 use Protocol\Kafka\Client;
+use Protocol\Kafka\Common\AclOperation;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
@@ -70,7 +71,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  *
  * @see docs/protocol/4.3.md, sections "Static membership (KIP-345)", "The authorized operations of a group (v3,
  *      KIP-430)", "JoinGroup API (key 11, v0 to v9)", "SyncGroup API (key 14, v0 to v5)", "Heartbeat API (key 12,
- *      v0 to v3)", "OffsetCommit API (key 8, v0 to v9)", "DescribeGroups API (key 15, v0 to v5)" and
+ *      v0 to v3)", "OffsetCommit API (key 8, v0 to v9)", "DescribeGroups API (key 15, v0 to v6)" and
  *      "The batch leave of KIP-345 (v3)"
  */
 #[CoversClass(JoinGroupRequest::class)]
@@ -92,6 +93,13 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(MemberToRemove::class)]
 final class StaticMembershipApiTest extends IntegrationTestCase
 {
+    /**
+     * Every group this class created, deleted in {@see self::tearDownAfterClass()}
+     *
+     * @var list<string>
+     */
+    private static array $groupsOfTheClass = [];
+
     /**
      * Client id of this class, which is the prefix of the member id of a DYNAMIC member
      */
@@ -133,12 +141,15 @@ final class StaticMembershipApiTest extends IntegrationTestCase
     private const float TOPIC_TIMEOUT = 30.0;
 
     /**
-     * The `authorized_operations` a broker without an authorizer reports for a group: READ, DELETE and DESCRIBE
+     * The `authorized_operations` the super user of the node holds on a group: READ, DELETE, DESCRIBE,
+     * DESCRIBE_CONFIGS and ALTER_CONFIGS
      *
-     * `AclEntry.supportedOperations(GROUP)` @ 2.8.2 is `{READ, DESCRIBE, DELETE}` and `AuthHelper` answers all of
-     * them when there is no authorizer; the codes of `AclOperation` are 3, 6 and 8, so the bit set is 328.
+     * `AclEntry.supportedOperations(GROUP)` @ 4.0.0 is `{READ, DESCRIBE, DELETE, DESCRIBE_CONFIGS, ALTER_CONFIGS}`
+     * - the 3.9.2 set had the first three alone, the bit set 328 - and `AuthHelper.authorizedOperations` answers all
+     * of them to a principal of `super.users`, which the anonymous user of the PLAINTEXT listener is on this node;
+     * the codes of `AclOperation` are 3, 6, 8, 10 and 11, so the bit set is 3400.
      */
-    private const int GROUP_OPERATIONS = (1 << 3) | (1 << 6) | (1 << 8);
+    private const int GROUP_OPERATIONS = (1 << 3) | (1 << 6) | (1 << 8) | (1 << 10) | (1 << 11);
 
     /**
      * The cluster is resolved once: every test of this class talks to the same brokers
@@ -355,9 +366,20 @@ final class StaticMembershipApiTest extends IntegrationTestCase
         self::assertSame(
             self::GROUP_OPERATIONS,
             $withOperations->authorizedOperations,
-            'a broker without an authorizer answers every operation a group supports: READ, DELETE, DESCRIBE'
+            'a super user holds every operation a group supports: READ, DELETE, DESCRIBE and the two configs ones'
         );
-        self::assertSame(328, $withOperations->authorizedOperations, 'which is the bit set 0b1_0100_1000');
+        self::assertSame(3400, $withOperations->authorizedOperations, 'which is the bit set 0b1101_0100_1000');
+        self::assertSame(
+            [
+                AclOperation::READ,
+                AclOperation::DELETE,
+                AclOperation::DESCRIBE,
+                AclOperation::DESCRIBE_CONFIGS,
+                AclOperation::ALTER_CONFIGS,
+            ],
+            AclOperation::fromBitField($withOperations->authorizedOperations),
+            'Kafka 4.0 gave the group resource the two configs operations'
+        );
 
         new DescribeGroupsRequest([$groupId], self::CLIENT_ID, 734, false)->writeTo($stream);
         $withoutOperations = DescribeGroupsResponse::unpack($stream)->groups[$groupId];
@@ -766,7 +788,39 @@ final class StaticMembershipApiTest extends IntegrationTestCase
      */
     private static function uniqueGroupName(): string
     {
-        return 't3-345-group-' . bin2hex(random_bytes(6));
+        $groupId                  = 't3-345-group-' . bin2hex(random_bytes(6));
+        self::$groupsOfTheClass[] = $groupId;
+
+        return $groupId;
+    }
+
+    /**
+     * Deletes the groups this class created, once their members are gone - best effort, one group at a time
+     *
+     * The node is shared by every suite of the line, and a group that is left behind stays in `__consumer_offsets`
+     * with its committed offsets until `offsets.retention.minutes` expires them; a group that still has a member -
+     * a static one waits out its session - is answered the 68 `NonEmptyGroup` and left to the reaper.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        $groups                 = self::$groupsOfTheClass;
+        self::$groupsOfTheClass = [];
+        if ($groups !== [] && self::bootstrapServers() !== []) {
+            $configuration = [
+                ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+                ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+                ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
+            ];
+            foreach ($groups as $groupId) {
+                try {
+                    new AdminClient(Cluster::bootstrap($configuration), $configuration)->deleteConsumerGroups([$groupId]);
+                } catch (KafkaException) {
+                    // A group with a member left, or one that was never created, must not fail a green suite
+                }
+            }
+        }
+
+        parent::tearDownAfterClass();
     }
 
     /**

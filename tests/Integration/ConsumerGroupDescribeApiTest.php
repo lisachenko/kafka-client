@@ -35,26 +35,37 @@ use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribedGroup;
+use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeRequest;
+use Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeRequestV0;
 use Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponse;
+use Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponseV0;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV5;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV5;
+use Protocol\Kafka\Tests\Fixture\ConsumerGroupReconciliation;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * ConsumerGroupDescribe (key 69, Kafka 3.7, KIP-848) against the 3.9.2 KRaft node.
+ * ConsumerGroupDescribe (key 69, Kafka 3.7, KIP-848) against the 4.3.1 KRaft node, at its version 1 (Kafka 4.0).
  *
  * The api is the DescribeGroups of the new consumer protocol and it does **not** overlap with key 15: this suite
  * drives both of them at the same group, in both directions, because the pair of answers is what decides how an
- * admin client has to route - and the two answers are not symmetric.
+ * admin client has to route. On the 3.9.2 node of the 3.x line the two answers were not symmetric - key 15
+ * described a KIP-848 group as `Dead` with the code 0 - and Kafka 4.0 made them so: DescribeGroups v6 (KIP-1043)
+ * answers the 69 as well. Version 1 of this api (KIP-1099) gives every member its `member_type`, which tells the
+ * classic member of an upgraded group from a member of the consumer protocol.
  *
  * Every group of this class carries the `t3-848-desc-` prefix and every member of it leaves with the epoch -1
  * before the group is deleted, in {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ConsumerGroupDescribeRequest::class)]
+#[CoversClass(ConsumerGroupDescribeRequestV0::class)]
 #[CoversClass(ConsumerGroupDescribeResponse::class)]
+#[CoversClass(ConsumerGroupDescribeResponseV0::class)]
 #[CoversClass(ConsumerGroupDescription::class)]
 #[CoversClass(ConsumerGroupMemberDescription::class)]
 final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
@@ -152,6 +163,8 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
         self::assertSame([$topic => [0, 1]], $member->targetAssignment);
         self::assertTrue($member->isReconciled());
         self::assertFalse($member->isStatic());
+        self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CONSUMER, $member->memberType, 'KIP-1099');
+        self::assertTrue($member->upgraded(), 'a member of the consumer protocol');
         self::assertSame([$topic => [0, 1]], $description->assignment());
     }
 
@@ -169,19 +182,19 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
         [$first, $firstEpoch] = $this->joinedMember($groupId, [$topic]);
         [$second, $secondEpoch] = $this->joinedMember($groupId, [$topic]);
 
-        // The first member releases what it lost, so that the group settles before it is described
-        $revoked = $client->consumerGroupHeartbeat($node, $groupId, $first, $firstEpoch);
-        $kept    = $revoked->assignment?->partitionsByTopicId()[$topicId] ?? [];
-        $client->consumerGroupHeartbeat($node, $groupId, $first, $revoked->memberEpoch, null, [$topicId => $kept]);
-
-        $handed = $client->consumerGroupHeartbeat($node, $groupId, $second, $secondEpoch);
-        $taken  = $handed->assignment?->partitionsByTopicId()[$topicId] ?? [];
-        $client->consumerGroupHeartbeat($node, $groupId, $second, $handed->memberEpoch, null, [$topicId => $taken]);
-
-        $description = $this->admin()->describeConsumerGroup($groupId);
+        // The members release and take what the coordinator tells them until the group is settled: on a 4.3 node
+        // the target assignment is computed off the heartbeat path, once per group.consumer.assignment.interval.ms
+        $epochs      = [$first => $firstEpoch, $second => $secondEpoch];
+        $owned       = [];
+        $description = new ConsumerGroupReconciliation($client, $this->admin(), $node, $groupId)
+            ->settle($epochs, $owned);
+        $kept        = $owned[$first][$topicId] ?? [];
+        $taken       = $owned[$second][$topicId] ?? [];
 
         self::assertCount(2, $description->members);
         self::assertSame([$topic => [0, 1, 2]], $description->assignment(), 'together they hold every partition');
+        self::assertNotSame([], $kept, 'three partitions over two members: each of them holds some');
+        self::assertNotSame([], $taken);
         self::assertSame([$topic => $kept], $description->members[$first]->assignment);
         self::assertSame([$topic => $taken], $description->members[$second]->assignment);
 
@@ -192,6 +205,9 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
 
     /**
      * The flag of KIP-430 is a field of the version 0, because the api was born long after that KIP
+     *
+     * `AclEntry.supportedOperations(GROUP)` @ 4.0.0 holds five operations - READ, DESCRIBE, DELETE and the two
+     * configs ones a group has since Kafka 4.0 - where the 3.9.2 set had the first three alone
      */
     public function testTheAuthorizedOperationsAreReportedWhenTheRequestAsksForThem(): void
     {
@@ -203,10 +219,17 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
 
         self::assertNotSame(AclOperation::NOT_REQUESTED, $description->authorizedOperations);
         self::assertSame(
-            [AclOperation::READ, AclOperation::DELETE, AclOperation::DESCRIBE],
+            [
+                AclOperation::READ,
+                AclOperation::DELETE,
+                AclOperation::DESCRIBE,
+                AclOperation::DESCRIBE_CONFIGS,
+                AclOperation::ALTER_CONFIGS,
+            ],
             $description->authorizedOperations(),
-            'the three operations the super user of this node holds on a group'
+            'the five operations the super user of this node holds on a group'
         );
+        self::assertSame(3400, $description->authorizedOperations);
     }
 
     /**
@@ -222,7 +245,11 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
         $entry  = $answer->groups[$groupId];
 
         self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $entry->errorCode);
-        self::assertNull($entry->errorMessage, 'the refusal carries no sentence at all');
+        self::assertSame(
+            "Group {$groupId} is not a consumer group.",
+            $entry->errorMessage,
+            'a 4.3.1 node says why, where the 3.9.2 one answered a null message'
+        );
         self::assertSame('', $entry->groupState);
         self::assertSame([], $entry->members);
 
@@ -232,22 +259,33 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
     }
 
     /**
-     * And the other way round the classic api answers `Dead` rather than an error, which is the routing rule
+     * And the other way round the classic api refuses a KIP-848 group with the 69 from its version 6 on (KIP-1043)
+     *
+     * Version 5 still answers the state `Dead` with the code 0, the answer of a group that never existed, which is
+     * why an admin client of the 3.x line had to route by the `group_type` of a ListGroups v5 answer.
      */
-    public function testTheClassicDescribeAnswersAKip848GroupTheStateDead(): void
+    public function testTheClassicDescribeRefusesAKip848GroupWithTheSixtyNine(): void
     {
         $topic   = $this->topic(1);
         $groupId = $this->uniqueGroupName();
         $this->joinedMember($groupId, [$topic]);
 
-        $description = $this->admin()->describeGroup($groupId);
+        try {
+            $this->admin()->describeGroup($groupId);
+            self::fail('DescribeGroups v6 refuses a group that is not a classic one');
+        } catch (GroupIdNotFoundException $exception) {
+            self::assertStringContainsString("Group {$groupId} is not a classic group.", $exception->getMessage());
+        }
 
-        self::assertSame(KafkaException::NO_ERROR, $description->errorCode, 'the classic api does not refuse it');
-        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $description->state);
-        self::assertSame('', $description->protocolType);
-        self::assertSame([], $description->members, 'a live group looks like one that never existed');
+        $stream = $this->coordinatorStream($groupId);
+        new DescribeGroupsRequestV5([$groupId], self::CLIENT_ID, 69)->writeTo($stream);
+        $versionFive = DescribeGroupsResponseV5::unpack($stream)->groups[$groupId];
 
-        // which is why the routing has to follow the type of a ListGroups v5 answer
+        self::assertSame(KafkaException::NO_ERROR, $versionFive->errorCode, 'version 5 does not refuse it');
+        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $versionFive->state);
+        self::assertSame('', $versionFive->protocolType);
+        self::assertSame([], $versionFive->members, 'a live group looks like one that never existed');
+
         $listed = $this->admin()->listAllGroups();
 
         self::assertArrayHasKey($groupId, $listed);
@@ -255,7 +293,43 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
     }
 
     /**
-     * A group the coordinator has never heard of is the same 69, with the same null message
+     * The `member_type` of version 1 (KIP-1099): a classic consumer that joins a group of the consumer protocol is
+     * a member of it, and only the type tells it from the others
+     */
+    public function testTheMemberTypeTellsTheClassicMemberOfAnUpgradedGroupApart(): void
+    {
+        $topic   = $this->topic(1);
+        $groupId = $this->uniqueGroupName();
+        [$member] = $this->joinedMember($groupId, [$topic]);
+        $classic = $this->classicMemberOf($groupId, $topic);
+
+        $described = $this->admin()->describeConsumerGroup($groupId)->members;
+
+        self::assertSame([$member, $classic], array_keys($described), 'both are members of the group');
+        self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CONSUMER, $described[$member]->memberType);
+        self::assertTrue($described[$member]->upgraded());
+        self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CLASSIC, $described[$classic]->memberType);
+        self::assertFalse($described[$classic]->upgraded(), 'the upgraded() of the Java MemberDescription');
+        self::assertSame(
+            [$topic],
+            $described[$classic]->subscribedTopicNames,
+            'the coordinator read the subscription out of the metadata of its JoinGroup'
+        );
+
+        // version 0 of the same question has no field for it
+        $stream = $this->coordinatorStream($groupId);
+        new ConsumerGroupDescribeRequestV0([$groupId], false, self::CLIENT_ID, 70)->writeTo($stream);
+        $versionZero = ConsumerGroupDescribeResponseV0::unpack($stream)->groups[$groupId];
+
+        self::assertSame([$member, $classic], array_keys($versionZero->members));
+        foreach ($versionZero->members as $entry) {
+            self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_UNKNOWN, $entry->memberType);
+            self::assertNull(ConsumerGroupMemberDescription::fromMember($entry)->upgraded());
+        }
+    }
+
+    /**
+     * A group the coordinator has never heard of is the same 69, with a sentence of its own
      */
     public function testAGroupThatDoesNotExistIsTheSameSixtyNine(): void
     {
@@ -263,18 +337,18 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
         $entry   = $this->describeRaw([$groupId])->groups[$groupId];
 
         self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $entry->errorCode);
-        self::assertNull($entry->errorMessage);
         self::assertSame(
-            '',
-            $entry->groupState,
-            'the api does not tell a wrong protocol and a missing group apart'
+            "Group {$groupId} not found.",
+            $entry->errorMessage,
+            'the message tells a missing group from a group of the other protocol, where the code does not'
         );
+        self::assertSame('', $entry->groupState);
     }
 
     /**
-     * The empty group id crashes the answer builder of the node, which answers the -1 of an unknown server error
+     * The empty group id is the 24 `InvalidGroupId` the specification lists (the 3.9.2 node crashed on it)
      */
-    public function testTheEmptyGroupIdIsAnsweredTheMinusOneOfTheAnswerBuilder(): void
+    public function testTheEmptyGroupIdIsTheTwentyFour(): void
     {
         $answer = $this->describeRaw(['']);
 
@@ -283,11 +357,12 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
         $entry = reset($answer->groups);
 
         self::assertSame(
-            KafkaException::UNKNOWN,
+            KafkaException::INVALID_GROUP_ID,
             $entry->errorCode,
-            'the handler builds a refusal without a group id and cannot serialize it - see the node log'
+            '`GroupCoordinatorService.consumerGroupDescribe` @ 4.3.1 refuses it before any shard is asked'
         );
-        self::assertSame('', $entry->groupId, 'and the id it is refusing is missing from the answer');
+        self::assertSame('', $entry->groupId);
+        self::assertNull($entry->errorMessage);
     }
 
     /**
@@ -382,6 +457,40 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
         }
 
         return [$member, $answer->memberEpoch];
+    }
+
+    /**
+     * A classic consumer joins a group of the consumer protocol - the online upgrade of KIP-848 - and syncs
+     *
+     * @return string Member id the coordinator gave it
+     */
+    private function classicMemberOf(string $groupId, string $topic): string
+    {
+        $client = $this->client();
+        $node   = $this->coordinator($groupId);
+
+        try {
+            $join = $client->joinGroup(
+                $node,
+                $groupId,
+                '',
+                'consumer',
+                ['range' => new Subscription([$topic])->pack()],
+                self::REBALANCE_TIMEOUT_MS
+            );
+        } catch (\Protocol\Kafka\Common\Errors\MemberIdRequiredException $needsId) {
+            $join = $client->joinGroup(
+                $node,
+                $groupId,
+                (string) ($needsId->getContext()['assignedMemberId'] ?? ''),
+                'consumer',
+                ['range' => new Subscription([$topic])->pack()],
+                self::REBALANCE_TIMEOUT_MS
+            );
+        }
+        self::$classicMembers[] = [$groupId, $join->memberId];
+
+        return $join->memberId;
     }
 
     private function classicGroup(string $groupId, string $topic): void
