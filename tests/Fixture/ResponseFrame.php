@@ -931,24 +931,28 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a DescribeGroups response (api key 15, v1)
+     * Builds a DescribeGroups response (api key 15, v6)
      *
      * <pre>
-     *   DescribeGroupsResponse => ThrottleTimeMs [ErrorCode GroupId State ProtocolType Protocol [Member]]
-     *     Member => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+     *   DescribeGroupsResponse => ThrottleTimeMs [ErrorCode ErrorMessage GroupId State ProtocolType Protocol [Member]
+     *                             AuthorizedOperations]
+     *     Member => MemberId GroupInstanceId ClientId ClientHost MemberMetadata MemberAssignment
      * </pre>
      *
      * There is no error code for the whole request: every group carries its own, and an entry that has one is
-     * otherwise empty, exactly as a broker that is not the coordinator answers it.
+     * otherwise empty, exactly as a broker that is not the coordinator answers it. The `error_message` of version 6
+     * (KIP-1043, Kafka 4.0) is the optional sixth element of an entry, null when it is left out.
      *
-     * @param array<string, array{int, string, string, string, array<string, array{string, string}>}> $groups
-     *        group id => [errorCode, state, protocolType, protocol, member id => [metadata, assignment]]
+     * @param array<string, array{0: int, 1: string, 2: string, 3: string, 4: array<string, array{string, string}>, 5?: string|null}> $groups
+     *        group id => [errorCode, state, protocolType, protocol, member id => [metadata, assignment], errorMessage]
      */
     public static function describeGroups(int $correlationId, array $groups): string
     {
         $body = pack('N', 0) . self::compactCount(count($groups));
-        foreach ($groups as $groupId => [$errorCode, $state, $protocolType, $protocol, $members]) {
+        foreach ($groups as $groupId => $group) {
+            [$errorCode, $state, $protocolType, $protocol, $members] = $group;
             $body .= pack('n', $errorCode)
+                . self::compactString($group[5] ?? null)
                 . self::compactString((string) $groupId)
                 . self::compactString($state)
                 . self::compactString($protocolType)

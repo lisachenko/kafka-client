@@ -18,10 +18,10 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * This is the version that completes static membership on the administrative side: `kafka-consumer-groups.sh
  * --describe` shows which member is which *instance* from here on. Version 5 (KIP-482) is the same answer in the
- * flexible encoding, which {@see DescribeGroupsResponse} decodes.
+ * flexible encoding, which {@see DescribeGroupsResponseV5} decodes.
  *
  * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 final class DescribeGroupsResponseV4 extends DescribeGroupsResponse
 {

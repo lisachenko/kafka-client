@@ -40,11 +40,13 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * * the **join** - a member id the member generated itself, the epoch 0 and the empty `topic_partitions` - and the
  *   **acknowledgement** that follows it, which echoes the partitions the coordinator handed over;
  * * the **incremental** revoke: only the partitions that were really taken away, never the whole assignment;
- * * the **fencing**, where a member that is answered 110 joins again with a *new* member id and the epoch 0.
+ * * the **fencing**, where a member that is answered 110 joins again with the epoch 0 under the member id it
+ *   had - KIP-1082 (ConsumerGroupHeartbeat v1, Kafka 4.0) keeps the id for the life of the consumer;
+ * * the **regex subscription** of version 1, which travels next to an empty list of topic names.
  *
  * The frames the node really sent for each of these are the vectors of `consumer-group-heartbeat.json`.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 #[CoversClass(ConsumerGroupHeartbeatCoordinator::class)]
 final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase
@@ -98,11 +100,14 @@ final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase
 
         $join = $this->heartbeatOf($frames[1]);
 
-        self::assertSame(0, $join['apiVersion'], 'the api has one version');
+        self::assertSame(1, $join['apiVersion'], 'the version 1 of Kafka 4.0');
         self::assertSame(ConsumerGroupHeartbeatRequest::JOIN_MEMBER_EPOCH, $join['memberEpoch']);
         self::assertSame([self::TOPIC], $join['subscribedTopicNames']);
         self::assertSame([], $join['topicPartitions'], 'a (re-)join carries the EMPTY array, never the null');
         self::assertNotSame('', $join['memberId'], 'the member generated an id for itself');
+        self::assertSame($membership->getOwnMemberId(), $join['memberId']);
+        self::assertSame($join['memberId'], $membership->getMemberId(), 'and is a member under it now');
+        self::assertNull($join['subscribedTopicRegex'], 'a subscription by name sends no regex');
         self::assertSame(300000, $join['rebalanceTimeoutMs'], 'max.poll.interval.ms');
 
         $acknowledgement = $this->heartbeatOf($frames[2]);
@@ -233,9 +238,9 @@ final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase
     }
 
     /**
-     * A fenced member joins again with the epoch 0 and a NEW member id
+     * A fenced member joins again with the epoch 0 under the member id it had (KIP-1082)
      */
-    public function testAFencedMemberJoinsAgainUnderANewMemberId(): void
+    public function testAFencedMemberJoinsAgainUnderTheMemberIdItHad(): void
     {
         $coordinator = new BrokerConnection(
             ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
@@ -258,16 +263,18 @@ final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase
         $firstId = $membership->getMemberId();
 
         self::assertTrue($membership->maybeHeartbeat($this->nowMs() + 10000));
-        self::assertSame('', $membership->getMemberId(), 'a fenced member forgets its identity');
+        self::assertSame('', $membership->getMemberId(), 'a fenced member is no member');
+        self::assertSame($firstId, $membership->getOwnMemberId(), 'but it keeps its id');
         self::assertTrue($membership->needsRejoin());
 
         $membership->ensureActiveGroup([self::TOPIC], static fn(array $topics): array => []);
 
-        self::assertNotSame($firstId, $membership->getMemberId(), 'and comes back as a new member');
+        self::assertSame($firstId, $membership->getMemberId(), 'and comes back under the id it had');
         self::assertSame(4, $membership->getGenerationId());
 
         $rejoin = $this->heartbeatOf($coordinator->getReceivedFrames()[3]);
 
+        self::assertSame($firstId, $rejoin['memberId']);
         self::assertSame(ConsumerGroupHeartbeatRequest::JOIN_MEMBER_EPOCH, $rejoin['memberEpoch']);
         self::assertSame([], $rejoin['topicPartitions'], 'a rejoin is a join: the empty array again');
     }
@@ -367,11 +374,108 @@ final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase
     }
 
     /**
+     * The member id is a random uuid in the URL-safe base64 of Kafka's own `Uuid.toString()`, as the Java consumer
+     * generates it, and one that never starts with a dash
+     */
+    public function testTheMemberIdIsTheBase64UuidOfTheJavaConsumer(): void
+    {
+        for ($attempt = 0; $attempt < 200; $attempt++) {
+            $memberId = ConsumerGroupHeartbeatCoordinator::newMemberId();
+
+            self::assertMatchesRegularExpression('/^[A-Za-z0-9_][A-Za-z0-9_-]{21}$/', $memberId);
+
+            $bytes = (string) base64_decode(strtr($memberId, '-_', '+/') . '==', true);
+
+            self::assertSame(16, strlen($bytes));
+            self::assertSame(0x40, ord($bytes[6]) & 0xF0, 'a version 4 uuid');
+            self::assertSame(0x80, ord($bytes[8]) & 0xC0, 'of the IETF variant');
+        }
+
+        $this->connect(new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092)));
+
+        self::assertSame('given-id', $this->membership(memberId: 'given-id')->getOwnMemberId());
+    }
+
+    /**
+     * A member that subscribes by a regex joins with the regex and the EMPTY list of topic names, and the
+     * coordinator's assignment names the topics that matched
+     */
+    public function testARegexSubscriptionJoinsWithTheRegexAndNoTopicName(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::consumerGroupHeartbeat(0, assignment: [$this->topicId() => [0, 1, 2]]),
+            ResponseFrame::consumerGroupHeartbeat(0, memberEpoch: 2)
+        );
+        $this->connect($coordinator);
+
+        $membership = $this->membership();
+        $membership->setSubscriptionPattern('ord.*');
+
+        self::assertSame('ord.*', $membership->getSubscriptionPattern());
+        self::assertSame(
+            [self::TOPIC => [0, 1, 2]],
+            $membership->ensureActiveGroup([], static fn(array $topics): array => []),
+            'the topics are the ones the coordinator matched'
+        );
+
+        $join = $this->heartbeatOf($coordinator->getReceivedFrames()[1]);
+
+        self::assertSame('ord.*', $join['subscribedTopicRegex']);
+        self::assertSame([], $join['subscribedTopicNames'], 'the empty list, as the Java consumer sends it');
+
+        $acknowledgement = $this->heartbeatOf($coordinator->getReceivedFrames()[2]);
+
+        self::assertNull($acknowledgement['subscribedTopicRegex'], 'unchanged since the last heartbeat');
+    }
+
+    /**
+     * A regex that changes - or is dropped - travels in an ordinary heartbeat; a dropped one is the empty string
+     */
+    public function testARegexThatChangedIsAnOrdinaryHeartbeatAndADroppedOneTheEmptyString(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::consumerGroupHeartbeat(0, assignment: []),
+            ResponseFrame::consumerGroupHeartbeat(0, memberEpoch: 2),
+            ResponseFrame::consumerGroupHeartbeat(0, memberEpoch: 3)
+        );
+        $this->connect($coordinator);
+
+        $membership = $this->membership();
+        $membership->setSubscriptionPattern('ord.*');
+        $membership->ensureActiveGroup([], static fn(array $topics): array => []);
+
+        $membership->setSubscriptionPattern('inv.*');
+        self::assertTrue($membership->needsRejoin(), 'a new regex is a reconciliation');
+        $membership->ensureActiveGroup([], static fn(array $topics): array => []);
+
+        $membership->setSubscriptionPattern(null);
+        $membership->ensureActiveGroup([self::TOPIC], static fn(array $topics): array => []);
+
+        $frames = $coordinator->getReceivedFrames();
+
+        self::assertCount(4, $frames, 'one join and two heartbeats, no rejoin');
+
+        $change = $this->heartbeatOf($frames[2]);
+
+        self::assertSame('inv.*', $change['subscribedTopicRegex']);
+        self::assertNull($change['subscribedTopicNames'], 'the names did not change');
+
+        $drop = $this->heartbeatOf($frames[3]);
+
+        self::assertSame('', $drop['subscribedTopicRegex'], 'the empty string removes the regex');
+        self::assertSame([self::TOPIC], $drop['subscribedTopicNames']);
+        self::assertSame(3, $membership->getGenerationId());
+    }
+
+    /**
      * The membership of a group whose coordinator is the scripted broker
      */
     private function membership(
         ?string $groupInstanceId = null,
-        ?string $serverAssignor = null
+        ?string $serverAssignor = null,
+        ?string $memberId = null
     ): ConsumerGroupHeartbeatCoordinator {
         $configuration = [
             ClientConfig::BOOTSTRAP_SERVERS         => [self::BOOTSTRAP_ADDRESS],
@@ -391,7 +495,9 @@ final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase
             300000,
             1,
             $groupInstanceId,
-            $serverAssignor
+            $serverAssignor,
+            null,
+            $memberId
         );
     }
 

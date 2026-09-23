@@ -18,11 +18,11 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * The request of version 4 is byte for byte the one of version 3 - what KIP-345 added at this version is the
  * `group_instance_id` of every **member** of the answer ({@see \Protocol\Kafka\Protocol\Data\DescribeGroupResponseMember}).
- * Version 5 (KIP-482) is the same frame written with the compact types and a tagged-field section, which
- * {@see DescribeGroupsRequest} sends.
+ * Version 5 (KIP-482) is the same frame written with the compact types and a tagged-field section, see
+ * {@see DescribeGroupsRequestV5}.
  *
  * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 final class DescribeGroupsRequestV4 extends DescribeGroupsRequest
 {
