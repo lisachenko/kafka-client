@@ -310,8 +310,9 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         )[$key];
 
         self::assertInstanceOf(InvalidRequestException::class, $error);
+        // A Java list since the node of the 4.x line; the 2.8.2 and the 3.9.2 broker wrote the Scala `Set(log.dirs)`
         self::assertStringContainsString(
-            'Cannot update these configs dynamically: Set(log.dirs)',
+            'Cannot update these configs dynamically: [log.dirs]',
             (string) $error->getContext()['error']
         );
 

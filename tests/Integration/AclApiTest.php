@@ -299,8 +299,10 @@ final class AclApiTest extends IntegrationTestCase
             $unprivileged->describeAcls();
             self::fail('The unprivileged principal was allowed to describe the acls of the cluster');
         } catch (ClusterAuthorizationFailedException $refused) {
+            // `AuthHelper.authorizeClusterOperation` @ 4.1.0 names the operation the principal lacks; 3.9.2 and
+            // 4.0.x said "Request … is not authorized."
             self::assertStringContainsString(
-                'is not authorized',
+                'needs DESCRIBE permission.',
                 $refused->getMessage(),
                 'the message is the whole request object of the broker, which the code 31 is the truth of'
             );

@@ -25,6 +25,8 @@ use Protocol\Kafka\Common\Errors\SaslAuthenticationException;
 use Protocol\Kafka\Common\Errors\SaslAuthenticationFailedException;
 use Protocol\Kafka\Common\Errors\UnsupportedSaslMechanismException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Security\SaslMechanism;
 use Protocol\Kafka\Common\Security\SaslToken;
 use Protocol\Kafka\Common\Security\SecurityProtocol;
@@ -36,14 +38,13 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
-use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequest;
 use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponse;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeRequest;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeRequestV0;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
-use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -152,17 +153,21 @@ final class SaslTransportTest extends IntegrationTestCase
         $stream  = $this->connectWithSasl($listener);
         $records = [[null, 'authenticated'], ['key', 'with SASL/PLAIN']];
 
-        // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/4.3.md
-        new ProduceRequestV2(
-            [$topic => [0 => SpecMessageSet::of($records)]],
+        // A record batch of the message format v2: Kafka 4.0 removed the Produce versions 0 to 2 that carried the
+        // message sets of the formats v0 and v1 (KIP-896), and the node closes the connection of such a frame
+        $timestamp = (int) round(microtime(true) * 1000);
+        new ProduceRequest(
+            [$topic => [0 => RecordBatch::fromRecords(array_map(
+                static fn(array $record): Record => new Record($record[1], $record[0], 0, null, $timestamp),
+                $records
+            ))]],
             1,
             self::PRODUCE_TIMEOUT_MS,
             self::CLIENT_ID,
             201
         )->writeTo($stream);
 
-        $produced = ProduceResponseV2::unpack($stream);
+        $produced = ProduceResponse::unpack($stream);
         self::assertSame(201, $produced->getCorrelationId());
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->baseOffset);
