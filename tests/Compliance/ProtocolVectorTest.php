@@ -448,6 +448,22 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function addRaftVoterVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function removeRaftVoterVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function describeClusterVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -1083,6 +1099,24 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('describeQuorumVectors')]
     public function testDescribeQuorumApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('addRaftVoterVectors')]
+    public function testAddRaftVoterApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('removeRaftVoterVectors')]
+    public function testRemoveRaftVoterApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

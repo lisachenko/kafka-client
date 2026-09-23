@@ -490,6 +490,88 @@
                 "topics": [],
                 "nodes": []
             }
+        },
+        {
+            "id": "describequorum.request.v2.kraft-version-1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeQuorum **v2** of the metadata quorum, the frame of `describequorum.request.v2`, sent to the 4.3.1 node, whose quorum is the **dynamic** one of KIP-853: formatted `--standalone`, `kraft.version` finalized at **1**.",
+            "hex": "00000039003700020000106900126b61666b612d636c69656e742d74312d34300002135f5f636c75737465725f6d657461646174610200000000000000",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 55,
+                "apiVersion": 2,
+                "correlationId": 4201,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "topics": {
+                    "__cluster_metadata": {
+                        "topicName": "__cluster_metadata",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describequorum.response.v2.kraft-version-1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The same answer as on the 3.9.2 node with one difference that is the whole point of KIP-853: the `replica_directory_id` of the one voter is the **real** `directory.id` of its `meta.properties`, `7QxpXGVBQTWaHmiG7IDrEQ`, where the static quorum of 3.9.2 answered the zero uuid. The key `(1, 7QxpXGVBQTWaHmiG7IDrEQ)` is what AddRaftVoter and RemoveRaftVoter compare.",
+            "hex": "00000085000010690000000102135f5f636c75737465725f6d65746164617461020000000000000100000001000000010000000000003a720200000001ed0c695c654141359a1e6886ec80eb110000000000003a72000001a0d08b2e76000001a0d08b2e76000100000200000001020b434f4e54524f4c4c45520a6c6f63616c686f73742388000000",
+            "fields": {
+                "messageSize": 133,
+                "correlationId": 4201,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "errorMessage": "",
+                "topics": {
+                    "__cluster_metadata": {
+                        "topicName": "__cluster_metadata",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": "",
+                                "leaderId": 1,
+                                "leaderEpoch": 1,
+                                "highWatermark": 14962,
+                                "currentVoters": {
+                                    "1": {
+                                        "replicaId": 1,
+                                        "replicaDirectoryId": {
+                                            "$bytes": "ed0c695c654141359a1e6886ec80eb11"
+                                        },
+                                        "logEndOffset": 14962,
+                                        "lastFetchTimestamp": 1790205177462,
+                                        "lastCaughtUpTimestamp": 1790205177462
+                                    }
+                                },
+                                "observers": []
+                            }
+                        ]
+                    }
+                },
+                "nodes": {
+                    "1": {
+                        "nodeId": 1,
+                        "listeners": {
+                            "CONTROLLER": {
+                                "name": "CONTROLLER",
+                                "host": "localhost",
+                                "port": 9096
+                            }
+                        }
+                    }
+                }
+            }
         }
     ]
 }
