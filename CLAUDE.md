@@ -4,36 +4,36 @@ Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch a
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
 (Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
 (Kafka 0.11.0.3, **complete**) → `1.x` (Kafka **1.1.1**, **complete**) → `2.x` (Kafka **2.8.2**, **complete**,
-**protected**) → `main` (the **3.x line**, Kafka **3.9.2**, **in development**). From the 1.x line on the lines are **major**
-lines: one branch per Kafka major version, covering every minor release inside it (`1.x` speaks 1.1.1 and with it
-everything 1.0 and 1.1 added; `2.x` speaks 2.8.2 and with it everything 2.0 to 2.8 added, one gated milestone commit
-and one tag per minor, `2.0.1` … `2.8.2`). See `docs/CASCADE.md` and, for each line, `docs/handoff/<branch>.md`: every
+**protected**) → `3.x` (Kafka **3.9.2**, **complete**, **protected**) → `main` (the **4.x line**, **in development**).
+From the 1.x line on the lines are **major** lines: one branch per Kafka major version, covering every minor release
+inside it (`1.x` speaks 1.1.1 and with it everything 1.0 and 1.1 added; `2.x` speaks 2.8.2 and with it everything
+2.0 to 2.8 added; `3.x` speaks 3.9.2 and with it everything 3.0 to 3.9 added plus the **KIP-848 consumer protocol**,
+one gated milestone commit per minor). See `docs/CASCADE.md` and, for each line, `docs/handoff/<branch>.md`: every
 one of those files carries the release notes of its line with the plan it was built from below them —
-`docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/2.x.md` the record of the 2.x line, and
-**`docs/handoff/main.md` is the plan of the 3.x line** (its release notes are written above the plan when the line is
-complete): what Kafka 3.0 to 3.9 add api by api, derived from the message specs at the release tags, the owner's
-decisions (a KRaft node, the ACL apis in, the KIP-848 consumer in as the last wave, share groups out, client metrics
-wire only), the environment recipe, the ticket plan and the pitfalls of the 2.x session. `main` and `2.x` are
-identical at `bc5dec5`, so the 3.x line started on `main` without branching anything off; its foundation commit
-renamed the grammar to `docs/protocol/3.9.md` and declared the api keys 65–87 and the error codes 105–127.
+`docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/2.x.md` the record of the 2.x line,
+`docs/handoff/3.x.md` the record of the 3.x line, and **`docs/handoff/main.md` is the plan of the 4.x line** (its
+release notes are written above the plan when the line is complete). `main` and `3.x` are identical at the start of
+the 4.x line, so the line starts on `main` without branching anything off; its foundation ticket brings the node of
+the line, renames the grammar `docs/protocol/3.9.md` with the line, and declares what Kafka 4.x adds — until it
+lands, `main` speaks what the 3.x line delivered, on the 3.9.2 KRaft node.
 
-**The 2.x line starts from `main` as it stood at the end of 1.x** (the finished 1.x tree was branched off as `1.x`
-at `2ee4866`, the merge of PR #109, so that `main` can carry it). What Kafka 2.0 to 2.8 add over 1.1.1 api by
-api, the ticket plan, the environment recipe and the pitfalls of the 1.x session are in `docs/handoff/main.md`.
-The broker of the 2.x line is **2.8.2**, the last release of the 2.x line, which still serves every version 2.0 to
-2.7 added, so one container verifies the whole line; the broker of the 3.x line is **3.9.2** (`docs/handoff/main.md`). Its four big additions over 1.1.1: the **flexible versions**
-of KIP-482 (compact strings, bytes and arrays, tagged fields, request header v2 and response header v1, Kafka
-2.4), the **leader epochs** of KIP-320 (2.1), the **zstd** codec of KIP-110 (2.1) and **22 new api keys** (43 to
-64, of which a ZooKeeper-backed broker serves 43-51, 56, 57, 60 and 61), next to some 140 version bumps and the
-error codes 72-104.
+**The 3.x line started from `main` as it stood at the end of 2.x** and speaks Kafka 3.9.2 on a **KRaft** node
+(`docs/handoff/3.x.md`). What it added over 2.8.2: the api keys 65–87 declared and six of them spoken
+(DescribeTransactions, ListTransactions, ConsumerGroupHeartbeat, ConsumerGroupDescribe, DescribeTopicPartitions and
+the client-metrics apis as wire classes), the ACL apis 29–31 spoken for the first time against the
+`StandardAuthorizer`, the **KIP-848 consumer protocol** behind `group.protocol=consumer`, some 60 version bumps at
+the highest version a 3.9.2 node serves, and the error codes 105–127. The 2.x line before it brought the **flexible
+versions** of KIP-482 (compact strings, bytes and arrays, tagged fields, request header v2 and response header v1,
+Kafka 2.4), the **leader epochs** of KIP-320 (2.1), the **zstd** codec of KIP-110 (2.1), the api keys 43 to 64 and
+the error codes 72-104.
 
-**The 3.x line starts from `main` as it stood at the end of 2.x** (`bc5dec5` plus the close-out PR #158) and speaks
-towards **Kafka 3.9.2**, the last release of the 3.x line (and the last one that can run with ZooKeeper — the node of
-this line runs **KRaft**). What Kafka 3.0 to 3.9 add over 2.8.2 api by api (23 api keys 65–87, some 60 version bumps,
-the error codes 105–127; no new encoding and no new message format), the ticket plan per agent and the milestone
-process are in `docs/handoff/main.md`. For this line rule 4 means "start from the 2.8.2 class of `main` and add what
-the new release adds", and rule 2 "the names of the 2.8.2 classes, plus the names of the Java client @ 3.9.2 for what
-is new" (`DescribeTransactionsRequest`, `ConsumerGroupHeartbeatRequest`, …; key 56 stays `AlterIsrRequest`).
+**The 4.x line starts from `main` as it stood at the end of 3.x** and speaks towards the last 4.x release available
+when the line starts — Kafka 4.x is **KRaft only**, and 4.0 is the first release that stops serving protocol versions
+a 3.9.2 node still answers (KIP-896), so the lower-line frames the compliance suite replays are no longer frames a
+4.x node accepts. What Kafka 4.x adds over 3.9.2 api by api is derived from the message specs at the release tags by
+the foundation ticket, on the plan in `docs/handoff/main.md`. For this line rule 4 means "start from the 3.9.2 class of
+`main` and add what the new release adds", and rule 2 "the names of the 3.9.2 classes, plus the names of the Java
+client at the line's release for what is new".
 
 ## Hard rules (owner's decisions)
 
@@ -97,7 +97,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 ### Kafka broker for integration tests
 
 - `docker compose up -d --wait` starts the broker of this branch's Kafka version
-  (`docker/kafka-<version>/`, advertised as 127.0.0.1:9092). On `main` that is **`docker/kafka-3.9.2`**, the
+  (`docker/kafka-<version>/`, advertised as 127.0.0.1:9092). On `3.x`, and on `main` until the foundation ticket of the 4.x line replaces it, that is **`docker/kafka-3.9.2`**, the
   container `kafka-3-9-2`: a **KRaft** node (`process.roles=broker,controller`, no ZooKeeper, a CONTROLLER
   listener on 9096 inside the container); on `2.x` it is `docker/kafka-2.8.2` (`kafka-2-8-2`, ZooKeeper
   bundled), on `0.11.x` `docker/kafka-0.11.0.3` (`kafka-0-11-0-3`). Either way it has the four listeners
@@ -169,7 +169,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 - Conventional commits. No force-pushes on shared branches.
 - Cascade: after a line is complete, merge it upwards on a `cascade/<from>-into-<to>` branch (rules in
   `docs/CASCADE.md`); `.github/workflows/cascade.yml` opens the PR automatically on pushes to `0.8.x`,
-  `0.9.x`, `0.10.x`, `0.11.x` and `1.x`. `main` is the top of the cascade and the line in development.
+  `0.9.x`, `0.10.x`, `0.11.x`, `1.x`, `2.x` and `3.x`. `main` is the top of the cascade and the line in development.
 
 ## How the work is organised (multi-agent)
 

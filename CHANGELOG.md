@@ -4,22 +4,37 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `main` is the **3.x line** and speaks the **Kafka 3.9.2 wire protocol** — the last release of the 3.x
-major, so everything Kafka 3.0 to 3.9 added, and the KIP-848 consumer protocol — built one Kafka minor at a
-time and complete. The lines
-below it are `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
+own: `main` is the **4.x line**, built towards the **Kafka 4.x wire protocol** one Kafka minor at a time on top
+of the finished 3.x line; today it speaks **Kafka 3.9.2** and the KIP-848 consumer protocol. The lines
+below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
 into the next one, so the sections below accumulate: what a line added stays true of every line above it.
 
-Unreleased — the 3.x line (Kafka 3.0 to 3.9 and the KIP-848 consumer, complete at 3.9.2)
-------------------------------------------------------------------------------------------
+Unreleased — the 4.x line (towards Kafka 4.x)
+---------------------------------------------
 
-The 3.x line, built on `main` on top of the finished 2.x line (branched off as `2.x`). Everything
+The 4.x line, built on `main` on top of the finished 3.x line (branched off as `3.x`). The plan of the line is
+[docs/handoff/main.md](docs/handoff/main.md); until its foundation ticket lands, `main` speaks what the 3.x line
+delivered — Kafka 3.9.2 and the KIP-848 consumer protocol — on the 3.9.2 KRaft node.
+
+### Changed
+
+- **`main` is the 4.x line**: the finished 3.x tree was branched off as `3.x` (protected, tagged `3.0.2` … `3.9.2`
+  by the owner) and wired into the cascade (`3.x → main`); the record of the 3.x line moved to
+  [docs/handoff/3.x.md](docs/handoff/3.x.md) and the plan of the 4.x line took its place as
+  `docs/handoff/main.md`; the tables of tag points and milestone commits left the handoff records — the tags of
+  the repository are the record.
+
+The 3.x line (Kafka 3.0 to 3.9 and the KIP-848 consumer, 3.9.2)
+----------------------------------------------------------------
+
+The 3.x line, built on `main` on top of the finished 2.x line (branched off as `2.x`), **complete** and
+branched off as `3.x`. Everything
 below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (`docker/kafka-3.9.2/`,
 broker and controller in one process, four client listeners) and documented in
-[docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
-complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **The line is complete** (the foundation, the re-baseline wave T0, the 3.0 to 3.9 waves and the KIP-848 consumer wave are in; Kafka 3.4 added nothing a client sends); its release notes stand above the plan in [docs/handoff/main.md](docs/handoff/main.md).
+[docs/protocol/3.9.md](docs/protocol/3.9.md). The record of the line — its release notes above the plan it was
+built from — is [docs/handoff/3.x.md](docs/handoff/3.x.md); the record of the 2.x line is
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **The line is complete** (the foundation, the re-baseline wave T0, the 3.0 to 3.9 waves and the KIP-848 consumer wave are in; Kafka 3.4 added nothing a client sends).
 
 ### Added
 

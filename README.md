@@ -11,18 +11,19 @@ protocol — no `ext-rdkafka` required. It ships a Producer, a Consumer and a lo
 client, designed to stay close in spirit to the official Java client's API while feeling
 natural in PHP.
 
-**This branch is the 3.x line and speaks the Apache Kafka 3.9.2 wire protocol** — the last release of the 3.x
-major, so everything Kafka 3.0 to 3.9 added, and the **KIP-848 consumer protocol** — built one Kafka minor at a
-time on top of the finished 2.x line and verified against a 3.9.2 **KRaft** node; the version of every api the
-client sends is listed under
+**This branch is the 4.x line and is being built towards the Apache Kafka 4.x wire protocol**, one Kafka
+minor at a time, on top of the finished 3.x line (branched off as `3.x`). Today it speaks **Kafka 3.9.2** and the
+**KIP-848 consumer protocol** — everything the 3.x line delivered, verified against a 3.9.2 **KRaft** node — and
+the version of every api the client sends is listed under
 [Supported Kafka protocol versions](#supported-kafka-protocol-versions). `main` is the top of the cascade:
-the frozen protocol snapshots below it live on `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x`
+the frozen protocol snapshots below it live on `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x`
 (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every
 wire vector those lines captured is replayed against the classes of this branch. The grammar this branch
 implements is written down, byte for byte, in [docs/protocol/3.9.md](docs/protocol/3.9.md), verified against
-a real Kafka 3.9.2 node running in KRaft mode; the plan of the line (and, once it is complete, its release
-record) is [docs/handoff/main.md](docs/handoff/main.md), the 2.x line's record is
-[docs/handoff/2.x.md](docs/handoff/2.x.md) and the 1.x line's [docs/handoff/1.x.md](docs/handoff/1.x.md).
+a real Kafka 3.9.2 node running in KRaft mode; the plan of the 4.x line is
+[docs/handoff/main.md](docs/handoff/main.md), and the records of the finished lines are
+[docs/handoff/3.x.md](docs/handoff/3.x.md), [docs/handoff/2.x.md](docs/handoff/2.x.md) and
+[docs/handoff/1.x.md](docs/handoff/1.x.md).
 
 Installation
 ------------
@@ -767,13 +768,12 @@ document and its "SaslAuthenticate API (key 36, v0)" section.
 Supported Kafka protocol versions
 ----------------------------------
 
-This branch is the **3.x line** and speaks the **Kafka 3.9.2** wire protocol — the last release of the
-3.x major, so everything Kafka 3.0 to 3.9 added, and the KIP-848 consumer protocol. It was built **one Kafka
-minor at a time**: each minor is a gated milestone commit of the branch (the tag points are listed in
-[docs/handoff/main.md](docs/handoff/main.md), with the release notes of the line above them), and the line is
-**complete**: the table below lists the version of every api the client sends. The frozen protocol
-snapshots of the lines below live on `2.x`
-(Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x`
+This branch is the **4.x line**, built towards the Kafka 4.x wire protocol on top of the finished **3.x line**
+(its record is [docs/handoff/3.x.md](docs/handoff/3.x.md)). Today it speaks **Kafka 3.9.2** — everything
+Kafka 3.0 to 3.9 added, and the KIP-848 consumer protocol — and the table below lists the version of every api
+the client sends; what Kafka 4.x adds arrives one gated milestone at a time (the plan is
+[docs/handoff/main.md](docs/handoff/main.md)). The frozen protocol snapshots of the lines below live on `3.x`
+(Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x`
 (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
 
 Kafka 0.10.0 added the **ApiVersions** request (key 18), so this line does not have to guess what
