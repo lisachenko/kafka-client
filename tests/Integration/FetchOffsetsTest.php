@@ -15,10 +15,10 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\IO\StringStream;
-use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
@@ -33,31 +33,41 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
-use Protocol\Kafka\Protocol\Request\FetchResponseV1;
+use Protocol\Kafka\Protocol\Request\FetchRequestV4;
+use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
+use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the Fetch and Offsets APIs against a real Kafka 0.9.0.1 broker.
+ * Verifies the Fetch and Offsets APIs against the Kafka 4.3.1 node of this line.
  *
- * The messages are produced with hand-written Produce v0 bytes, so that these tests only depend on the wire format
- * of the spec and not on the state of the other protocol classes.
+ * On the lines up to 3.x the messages of this class were hand-written Produce v0 bytes read back with a Fetch v1 and
+ * a decoder of the message format v0. **Kafka 4.0 removed all three** (KIP-896): Produce v0 to v2, Fetch v0 to v3 and
+ * ListOffsets v0 close the connection on a 4.x node. The records are therefore produced as a record batch v2 with a
+ * Produce v3 and fetched with a Fetch v4 - the lowest versions the node serves - and the removed ListOffsets v0 is
+ * measured as the refusal it is now.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)" and "Offsets API (key 2, v0 and v1),
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)" and "Offsets API (key 2, v0 to v10),
  *      a.k.a. ListOffset"
  */
-#[CoversClass(FetchRequestV1::class)]
-#[CoversClass(FetchResponseV1::class)]
+#[CoversClass(FetchRequestV4::class)]
+#[CoversClass(FetchResponseV4::class)]
 #[CoversClass(FetchRequestTopic::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
 #[CoversClass(FetchResponseTopic::class)]
@@ -139,7 +149,17 @@ final class FetchOffsetsTest extends IntegrationTestCase
 
         $partition = $this->fetch($stream, $topic, 2);
 
-        self::assertSame([2 => 'third', 3 => 'fourth', 4 => 'fifth'], self::decode($partition));
+        // The log holds the five records as ONE record batch, and a broker hands out whole batches: the answer
+        // starts at the batch that holds the fetch offset, and the records in front of it are the client's to skip
+        self::assertSame(
+            [0 => 'first', 1 => 'second', 2 => 'third', 3 => 'fourth', 4 => 'fifth'],
+            self::decode($partition),
+            'the whole batch comes back, where a message set of the format v0 started at the fetch offset itself'
+        );
+        self::assertSame(
+            [2 => 'third', 3 => 'fourth', 4 => 'fifth'],
+            array_filter(self::decode($partition), static fn(int $offset): bool => $offset >= 2, ARRAY_FILTER_USE_KEY)
+        );
         self::assertSame(5, $partition->highWaterMarkOffset);
     }
 
@@ -157,24 +177,30 @@ final class FetchOffsetsTest extends IntegrationTestCase
         self::assertFalse($partition->isSingleMessageTooLarge(2), 'there is simply nothing left to read');
     }
 
-    public function testMessageBiggerThanMaxBytesComesBackAsAnEmptyMessageSet(): void
+    public function testABatchBiggerThanMaxBytesIsReturnedWhole(): void
     {
         $stream = $this->connect();
         $topic  = $this->createTopic($stream, 't5-fetch-maxbytes');
         $this->produce($stream, $topic, [str_repeat('x', 4096)]);
 
-        // A 0.9.0.1 broker cuts the message set off at MaxBytes and does not guarantee progress, unlike the later
-        // protocol versions: what comes back are the first 64 bytes of a message that is 4110 bytes long
+        // A 0.9.0.1 broker cut the message set off at MaxBytes and did not guarantee progress, and so did every
+        // Fetch below version 3 on the brokers after it. Fetch v4, the lowest version a 4.x node serves, hands the
+        // first batch of the answer out whole however small the limit is (KIP-74)
         $partition = $this->fetch($stream, $topic, 0, maxBytes: 64);
 
-        self::assertSame(0, $partition->errorCode, 'an oversized message is not an error of the partition');
-        self::assertLessThanOrEqual(64, strlen((string) $partition->messageSet));
-        self::assertSame([], self::decode($partition), 'the partial trailing message is dropped');
+        self::assertSame(0, $partition->errorCode, 'an oversized batch is not an error of the partition');
+        self::assertGreaterThan(4096, strlen((string) $partition->messageSet));
+        self::assertSame([0 => str_repeat('x', 4096)], self::decode($partition));
         self::assertSame(1, $partition->highWaterMarkOffset);
-        self::assertTrue($partition->isSingleMessageTooLarge(0));
+        self::assertFalse($partition->isSingleMessageTooLarge(0));
 
-        // The very same fetch with enough room returns the message
-        self::assertSame([0 => str_repeat('x', 4096)], self::decode($this->fetch($stream, $topic, 0)));
+        // ... and the Fetch v1 that cut the message off costs the connection
+        self::assertSame(
+            RemovedVersionProbe::CLOSED,
+            new RemovedVersionProbe(self::firstBootstrapServer())->send(
+                new FetchRequestV1([$topic => [self::PARTITION => 0]], 1000, 1, 64, -1, self::CLIENT_ID, 13)
+            )
+        );
     }
 
     public function testFetchOfAnEmptyLogBlocksUntilMaxWaitTimeIsOver(): void
@@ -282,41 +308,46 @@ final class FetchOffsetsTest extends IntegrationTestCase
         $response = OffsetsResponse::unpack($stream);
 
         $partitions = $response->topics[$topic]->partitions;
+        ksort($partitions);
         self::assertSame([0, 1, 2], array_keys($partitions), 'the response is indexed by the partition id');
         self::assertSame(2, $partitions[0]->offset);
         self::assertSame(0, $partitions[1]->offset, 'nothing was produced to the other partitions');
         self::assertSame(0, $partitions[2]->offset);
     }
 
-    public function testVersionZeroOfTheOffsetsApiIsStillServedWithItsOffsetArray(): void
+    public function testVersionZeroOfTheOffsetsApiClosesTheConnection(): void
     {
         $stream = $this->connect();
         $topic  = $this->createTopic($stream, 't5-offsets-v0');
         $this->produce($stream, $topic, ['first', 'second', 'third']);
 
-        new OffsetsRequestV0(
-            [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
-            5,
-            -1,
-            self::CLIENT_ID,
-            23
-        )->writeTo($stream);
-        $response = OffsetsResponseV0::unpack($stream);
-
-        $partition = $response->topics[$topic]->partitions[self::PARTITION];
-        self::assertSame(0, $partition->errorCode);
+        // `ListOffsetsRequest.json` @ 4.0.0: "Version 0 was removed in Apache Kafka 4.0, Version 1 is the new
+        // baseline" - the list of segment offsets a 3.9.2 node still answered is gone with it (KIP-896)
         self::assertSame(
-            [3, 0],
-            $partition->offsets,
-            'version 0 answers a list: the log end offset and the base offset of the only segment'
+            RemovedVersionProbe::CLOSED,
+            new RemovedVersionProbe(self::firstBootstrapServer())->send(new OffsetsRequestV0(
+                [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+                5,
+                -1,
+                self::CLIENT_ID,
+                23
+            ))
         );
+
+        // The lowest version the node serves answers one offset per partition
+        new OffsetsRequestV1([$topic => [self::PARTITION => OffsetsRequest::LATEST]], -1, 0, self::CLIENT_ID, 24)
+            ->writeTo($stream);
+        $partition = OffsetsResponseV1::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
+
+        self::assertSame(0, $partition->errorCode);
+        self::assertSame(3, $partition->offset, 'the log end offset, where version 0 answered the list [3, 0]');
     }
 
     public function testTheVersionsTwoAndThreeAskTheSameQuestionAndGetTheSameAnswer(): void
     {
         // `ListOffsetsRequest.json` and `ListOffsetsResponse.json` @ 2.8.2 both say "Version 3 is the same as
         // version 2": what version 3 (Kafka 2.0, KIP-219) states is that the client waits out the throttle time
-        // of the answer itself, and it is the version this client sends.
+        // of the answer itself.
         $stream = $this->connect();
         $topic  = $this->createTopic($stream, 't5-offsets-v3');
         $this->produce($stream, $topic, ['first', 'second']);
@@ -343,7 +374,8 @@ final class FetchOffsetsTest extends IntegrationTestCase
         self::assertSame(6, OffsetsRequestV6::VERSION, 'the flexible version Kafka 2.8 added');
         self::assertSame(7, OffsetsRequestV7::VERSION, 'the version Kafka 3.0 added');
         self::assertSame(8, OffsetsRequestV8::VERSION, 'the version Kafka 3.5 added');
-        self::assertSame(9, OffsetsRequest::VERSION, 'and the client sends the version Kafka 3.9 added');
+        self::assertSame(9, OffsetsRequestV9::VERSION, 'the version Kafka 3.9 added');
+        self::assertSame(10, OffsetsRequest::VERSION, 'and the version Kafka 4.0 added (KIP-1075)');
         self::assertSame($versionTwo->getMessageSize(), $versionThree->getMessageSize());
         self::assertSame(0, $versionThree->throttleTimeMs, 'no quota is set for this client id');
 
@@ -412,30 +444,21 @@ final class FetchOffsetsTest extends IntegrationTestCase
     /**
      * Produces the given values to the partition under test, retrying while the fresh topic has no leader yet
      *
-     * @param list<string> $values Values of the messages to produce, in order
+     * One record batch of the message format v2 in a Produce **v3**, the lowest version a 4.x node serves.
+     *
+     * @param list<string> $values Values of the records to produce, in order
      */
     private function produce(SocketStream $stream, string $topic, array $values): void
     {
-        $messageSet = '';
-        foreach ($values as $offset => $value) {
-            $message    = pack('ccN', 0 /* MagicByte */, 0 /* Attributes */, 0xFFFFFFFF /* null Key */)
-                . pack('N', strlen($value)) . $value;
-            $message    = pack('N', crc32($message)) . $message;
-            $messageSet .= pack('JN', $offset, strlen($message)) . $message;
-        }
-
-        $body = pack('nN', 1 /* RequiredAcks */, 5000 /* Timeout */)
-            . pack('N', 1) . pack('n', strlen($topic)) . $topic
-            . pack('N', 1) . pack('N', self::PARTITION) . pack('N', strlen($messageSet)) . $messageSet;
+        $now     = (int) round(microtime(true) * 1000);
+        $records = array_map(static fn(string $value): Record => new Record($value)->withCreateTime($now), $values);
+        $batch   = RecordBatch::fromRecords($records)->toBuffer();
 
         $deadline = microtime(true) + self::TOPIC_TIMEOUT;
         do {
-            $frame = pack('nnN', ApiKeys::PRODUCE, 0, 2)
-                . pack('n', strlen(self::CLIENT_ID)) . self::CLIENT_ID
-                . $body;
-            $stream->writeBuffer(pack('N', strlen($frame)) . $frame);
+            new ProduceRequestV3([$topic => [self::PARTITION => $batch]], 1, 5000, self::CLIENT_ID, 2)->writeTo($stream);
 
-            $errorCode = self::readProduceErrorCode($stream);
+            $errorCode = ProduceResponseV3::unpack($stream)->topics[$topic]->partitions[self::PARTITION]->errorCode;
             if ($errorCode === 0) {
                 return;
             }
@@ -443,28 +466,12 @@ final class FetchOffsetsTest extends IntegrationTestCase
             self::assertContains(
                 $errorCode,
                 self::NOT_SERVABLE_YET,
-                "The broker refused to accept the messages of {$topic} with error code {$errorCode}"
+                "The broker refused to accept the records of {$topic} with error code {$errorCode}"
             );
             usleep(self::RETRY_BACKOFF_MICROSECONDS);
         } while (microtime(true) < $deadline);
 
         self::fail("The partition {$topic}-" . self::PARTITION . ' did not get a leader in time');
-    }
-
-    /**
-     * Reads a Produce response v0 and returns the error code of its only partition
-     */
-    private static function readProduceErrorCode(SocketStream $stream): int
-    {
-        $messageSize = $stream->read('NmessageSize')['messageSize'];
-        $payload     = new StringStream((string) $stream->read("a{$messageSize}data")['data']);
-
-        $payload->read('NcorrelationId/NnumberOfTopics');
-        $topicLength = $payload->read('ntopicLength')['topicLength'];
-        $payload->read("a{$topicLength}topic/NnumberOfPartitions");
-        ['errorCode' => $errorCode] = $payload->read('Npartition/nerrorCode/Joffset');
-
-        return $errorCode > 0x7FFF ? $errorCode - 0x10000 : $errorCode;
     }
 
     /**
@@ -486,7 +493,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
             $maxWaitTime,
             $minBytes
         ): FetchResponsePartition {
-            new FetchRequestV1(
+            new FetchRequestV4(
                 [$topic => [self::PARTITION => $fetchOffset]],
                 $maxWaitTime,
                 $minBytes,
@@ -496,7 +503,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
                 11
             )->writeTo($stream);
 
-            $response = FetchResponseV1::unpack($stream);
+            $response = FetchResponseV4::unpack($stream);
             self::assertSame(11, $response->getCorrelationId());
             self::assertArrayHasKey($topic, $response->topics);
 
@@ -530,27 +537,15 @@ final class FetchOffsetsTest extends IntegrationTestCase
     }
 
     /**
-     * Decodes the raw message set of a partition, dropping the partial message that the broker may have left at its
-     * end, and returns the values of the messages indexed by their offset
+     * Decodes the record batches of a partition and returns the values of the records indexed by their offset
      *
      * @return array<int, string>
      */
     private static function decode(FetchResponsePartition $partition): array
     {
-        $buffer     = $partition->messageSet ?? '';
-        $bufferSize = strlen($buffer);
-        $values     = [];
-
-        for ($position = 0; $position + 12 <= $bufferSize; $position += 12 + $messageSize) {
-            ['offset' => $offset, 'size' => $messageSize] = (array) unpack('Joffset/Nsize', $buffer, $position);
-            if ($position + 12 + $messageSize > $bufferSize) {
-                break; // partial trailing message
-            }
-            $message   = substr($buffer, $position + 12, $messageSize);
-            $keyLength = (int) unpack('Nlength', $message, 6)['length'];
-            $valueAt   = 10 + ($keyLength === 0xFFFFFFFF ? 0 : $keyLength);
-
-            $values[$offset] = substr($message, $valueAt + 4, (int) unpack('Nlength', $message, $valueAt)['length']);
+        $values = [];
+        foreach ($partition->getRecords()->getRecords() as $record) {
+            $values[(int) $record->offset] = (string) $record->value;
         }
 
         return $values;

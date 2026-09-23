@@ -26,6 +26,7 @@ use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
+use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponseTopic;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
@@ -54,12 +55,12 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
-use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Tests\Fixture\RawApiProbe;
+use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -466,25 +467,21 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         );
     }
 
-    public function testTheVersionZeroAnswerOfOffsetForLeaderEpochCarriesNoLeaderEpochAtAll(): void
+    public function testTheVersionZeroOfOffsetForLeaderEpochClosesTheConnection(): void
     {
-        // KIP-279 (Kafka 2.0) inserted `leader_epoch` between the partition id and the end offset of version 1.
-        // A version 0 answer is two bytes shorter per partition and leaves the property at its UNDEFINED_EPOCH.
-        $topic  = $this->topic();
-        $stream = $this->connect();
+        // KIP-279 (Kafka 2.0) inserted `leader_epoch` between the partition id and the end offset of version 1, and
+        // a 3.9.2 node still answered the version 0 without it. `OffsetForLeaderEpochRequest.json` @ 4.0.0 starts at
+        // version 2 (KIP-896): a 4.x node closes the connection on the versions 0 and 1, and the class of the version
+        // 0 answer stays for the wire vectors of the lines below
+        $topic = $this->topic();
 
-        new OffsetForLeaderEpochRequestV0([$topic => [0 => 0]], self::CLIENT_ID, 703)->writeTo($stream);
-        $response = OffsetForLeaderEpochResponseV0::unpack($stream);
-
-        $partition = $response->topics[$topic]->partitions[0];
-        self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
-        self::assertSame(0, $partition->endOffset, 'the same offset that version 1 answers');
         self::assertSame(
-            OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH,
-            $partition->leaderEpoch,
-            'a version 0 answer has no such field, so the DTO keeps its -1'
+            RemovedVersionProbe::CLOSED,
+            new RemovedVersionProbe(self::firstBootstrapServer())
+                ->send(new OffsetForLeaderEpochRequestV0([$topic => [0 => 0]], self::CLIENT_ID, 703))
         );
         self::assertSame(-1, OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH);
+        self::assertArrayNotHasKey('leaderEpoch', OffsetForLeaderEpochResponsePartitionV0::getScheme());
     }
 
     public function testAnEpochTheLeaderNeverHadIsAnsweredWithMinusOneAndTheErrorCodeZero(): void

@@ -34,6 +34,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV7;
@@ -56,7 +57,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
  * index. The code stays in {@see KafkaException} and in the error table, it is simply not reachable from a client
  * of a 3.x broker.
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]
@@ -637,13 +638,14 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
             self::CLIENT_ID,
             4073,
         ];
-        $nine  = bin2hex((string) new OffsetsRequest(...$arguments));
+        $nine  = bin2hex((string) new OffsetsRequestV9(...$arguments));
         $eight = bin2hex((string) new OffsetsRequestV8(...$arguments));
 
         self::assertSame($eight, substr_replace($nine, '0008', 12, 4));
         self::assertSame(8, OffsetsRequestV8::VERSION);
         self::assertSame(8, OffsetsResponseV8::VERSION);
-        self::assertSame(9, OffsetsRequest::VERSION);
+        self::assertSame(9, OffsetsRequestV9::VERSION);
+        self::assertSame(10, OffsetsRequest::VERSION, 'the version Kafka 4.0 added (KIP-1075)');
         self::assertSame(-5, OffsetsRequest::LATEST_TIERED_TIMESTAMP);
     }
 

@@ -24,8 +24,10 @@ use RuntimeException;
  * not part of this ticket - they are written on top of the format, not the other way round. Everything the format
  * needs from a broker is therefore asked for with raw frames here: a batch this client built is written into a
  * partition with a Produce v3 frame and read back with a Fetch v4 frame, which is the only way to see what the
- * broker did with it. The same probe asks for the **down-conversions**, by fetching a log of the message format v2
- * with a Fetch v3 (which answers the message format v1) and with a Fetch v1 (which answers the format v0).
+ * broker did with it. On the lines up to 3.x the same probe asked for the **down-conversions**, by fetching a log of
+ * the message format v2 with a Fetch v3 (answered in the message format v1) and with a Fetch v1 (the format v0); a
+ * node of Kafka 4.0 or later closes the connection on both (KIP-896), which this probe reports as a
+ * `RuntimeException` - {@see RemovedVersionProbe} is the one that measures such a refusal.
  *
  * The transaction apis are here for the same reason: a control batch is written by the broker itself, and the only
  * way to make it write one without a transactional producer is the raw sequence InitProducerId (22),

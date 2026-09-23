@@ -127,8 +127,9 @@ function produceDemoRecords(string $brokerAddress, string $topic, array $configu
                 sprintf('Hello from partition %d, record #%d, produced at %s', $partitionId, $index, date(DATE_ATOM))
             );
         }
-        // A Produce v3 request carries a record batch of the message format v2 and refuses every older magic;
-        // ProduceRequestV2 with a MessageSet is the way to write the formats v0 and v1
+        // A Produce v3 or higher request carries a record batch of the message format v2 and refuses every older
+        // magic; ProduceRequestV2 with a MessageSet writes the formats v0 and v1 to a broker of Kafka 3.x only, a
+        // node of Kafka 4.0 or later closes the connection on it (KIP-896)
         $topicPartitions[$partitionId] = RecordBatch::fromRecords($records);
     }
 

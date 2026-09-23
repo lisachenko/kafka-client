@@ -22,8 +22,8 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Header;
-use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
 use Protocol\Kafka\Consumer\ConsumerConfig;
@@ -34,8 +34,8 @@ use Protocol\Kafka\Consumer\OffsetResetStrategy;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
-use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
-use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -319,7 +319,7 @@ final class KafkaConsumerTest extends IntegrationTestCase
         self::assertSame(['gamma'], $this->valuesOf($this->pollUntil($consumer, 1), 0));
     }
 
-    public function testAGzipCompressedMessageSetIsUnwrapped(): void
+    public function testAGzipCompressedBatchIsUnwrapped(): void
     {
         $values = ['gzip-a', 'gzip-b', 'gzip-c'];
         $this->produce(0, $values, CompressionCodec::GZIP);
@@ -337,9 +337,9 @@ final class KafkaConsumerTest extends IntegrationTestCase
         self::assertSame(3, $consumer->position($this->topic, 0));
     }
 
-    public function testASecondPollOfAGzipSetDoesNotReturnTheRecordsAgain(): void
+    public function testASecondPollOfAGzipBatchDoesNotReturnTheRecordsAgain(): void
     {
-        // A compressed set is stored as one message, so a fetch in the middle of it returns the whole set back
+        // A batch is stored and handed out as a whole, so a fetch in the middle of it returns the whole batch back
         $this->produce(0, ['gzip-a', 'gzip-b', 'gzip-c'], CompressionCodec::GZIP);
 
         $consumer = $this->consumer(self::uniqueGroupName(), [
@@ -494,9 +494,9 @@ final class KafkaConsumerTest extends IntegrationTestCase
         $records = $this->recordsOf($this->pollUntil($consumer, 1), 0);
 
         self::assertCount(1, $records);
-        // A Fetch v3 request is answered with the message format of the log, so the CreateTime that the producer
-        // stamped on the record survives the round trip; a request below version 2 would be answered with a
-        // message format v0 set, without any timestamp at all
+        // Every Fetch version a 4.x node serves (4 and above) is answered with the record batch the log holds, so
+        // the CreateTime that the producer stamped on the record survives the round trip; the Fetch v0 and v1 that
+        // a 3.x broker answered with a message format v0 set, without any timestamp, are gone (KIP-896)
         self::assertNotNull($records[0]->timestamp, 'the answer was not converted down to message format v0');
         self::assertGreaterThanOrEqual($before, $records[0]->timestamp);
         self::assertLessThanOrEqual($after, $records[0]->timestamp);
@@ -663,6 +663,9 @@ final class KafkaConsumerTest extends IntegrationTestCase
     /**
      * Produces the given values into one partition of the topic under test
      *
+     * One record batch of the message format v2 in a Produce **v3**, the lowest version a node of Kafka 4.0 or later
+     * serves (KIP-896); the message set of a Produce v2 that the lines up to 3.x wrote here costs the connection.
+     *
      * The metadata of the topic already announces a leader for every partition when this runs, but a broker that
      * has just been made the leader of one still needs a moment to serve it and answers LeaderNotAvailable (5) or
      * NotLeaderForPartition (6) in between, so the request is repeated while that is the case.
@@ -676,21 +679,22 @@ final class KafkaConsumerTest extends IntegrationTestCase
         ?string $topic = null
     ): void {
         $topic ??= $this->topic;
-        $records    = array_map(static fn(string $value): Record => new Record($value), $values);
-        $messageSet = MessageSet::fromRecords($records, $codec);
-        $deadline   = microtime(true) + self::TOPIC_TIMEOUT;
+        $now      = (int) round(microtime(true) * 1000);
+        $records  = array_map(static fn(string $value): Record => new Record($value)->withCreateTime($now), $values);
+        $batch    = RecordBatch::fromRecords($records, $codec)->toBuffer();
+        $deadline = microtime(true) + self::TOPIC_TIMEOUT;
 
         do {
             $stream = $this->connect();
-            new ProduceRequestV2(
-                [$topic => [$partition => $messageSet]],
+            new ProduceRequestV3(
+                [$topic => [$partition => $batch]],
                 1,
                 self::PRODUCE_TIMEOUT_MS,
                 self::CLIENT_ID,
                 1
             )->writeTo($stream);
 
-            $errorCode = ProduceResponseV2::unpack($stream)->topics[$topic]->partitions[$partition]->errorCode;
+            $errorCode = ProduceResponseV3::unpack($stream)->topics[$topic]->partitions[$partition]->errorCode;
             if ($errorCode === 0) {
                 return;
             }
