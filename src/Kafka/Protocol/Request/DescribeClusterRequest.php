@@ -18,12 +18,14 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DescribeCluster, version 1: the cluster without a topic in sight (ApiKey 60, Kafka 2.8, KIP-700)
+ * DescribeCluster, version 2: the cluster without a topic in sight (ApiKey 60, Kafka 2.8, KIP-700)
  *
  * <pre>
- *   DescribeCluster Request (Version: 0 to 1) => include_cluster_authorized_operations endpoint_type
+ *   DescribeCluster Request (Version: 0 to 2) => include_cluster_authorized_operations endpoint_type
+ *                                                include_fenced_brokers
  *     include_cluster_authorized_operations => BOOLEAN
  *     endpoint_type                         => INT8     -- since version 1, 1 = brokers, 2 = controllers
+ *     include_fenced_brokers                => BOOLEAN  -- since version 2
  * </pre>
  *
  * Until Kafka 2.8 the only way to learn the cluster id, the controller and the list of brokers was a **Metadata**
@@ -42,8 +44,16 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * answers **114** (`MismatchedEndpointType`) and a byte the enum has no case for is **115**
  * (`UnsupportedEndpointType`); {@see DescribeClusterRequestV0} is the frame below that, which cannot ask at all.
  *
- * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
- *      (v1)"
+ * **Version 2 (KIP-1073, Kafka 4.0) appended `include_fenced_brokers`**: "Version 2 adds IncludeFencedBrokers for
+ * KIP-1073 support" stands above the `validVersions` of `DescribeClusterRequest.json` @ 4.0.0. A broker the
+ * controller has registered but **fenced** - one that has not caught up with the metadata log or has stopped
+ * heartbeating - is left out of every broker list a client could read until then; with the flag set the answer
+ * names it too, next to the `is_fenced` flag of {@see \Protocol\Kafka\Protocol\Data\DescribeClusterBroker}. The flag
+ * belongs to the broker listener alone: the Java admin client refuses it towards the controllers ("Cannot request
+ * fenced brokers from controller endpoint"). {@see DescribeClusterRequestV1} is the frame below it.
+ *
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
+ *      (v1)" and "The fenced brokers of KIP-1073 (v2)"
  */
 class DescribeClusterRequest extends AbstractRequest
 {
@@ -55,7 +65,7 @@ class DescribeClusterRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @inheritdoc
@@ -76,12 +86,20 @@ class DescribeClusterRequest extends AbstractRequest
      * @param EndpointType|int $endpointType                       Which set of nodes to describe (KIP-919, version
      *        1); a plain integer is the raw byte of the field, with which a caller can ask for a type that no
      *        version of the api defines and read the 115 it is refused with
+     * @param bool             $includeFencedBrokers               Whether the broker list names the fenced brokers
+     *        too (KIP-1073, version 2)
      */
     public function __construct(
         protected readonly bool $includeClusterAuthorizedOperations = false,
         string $clientId = '',
         int $correlationId = 0,
-        EndpointType|int $endpointType = EndpointType::Broker
+        EndpointType|int $endpointType = EndpointType::Broker,
+        /**
+         * Whether the answer lists the brokers the controller has fenced as well
+         *
+         * @since Version 2 of protocol (Kafka 4.0, KIP-1073)
+         */
+        protected readonly bool $includeFencedBrokers = false
     ) {
         $this->endpointType = $endpointType instanceof EndpointType ? $endpointType->value : $endpointType;
 
@@ -100,6 +118,9 @@ class DescribeClusterRequest extends AbstractRequest
         if (static::VERSION >= 1) {
             $body['endpointType'] = BinarySchema::TYPE_INT8;
         }
+        if (static::VERSION >= 2) {
+            $body['includeFencedBrokers'] = BinarySchema::TYPE_BOOLEAN;
+        }
 
         return $header + $body;
     }
@@ -110,6 +131,14 @@ class DescribeClusterRequest extends AbstractRequest
     public function includesClusterAuthorizedOperations(): bool
     {
         return $this->includeClusterAuthorizedOperations;
+    }
+
+    /**
+     * Returns whether this request asks for the fenced brokers as well (KIP-1073, version 2)
+     */
+    public function includesFencedBrokers(): bool
+    {
+        return $this->includeFencedBrokers;
     }
 
     /**

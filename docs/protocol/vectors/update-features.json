@@ -1,8 +1,8 @@
 {
     "api": "update-features",
     "apiKey": 57,
-    "section": "UpdateFeatures API (key 57, v0 and v1)",
-    "description": "Wire vectors of the UpdateFeatures API (key 57, v0 and v1), replayed by tests/Compliance.",
+    "section": "UpdateFeatures API (key 57, v0 to v2)",
+    "description": "Wire vectors of the UpdateFeatures API (key 57, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "updatefeatures.request.v0",
@@ -56,7 +56,7 @@
         {
             "id": "updatefeatures.request.v1.validate-only",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
             "version": 1,
             "source": "broker",
             "description": "UpdateFeatures **v1** (KIP-778): the finalized `metadata.version` of the node is raised to the level 21 it already has, with the `upgrade_type` **1** (`UPGRADE`) in the place of the `allow_downgrade` boolean of the version 0 and the new top-level `validate_only` **true** behind the update array. The controller is asked what it would do and told to write nothing.",
@@ -82,7 +82,7 @@
         {
             "id": "updatefeatures.response.v1.validate-only",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The shape of the version 0 answer, and the answer of a dry run: the per-feature **0** means \"this update is valid\", not \"it was written\". Two things separate it from the answer the 2.8.2 container gave: there is a result for a feature the cluster really finalizes, and the top-level `error_message` is the **empty string** (compact `01`) where the 2.8.2 broker wrote a null - the same quirk the node has in DescribeAcls, DescribeQuorum v2 and UnregisterBroker.",
@@ -106,7 +106,7 @@
         {
             "id": "updatefeatures.request.v1.safe-downgrade",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The `upgrade_type` **2** (`SAFE_DOWNGRADE`) of KIP-778: the finalized `metadata.version` is to be lowered from 21 to 20, and only as far as the controller can do it without losing metadata. `validate_only` is **true**, because a real downgrade of the metadata version of the node is a change of the cluster this repository does not make.",
@@ -132,7 +132,7 @@
         {
             "id": "updatefeatures.response.v1.safe-downgrade",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The per-feature **0**: the controller of the node **would** lower the metadata version to 20 losslessly. The finalized level of the node is 21 before and after this exchange - that is what `validate_only` buys, and it is the only way to measure a downgrade here at all.",
@@ -156,7 +156,7 @@
         {
             "id": "updatefeatures.request.v1.unsafe-downgrade",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The `upgrade_type` **3** (`UNSAFE_DOWNGRADE`), the third value of the byte that replaced the boolean: the controller may lower the level even where metadata is lost by it. Again a dry run.",
@@ -182,7 +182,7 @@
         {
             "id": "updatefeatures.response.v1.unsafe-downgrade",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
             "version": 1,
             "source": "broker",
             "description": "Also **0**. A version 0 request could not tell these two frames apart - its one boolean says \"a downgrade is allowed\" and nothing about what it may cost - which is the whole reason KIP-778 replaced it.",
@@ -206,7 +206,7 @@
         {
             "id": "updatefeatures.request.v1.downgrade-refused",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The same lowering to the level 20 with the `upgrade_type` **1** (`UPGRADE`), which is the default of the field and what a caller that names no type sends.",
@@ -232,7 +232,7 @@
         {
             "id": "updatefeatures.response.v1.downgrade-refused",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The per-feature **95** (`InvalidUpdateVersion`) with the message that names the way out: *\"Can't downgrade the version of this feature without setting the upgrade type to either safe or unsafe downgrade.\"* It is the refusal the T0 wave measured for the version 0 of the api, word for word - the version 0 has no field to follow that advice with.",
@@ -256,7 +256,7 @@
         {
             "id": "updatefeatures.request.v1.unknown-feature",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
             "version": 1,
             "source": "broker",
             "description": "A feature the controller does not know, at the level 1, with `validate_only` **false**: the controller is really asked to write this one.",
@@ -282,7 +282,7 @@
         {
             "id": "updatefeatures.response.v1.unknown-feature",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The per-feature **95** of `FeatureControlManager.updateFeature` @ 3.9.2: *\"Local controller 1 does not support this feature.\"* The three upgrade types are answered the same way here, because a feature the controller does not know cannot be moved in any direction.",
@@ -306,7 +306,7 @@
         {
             "id": "updatefeatures.request.v1.unknown-upgrade-type",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The `upgrade_type` **0**, which is the `UNKNOWN` of `FeatureUpdate.UpgradeType` @ 3.3.2 - a value the Java client never sends, because `fromCode` answers it for every code the api does not define. The frame is legal and the broker parses it.",
@@ -332,7 +332,7 @@
         {
             "id": "updatefeatures.response.v1.unknown-upgrade-type",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
             "version": 1,
             "source": "broker",
             "description": "A refusal of its own: **95** with *\"The controller does not support the given upgrade type.\"* - the message the controller has for a byte that is neither 1, 2 nor 3, and one more thing a version 0 frame cannot produce.",
@@ -356,7 +356,7 @@
         {
             "id": "updatefeatures.request.v1.delete",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The deletion of a finalized feature, which is the `max_version_level` **0** and a downgrade type - the Java constructor refuses the level 0 together with `UPGRADE` in as many words. `validate_only` is **false**, so this is a real write.",
@@ -382,7 +382,7 @@
         {
             "id": "updatefeatures.response.v1.delete",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The per-feature **0**, for a feature that was never finalized: the level 0 means \"disabled\", which every node of the quorum supports, so the controller writes a `FeatureLevelRecord` with the level 0 and answers that it did. The 2.8.2 broker refused the same request with 42.",
@@ -406,7 +406,7 @@
         {
             "id": "updatefeatures.request.v1.empty",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
             "version": 1,
             "source": "broker",
             "description": "An empty update list, which the Java admin client refuses before it sends anything and the specification has no minimum for: the array count `01` (0 + 1), then the `validate_only` byte and the tag buffer of the body.",
@@ -426,7 +426,7 @@
         {
             "id": "updatefeatures.response.v1.empty",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The top-level **0** with no result at all - the controller iterates an empty collection - and the empty `error_message` of this node, where the 2.8.2 broker wrote a null.",
@@ -438,6 +438,443 @@
                 "throttleTimeMs": 0,
                 "errorCode": 0,
                 "errorMessage": "",
+                "results": []
+            }
+        },
+        {
+            "id": "updatefeatures.request.v2.validate-only",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "UpdateFeatures **v2** (Kafka 4.0): the frame of the version 1 with another number in the header - \"Version 2 changes the response to not return feature level results\" is the only comment of the version. A dry run of the finalized `metadata.version` 30 (`4.3-IV0`) of the 4.3.1 node.",
+            "hex": "000000390039000200000fa100126b61666b612d636c69656e742d74312d3430000000ea6002116d657461646174612e76657273696f6e001e01000100",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 57,
+                "apiVersion": 2,
+                "correlationId": 4001,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "metadata.version": {
+                        "feature": "metadata.version",
+                        "maxVersionLevel": 30,
+                        "upgradeType": 1
+                    }
+                },
+                "validateOnly": true
+            }
+        },
+        {
+            "id": "updatefeatures.response.v2.validate-only",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer of the version 2: the throttle time, the top-level **0**, a **null** `error_message` and nothing else - thirteen bytes behind the size field. There is no `results` array to name the feature in: a top-level 0 is the 0 of every feature of the request. The 3.9.2 node wrote the empty string here; `QuorumController.updateFeatures` @ 4.0.0 sets the message of `ApiError.NONE`, which is null.",
+            "hex": "0000000d00000fa1000000000000000000",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 4001,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null
+            }
+        },
+        {
+            "id": "updatefeatures.request.v2.safe-downgrade",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "A dry run that lowers `group.version` - the consumer protocol of KIP-848, finalized at 1 - to 0 with the `upgrade_type` **2** (`SAFE_DOWNGRADE`).",
+            "hex": "000000360039000200000fa200126b61666b612d636c69656e742d74312d3430000000ea60020e67726f75702e76657273696f6e000002000100",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 57,
+                "apiVersion": 2,
+                "correlationId": 4002,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "group.version": {
+                        "feature": "group.version",
+                        "maxVersionLevel": 0,
+                        "upgradeType": 2
+                    }
+                },
+                "validateOnly": true
+            }
+        },
+        {
+            "id": "updatefeatures.response.v2.safe-downgrade",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The top-level **0**: the controller would lower the feature, because no finalized feature depends on `group.version` 1. Nothing was written - the level is 1 before and after.",
+            "hex": "0000000d00000fa2000000000000000000",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 4002,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null
+            }
+        },
+        {
+            "id": "updatefeatures.request.v2.downgrade-refused",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The same lowering with the `upgrade_type` **1** (`UPGRADE`), as a dry run.",
+            "hex": "000000360039000200000fa300126b61666b612d636c69656e742d74312d3430000000ea60020e67726f75702e76657273696f6e000001000100",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 57,
+                "apiVersion": 2,
+                "correlationId": 4003,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "group.version": {
+                        "feature": "group.version",
+                        "maxVersionLevel": 0,
+                        "upgradeType": 1
+                    }
+                },
+                "validateOnly": true
+            }
+        },
+        {
+            "id": "updatefeatures.response.v2.downgrade-refused",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The top-level **95** (`InvalidUpdateVersion`), and no result: a 4.x controller refuses the whole request at the first feature it cannot change, and the message is the reason of that feature behind the sentence `The update failed for all features since the following feature had an error:`. The reason is the one KIP-778 wrote for the `upgrade_type` of the version 1.",
+            "hex": "000000ff00000fa30000000000005ff20154686520757064617465206661696c656420666f7220616c6c2066656174757265732073696e63652074686520666f6c6c6f77696e6720666561747572652068616420616e206572726f723a20496e76616c6964207570646174652076657273696f6e203020666f7220666561747572652067726f75702e76657273696f6e2e2043616e277420646f776e6772616465207468652076657273696f6e206f662074686973206665617475726520776974686f75742073657474696e67207468652075706772616465207479706520746f206569746865722073616665206f7220756e7361666520646f776e67726164652e00",
+            "fields": {
+                "messageSize": 255,
+                "correlationId": 4003,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 95,
+                "errorMessage": "The update failed for all features since the following feature had an error: Invalid update version 0 for feature group.version. Can't downgrade the version of this feature without setting the upgrade type to either safe or unsafe downgrade."
+            }
+        },
+        {
+            "id": "updatefeatures.request.v2.metadata-version-downgrade",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "A dry run that lowers `metadata.version` from 30 to 29 with a **safe** downgrade.",
+            "hex": "000000390039000200000fa400126b61666b612d636c69656e742d74312d3430000000ea6002116d657461646174612e76657273696f6e001d02000100",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 57,
+                "apiVersion": 2,
+                "correlationId": 4004,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "metadata.version": {
+                        "feature": "metadata.version",
+                        "maxVersionLevel": 29,
+                        "upgradeType": 2
+                    }
+                },
+                "validateOnly": true
+            }
+        },
+        {
+            "id": "updatefeatures.response.v2.metadata-version-downgrade",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The **95** of a lowering of `metadata.version` that the controller refuses whatever the type: `Unsupported metadata.version downgrade from 30 to 29. Refusing to perform the requested downgrade because it might delete metadata information.` (`FeatureControlManager` @ 4.3.1; the unsafe downgrade is refused with `Unsafe metadata downgrade is not supported in this version.`).",
+            "hex": "000000ea00000fa40000000000005fdd0154686520757064617465206661696c656420666f7220616c6c2066656174757265732073696e63652074686520666f6c6c6f77696e6720666561747572652068616420616e206572726f723a20556e737570706f72746564206d657461646174612e76657273696f6e20646f776e67726164652066726f6d20333020746f2032392e205265667573696e6720746f20706572666f726d207468652072657175657374656420646f776e67726164652062656361757365206974206d696768742064656c657465206d6574616461746120696e666f726d6174696f6e2e00",
+            "fields": {
+                "messageSize": 234,
+                "correlationId": 4004,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 95,
+                "errorMessage": "The update failed for all features since the following feature had an error: Unsupported metadata.version downgrade from 30 to 29. Refusing to perform the requested downgrade because it might delete metadata information."
+            }
+        },
+        {
+            "id": "updatefeatures.request.v2.unknown-feature",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "An upgrade of a feature no controller knows, `t1-40-nonsense`, to the level 1 - without `validate_only`, because the controller refuses it before it writes anything.",
+            "hex": "000000370039000200000fa500126b61666b612d636c69656e742d74312d3430000000ea60020f74312d34302d6e6f6e73656e7365000101000000",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 57,
+                "apiVersion": 2,
+                "correlationId": 4005,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "t1-40-nonsense": {
+                        "feature": "t1-40-nonsense",
+                        "maxVersionLevel": 1,
+                        "upgradeType": 1
+                    }
+                },
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "updatefeatures.response.v2.unknown-feature",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The **95** of `Local controller 1 does not support this feature.`, at the top level. On the 3.9.2 node the same frame was answered the top-level 0 and the 95 inside the result of the feature.",
+            "hex": "000000c100000fa50000000000005fb40154686520757064617465206661696c656420666f7220616c6c2066656174757265732073696e63652074686520666f6c6c6f77696e6720666561747572652068616420616e206572726f723a20496e76616c6964207570646174652076657273696f6e203120666f7220666561747572652074312d34302d6e6f6e73656e73652e204c6f63616c20636f6e74726f6c6c6572203120646f6573206e6f7420737570706f7274207468697320666561747572652e00",
+            "fields": {
+                "messageSize": 193,
+                "correlationId": 4005,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 95,
+                "errorMessage": "The update failed for all features since the following feature had an error: Invalid update version 1 for feature t1-40-nonsense. Local controller 1 does not support this feature."
+            }
+        },
+        {
+            "id": "updatefeatures.request.v2.two-features",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "Two updates in one request, as a dry run: `metadata.version` to the level it has, which the controller accepts on its own, and `t1-40-nonsense` to 1, which it does not.",
+            "hex": "0000004c0039000200000fa600126b61666b612d636c69656e742d74312d3430000000ea6003116d657461646174612e76657273696f6e001e01000f74312d34302d6e6f6e73656e7365000101000100",
+            "fields": {
+                "messageSize": 76,
+                "apiKey": 57,
+                "apiVersion": 2,
+                "correlationId": 4006,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "metadata.version": {
+                        "feature": "metadata.version",
+                        "maxVersionLevel": 30,
+                        "upgradeType": 1
+                    },
+                    "t1-40-nonsense": {
+                        "feature": "t1-40-nonsense",
+                        "maxVersionLevel": 1,
+                        "upgradeType": 1
+                    }
+                },
+                "validateOnly": true
+            }
+        },
+        {
+            "id": "updatefeatures.response.v2.two-features",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "One **95** for the whole request, naming the one feature it stopped at. The update the controller would have accepted is not mentioned: `FeatureControlManager.updateFeatures` @ 4.0.0 returns at the first refusal and writes the records of a request atomically or not at all.",
+            "hex": "000000c100000fa60000000000005fb40154686520757064617465206661696c656420666f7220616c6c2066656174757265732073696e63652074686520666f6c6c6f77696e6720666561747572652068616420616e206572726f723a20496e76616c6964207570646174652076657273696f6e203120666f7220666561747572652074312d34302d6e6f6e73656e73652e204c6f63616c20636f6e74726f6c6c6572203120646f6573206e6f7420737570706f7274207468697320666561747572652e00",
+            "fields": {
+                "messageSize": 193,
+                "correlationId": 4006,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 95,
+                "errorMessage": "The update failed for all features since the following feature had an error: Invalid update version 1 for feature t1-40-nonsense. Local controller 1 does not support this feature."
+            }
+        },
+        {
+            "id": "updatefeatures.request.v2.delete-unknown",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The deletion - the level 0 with a safe downgrade - of a feature no controller knows, without `validate_only`.",
+            "hex": "000000370039000200000fa700126b61666b612d636c69656e742d74312d3430000000ea60020f74312d34302d6e6f6e73656e7365000002000000",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 57,
+                "apiVersion": 2,
+                "correlationId": 4007,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "t1-40-nonsense": {
+                        "feature": "t1-40-nonsense",
+                        "maxVersionLevel": 0,
+                        "upgradeType": 2
+                    }
+                },
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "updatefeatures.response.v2.delete-unknown",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "Refused with **95** and `Feature t1-40-nonsense not found.`: the 4.x controller validates the level of every feature but `metadata.version` through `Feature.featureFromName` @ 4.0.0, which knows the features of the release and nothing else. The 3.9.2 node accepted the same deletion with a 0 and wrote a `FeatureLevelRecord` for it.",
+            "hex": "000000b100000fa70000000000005fa40154686520757064617465206661696c656420666f7220616c6c2066656174757265732073696e63652074686520666f6c6c6f77696e6720666561747572652068616420616e206572726f723a20496e76616c6964207570646174652076657273696f6e203020666f7220666561747572652074312d34302d6e6f6e73656e73652e20466561747572652074312d34302d6e6f6e73656e7365206e6f7420666f756e642e00",
+            "fields": {
+                "messageSize": 177,
+                "correlationId": 4007,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 95,
+                "errorMessage": "The update failed for all features since the following feature had an error: Invalid update version 0 for feature t1-40-nonsense. Feature t1-40-nonsense not found."
+            }
+        },
+        {
+            "id": "updatefeatures.request.v2.empty",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "An update list without an entry. The Java admin client refuses it before sending; the api does not.",
+            "hex": "000000240039000200000fa800126b61666b612d636c69656e742d74312d3430000000ea60010000",
+            "fields": {
+                "messageSize": 36,
+                "apiKey": 57,
+                "apiVersion": 2,
+                "correlationId": 4008,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": [],
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "updatefeatures.response.v2.empty",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The top-level **0**, byte for byte the answer of the dry run above: without a result array an answer of this version cannot say how many features it was about.",
+            "hex": "0000000d00000fa8000000000000000000",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 4008,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null
+            }
+        },
+        {
+            "id": "updatefeatures.request.v1.accepted-by-4x",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The **version 1** dry run of `metadata.version` 30, sent to the 4.3.1 node: `UpdateFeaturesRequestV1`, the keep-behind class of the frame the 3.x line sent.",
+            "hex": "000000390039000100000fa900126b61666b612d636c69656e742d74312d3430000000ea6002116d657461646174612e76657273696f6e001e01000100",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 57,
+                "apiVersion": 1,
+                "correlationId": 4009,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "metadata.version": {
+                        "feature": "metadata.version",
+                        "maxVersionLevel": 30,
+                        "upgradeType": 1
+                    }
+                },
+                "validateOnly": true
+            }
+        },
+        {
+            "id": "updatefeatures.response.v1.accepted-by-4x",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "A 4.x controller still answers a version 1 request per feature when it accepts the whole request - with a quirk: the per-feature `error_message` is the string **`NONE`**, because `QuorumController.updateFeatures` @ 4.0.0 fills it from `result.error().message()` of `ApiError.NONE`, and the top-level message is a null where the 3.9.2 node wrote the empty string.",
+            "hex": "0000002700000fa9000000000000000002116d657461646174612e76657273696f6e0000054e4f4e450000",
+            "fields": {
+                "messageSize": 39,
+                "correlationId": 4009,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "results": {
+                    "metadata.version": {
+                        "feature": "metadata.version",
+                        "errorCode": 0,
+                        "errorMessage": "NONE"
+                    }
+                }
+            }
+        },
+        {
+            "id": "updatefeatures.request.v1.refused-by-4x",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "A version 1 request the controller refuses: `t1-40-nonsense` to the level 1.",
+            "hex": "000000370039000100000faa00126b61666b612d636c69656e742d74312d3430000000ea60020f74312d34302d6e6f6e73656e7365000101000000",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 57,
+                "apiVersion": 1,
+                "correlationId": 4010,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "t1-40-nonsense": {
+                        "feature": "t1-40-nonsense",
+                        "maxVersionLevel": 1,
+                        "upgradeType": 1
+                    }
+                },
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "updatefeatures.response.v1.refused-by-4x",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The version 1 answer of a refusal on a 4.x controller: the top-level **95** with the sentence of the whole request, and an **empty** result array. The per-feature refusal of the 3.9.2 node (`updatefeatures.response.v1.unknown-feature`) is gone at every version of the api.",
+            "hex": "000000c200000faa0000000000005fb40154686520757064617465206661696c656420666f7220616c6c2066656174757265732073696e63652074686520666f6c6c6f77696e6720666561747572652068616420616e206572726f723a20496e76616c6964207570646174652076657273696f6e203120666f7220666561747572652074312d34302d6e6f6e73656e73652e204c6f63616c20636f6e74726f6c6c6572203120646f6573206e6f7420737570706f7274207468697320666561747572652e0100",
+            "fields": {
+                "messageSize": 194,
+                "correlationId": 4010,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 95,
+                "errorMessage": "The update failed for all features since the following feature had an error: Invalid update version 1 for feature t1-40-nonsense. Local controller 1 does not support this feature.",
                 "results": []
             }
         }

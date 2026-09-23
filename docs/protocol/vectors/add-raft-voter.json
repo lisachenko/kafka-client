@@ -1,0 +1,243 @@
+{
+    "api": "add-raft-voter",
+    "apiKey": 80,
+    "section": "AddRaftVoter API (key 80, v0)",
+    "description": "Wire vectors of the AddRaftVoter API (key 80, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "addraftvoter.request.v0.duplicate-voter",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AddRaftVoter **v0** (key 80) of the voter id **1** - the one voter of the node - with its own directory id and one `CONTROLLER` endpoint at `127.0.0.1:1`, a closed port inside the container: the request can never reach a voter that answers. The cluster id is **null**, which the check accepts.",
+            "hex": "0000005000500000000010cd00126b61666b612d636c69656e742d74312d343000000000753000000001ed0c695c654141359a1e6886ec80eb11020b434f4e54524f4c4c45520a3132372e302e302e3100010000",
+            "fields": {
+                "messageSize": 80,
+                "apiKey": 80,
+                "apiVersion": 0,
+                "correlationId": 4301,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "clusterId": null,
+                "timeoutMs": 30000,
+                "voterId": 1,
+                "voterDirectoryId": {
+                    "$bytes": "ed0c695c654141359a1e6886ec80eb11"
+                },
+                "listeners": {
+                    "CONTROLLER": {
+                        "name": "CONTROLLER",
+                        "host": "127.0.0.1",
+                        "port": 1
+                    }
+                }
+            }
+        },
+        {
+            "id": "addraftvoter.response.v0.duplicate-voter",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **126** (`DuplicateVoter`) of `AddVoterHandler` @ 4.0.0: the voter **id** is compared, not the key - a random directory id is answered the same - and the message lists the voter set. The length of the compact string is two varint bytes, `a3 01`.",
+            "hex": "000000b0000010cd0000000000007ea30154686520766f74657220696420666f72205265706c6963614b65792869643d312c206469726563746f727949643d375178705847564251545761486d69473749447245512920697320616c72656164792070617274206f662074686520736574206f6620766f74657273205b5265706c6963614b65792869643d312c206469726563746f727949643d375178705847564251545761486d6947374944724551295d2e00",
+            "fields": {
+                "messageSize": 176,
+                "correlationId": 4301,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 126,
+                "errorMessage": "The voter id for ReplicaKey(id=1, directoryId=7QxpXGVBQTWaHmiG7IDrEQ) is already part of the set of voters [ReplicaKey(id=1, directoryId=7QxpXGVBQTWaHmiG7IDrEQ)]."
+            }
+        },
+        {
+            "id": "addraftvoter.request.v0.foreign-cluster",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "An add of the voter 4243 with a random directory id and the cluster id `not-this-cluster`.",
+            "hex": "0000006000500000000010ce00126b61666b612d636c69656e742d74312d343000116e6f742d746869732d636c757374657200007530000010934456687c45a141717d2558c76c98d5b9020b434f4e54524f4c4c45520a3132372e302e302e3100010000",
+            "fields": {
+                "messageSize": 96,
+                "apiKey": 80,
+                "apiVersion": 0,
+                "correlationId": 4302,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "clusterId": "not-this-cluster",
+                "timeoutMs": 30000,
+                "voterId": 4243,
+                "voterDirectoryId": {
+                    "$bytes": "4456687c45a141717d2558c76c98d5b9"
+                },
+                "listeners": {
+                    "CONTROLLER": {
+                        "name": "CONTROLLER",
+                        "host": "127.0.0.1",
+                        "port": 1
+                    }
+                }
+            }
+        },
+        {
+            "id": "addraftvoter.response.v0.foreign-cluster",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **104** (`InconsistentClusterId`), the first check of `KafkaRaftClient.handleAddVoterRequest` @ 4.0.0, with the cluster id of the node in the message.",
+            "hex": "00000062000010ce000000000000685654686520676976656e20696420226e6f742d746869732d636c75737465722220646f65736e2774206d617463682074686520636c757374657220696420226657302d6e6e3638527879546432354b7033364f48672200",
+            "fields": {
+                "messageSize": 98,
+                "correlationId": 4302,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 104,
+                "errorMessage": "The given id \"not-this-cluster\" doesn't match the cluster id \"fW0-nn68RxyTd25Kp36OHg\""
+            }
+        },
+        {
+            "id": "addraftvoter.request.v0.zero-directory-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "An add of the voter 4243 with the **zero** directory id.",
+            "hex": "0000005000500000000010cf00126b61666b612d636c69656e742d74312d34300000000075300000109300000000000000000000000000000000020b434f4e54524f4c4c45520a3132372e302e302e3100010000",
+            "fields": {
+                "messageSize": 80,
+                "apiKey": 80,
+                "apiVersion": 0,
+                "correlationId": 4303,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "clusterId": null,
+                "timeoutMs": 30000,
+                "voterId": 4243,
+                "voterDirectoryId": {
+                    "$bytes": "00000000000000000000000000000000"
+                },
+                "listeners": {
+                    "CONTROLLER": {
+                        "name": "CONTROLLER",
+                        "host": "127.0.0.1",
+                        "port": 1
+                    }
+                }
+            }
+        },
+        {
+            "id": "addraftvoter.response.v0.zero-directory-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **42** (`InvalidRequest`) of a voter key without a directory id: a voter of a dynamic quorum is always the pair of a replica id and a directory id.",
+            "hex": "0000003b000010cf0000000000002a2f41646420766f7465722072657175657374206469646e277420696e636c75646520612076616c696420766f74657200",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 4303,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": "Add voter request didn't include a valid voter"
+            }
+        },
+        {
+            "id": "addraftvoter.request.v0.no-controller-listener",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "An add of the voter 4243 whose only endpoint is on the listener `PLAINTEXT`.",
+            "hex": "0000004f00500000000010d000126b61666b612d636c69656e742d74312d3430000000007530000010934456687c45a141717d2558c76c98d5b9020a504c41494e544558540a3132372e302e302e3100010000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 80,
+                "apiVersion": 0,
+                "correlationId": 4304,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "clusterId": null,
+                "timeoutMs": 30000,
+                "voterId": 4243,
+                "voterDirectoryId": {
+                    "$bytes": "4456687c45a141717d2558c76c98d5b9"
+                },
+                "listeners": {
+                    "PLAINTEXT": {
+                        "name": "PLAINTEXT",
+                        "host": "127.0.0.1",
+                        "port": 1
+                    }
+                }
+            }
+        },
+        {
+            "id": "addraftvoter.response.v0.no-controller-listener",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **42** of a new voter without an endpoint on the listener the controllers speak to each other on - `CONTROLLER` on this node - which is where the leader would send its ApiVersions.",
+            "hex": "000000b7000010d00000000000002aaa0141646420766f7465722072657175657374206469646e277420696e636c7564652074686520656e64706f696e742028456e64706f696e747328656e64706f696e74733d7b4c697374656e65724e616d6528504c41494e54455854293d3132372e302e302e312f3c756e7265736f6c7665643e3a317d292920666f72207468652064656661756c74206c697374656e6572204c697374656e65724e616d6528434f4e54524f4c4c45522900",
+            "fields": {
+                "messageSize": 183,
+                "correlationId": 4304,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": "Add voter request didn't include the endpoint (Endpoints(endpoints={ListenerName(PLAINTEXT)=127.0.0.1/<unresolved>:1})) for the default listener ListenerName(CONTROLLER)"
+            }
+        },
+        {
+            "id": "addraftvoter.request.v0.unreachable-voter",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A well-formed add of the voter 4243: a random directory id and one `CONTROLLER` endpoint at `127.0.0.1:1`. Every check before the new voter is asked passes.",
+            "hex": "0000005000500000000010d100126b61666b612d636c69656e742d74312d343000000000753000001093e1f37dce7a4ddf526fd7e4d5f14ac1fa020b434f4e54524f4c4c45520a3132372e302e302e3100010000",
+            "fields": {
+                "messageSize": 80,
+                "apiKey": 80,
+                "apiVersion": 0,
+                "correlationId": 4305,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "clusterId": null,
+                "timeoutMs": 30000,
+                "voterId": 4243,
+                "voterDirectoryId": {
+                    "$bytes": "e1f37dce7a4ddf526fd7e4d5f14ac1fa"
+                },
+                "listeners": {
+                    "CONTROLLER": {
+                        "name": "CONTROLLER",
+                        "host": "127.0.0.1",
+                        "port": 1
+                    }
+                }
+            }
+        },
+        {
+            "id": "addraftvoter.response.v0.unreachable-voter",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddRaftVoterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **7** (`RequestTimedOut`) of an aborted operation, within milliseconds: `AddVoterHandler` @ 4.0.0 sends the new voter an ApiVersions before it appends anything, the closed port fails it as `BROKER_NOT_AVAILABLE`, and the handler answers `Aborted add voter operation for since API_VERSIONS returned an error BROKER_NOT_AVAILABLE` (the missing word is the sentence of the source). The voter set is unchanged afterwards.",
+            "hex": "00000066000010d1000000000000075a41626f727465642061646420766f746572206f7065726174696f6e20666f722073696e6365204150495f56455253494f4e532072657475726e656420616e206572726f722042524f4b45525f4e4f545f415641494c41424c4500",
+            "fields": {
+                "messageSize": 102,
+                "correlationId": 4305,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 7,
+                "errorMessage": "Aborted add voter operation for since API_VERSIONS returned an error BROKER_NOT_AVAILABLE"
+            }
+        }
+    ]
+}

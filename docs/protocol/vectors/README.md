@@ -1,5 +1,11 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
+The 4.x line has captured **44** vectors of its own so far, on the `kafka-4-3-1` node — the 44 frames of the admin
+half of Kafka 4.0: the 20 of UpdateFeatures v2 and of the version 1 a 4.x controller answers in `update-features.json`,
+the 6 of DescribeCluster v2 (KIP-1073) in `describe-cluster.json`, the 2 of DescribeQuorum v2 re-measured on the
+dynamic quorum in `describe-quorum.json`, and the 16 of the two raft-voter apis of KIP-853 in the two new files
+`add-raft-voter.json` and `remove-raft-voter.json`.
+
 The 3.x line has captured **466** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
@@ -72,8 +78,8 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1149** of them in **60** files: **14** were captured on the `kafka-4-3-1` node of the 4.x line - the
-transaction protocol v2 of Kafka 4.0 (KIP-890 part 2): the TxnOffsetCommit v4 and v5 pairs of one commit, the 120 and
+hex dumps. There are **1193** of them in **62** files: **14** are the transaction protocol v2 of Kafka 4.0 (KIP-890 part
+2), captured on the `kafka-4-3-1` node of the 4.x line: the TxnOffsetCommit v4 and v5 pairs of one commit, the 120 and
 the 0, in `txn-offset-commit.json` and five EndTxn v5 pairs in `end-txn.json` - **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
