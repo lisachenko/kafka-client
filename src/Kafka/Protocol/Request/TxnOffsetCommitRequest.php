@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
 
 /**
- * TxnOffsetCommit, version 4: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
+ * TxnOffsetCommit, version 5: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
  *
  * <pre>
  *   TxnOffsetCommit Request (Version: 2) => transactional_id consumer_group_id producer_id producer_epoch [topics]
@@ -77,10 +77,22 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
  * {@see TxnOffsetCommitRequestV2} is the frame of Kafka 2.1.
  *
  * **Kafka 3.8 added the version 4** (KIP-890): *"Version 4 adds support for new error code TRANSACTION_ABORTABLE"*
- * (`TxnOffsetCommitRequest.json` @ 3.8.1), no field, the version 3 frame of KIP-447 unchanged. It is the version
- * this client sends; {@see TxnOffsetCommitRequestV3} is the same frame with the version field of Kafka 2.5.
+ * (`TxnOffsetCommitRequest.json` @ 3.8.1), no field, the version 3 frame of KIP-447 unchanged.
+ * {@see TxnOffsetCommitRequestV3} is the same frame with the version field of Kafka 2.5.
  *
- * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
+ * **Kafka 4.0 added the version 5** (KIP-890 part 2): *"Version 5 is the same as version 4 (KIP-890). Note when
+ * TxnOffsetCommit requests are used in transaction, if transaction V2 (KIP_890 part 2) is enabled, the
+ * TxnOffsetCommit request will also include the function for a AddOffsetsToTxn call. If V2 is disabled, the client
+ * can't use TxnOffsetCommit request version higher than 4 within a transaction."* (`TxnOffsetCommitRequest.json`
+ * @ 4.0.0). The frame is the one of the version 4; the version is what the group coordinator acts on:
+ * `AddPartitionsToTxnManager.txnOffsetCommitRequestVersionToTransactionSupportedOperation` @ 4.0.0 maps a version
+ * above 4 to `addPartition`, so the `__consumer_offsets` partition of the group is **enrolled** into the open
+ * transaction instead of merely verified - the {@see AddOffsetsToTxnRequest} the protocol v1 sends first is gone.
+ * The Java `TxnOffsetCommitRequest.Builder` @ 4.0.0 caps the version at `LAST_STABLE_VERSION_BEFORE_TRANSACTION_V2 =
+ * 4` unless the cluster finalizes `transaction.version` 2; {@see TxnOffsetCommitRequestV4} is that frame, with the
+ * version field of Kafka 3.8, and the one that still has an AddOffsetsToTxn in front of it.
+ *
+ * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {
@@ -92,7 +104,7 @@ class TxnOffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * @inheritdoc
