@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * ever ran against it, so every assertion about a listing here is either bounded by the producer id of this test
  * or a superset assertion.
  *
- * @see docs/protocol/4.3.md, sections "DescribeTransactions API (key 65, v0)" and "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, sections "DescribeTransactions API (key 65, v0)" and "ListTransactions API (key 66, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeTransactionsRequest::class)]
