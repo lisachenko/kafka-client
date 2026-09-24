@@ -55,6 +55,7 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProducerState as ProducerStateData;
+use Protocol\Kafka\Protocol\Data\ShareGroupDescribedGroup;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\AddRaftVoterRequest;
@@ -128,6 +129,8 @@ use Protocol\Kafka\Protocol\Request\RemoveRaftVoterRequest;
 use Protocol\Kafka\Protocol\Request\RemoveRaftVoterResponse;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\ShareGroupDescribeRequest;
+use Protocol\Kafka\Protocol\Request\ShareGroupDescribeResponse;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequest;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
 use UnexpectedValueException;
@@ -3888,6 +3891,87 @@ class AdminClient
                         : [])
             );
         }
+    }
+
+    /**
+     * Describes share groups of KIP-932 (ApiKey 77, Kafka 4.1)
+     *
+     * `describeShareGroups()` of the Java admin client @ 4.1.0, a third describe api next to
+     * {@see self::describeGroups()} (key 15) and {@see self::describeConsumerGroups()} (key 69): a group that is not a
+     * share group - and a share group that does not exist - is answered the **69** `GroupIdNotFound` inside its own
+     * entry, with the message "Group X not found." on the 4.3.1 node. The answer carries the group epoch and the
+     * assignment epoch, the name of the assignor (`simple`) and per member its epoch, its subscription and its
+     * assignment by topic id and name; the state is `Empty` or `Stable` (and `Dead` while it is deleted).
+     *
+     * Groups that share a coordinator are described with one request, and the error of a group is reported by
+     * throwing the exception of its code, as in {@see self::describeConsumerGroups()}.
+     *
+     * @param list<string> $groupIds                    Names of the groups, duplicates are collapsed
+     * @param bool         $includeAuthorizedOperations Whether the answer names the operations this client may
+     *        perform on every group (KIP-430)
+     *
+     * @throws \Protocol\Kafka\Common\Errors\GroupIdNotFoundException If a group is not a share group (69)
+     * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If a group moved to another coordinator
+     * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe a group
+     *
+     * @return array<string, ShareGroupDescribedGroup> Descriptions, indexed by the group id
+     *
+     * @see docs/protocol/4.3.md, section "ShareGroupDescribe API (key 77, v1)"
+     */
+    public function describeShareGroups(array $groupIds, bool $includeAuthorizedOperations = false): array
+    {
+        $coordinators  = [];
+        $groupsPerNode = [];
+        foreach (array_unique($groupIds) as $groupId) {
+            $coordinator                           = $this->findCoordinator($groupId);
+            $coordinators[$coordinator->nodeId]    = $coordinator;
+            $groupsPerNode[$coordinator->nodeId][] = $groupId;
+        }
+
+        $descriptions = [];
+        foreach ($groupsPerNode as $nodeId => $groups) {
+            /** @var ShareGroupDescribeResponse $response */
+            $response = $this->sendTo(
+                $coordinators[$nodeId]->getConnection($this->configuration),
+                fn(int $correlationId): ShareGroupDescribeRequest => new ShareGroupDescribeRequest(
+                    $groups,
+                    $includeAuthorizedOperations,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                ShareGroupDescribeResponse::class,
+                ['node' => $nodeId, 'groups' => $groups]
+            );
+
+            foreach ($response->groups as $groupId => $description) {
+                if ($description->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $description->errorCode,
+                        ['groupId' => $groupId] + ($description->errorMessage === null
+                            ? []
+                            : ['error' => $description->errorMessage])
+                    );
+                }
+                $descriptions[(string) $groupId] = $description;
+            }
+        }
+
+        return $descriptions;
+    }
+
+    /**
+     * Describes one share group, see {@see self::describeShareGroups()}
+     *
+     * @throws InvalidGroupIdException If the coordinator answered with no description of the group at all
+     *
+     * @see docs/protocol/4.3.md, section "ShareGroupDescribe API (key 77, v1)"
+     */
+    public function describeShareGroup(string $groupId, bool $includeAuthorizedOperations = false): ShareGroupDescribedGroup
+    {
+        return $this->describeShareGroups([$groupId], $includeAuthorizedOperations)[$groupId]
+            ?? throw new InvalidGroupIdException(
+                ['groupId' => $groupId, 'error' => "The coordinator answered with no description of {$groupId}"]
+            );
     }
 
     /**
