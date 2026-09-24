@@ -38,6 +38,7 @@ use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
+use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
@@ -52,7 +53,9 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Tests\Compliance\VectorFile;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
@@ -276,14 +279,15 @@ final class AdminClientTest extends TestCase
     {
         $broker = $this->scriptBroker(
             ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
         );
 
-        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::TOPIC => [0]]);
 
-        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
-        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
-        self::assertSame(0, $topics[self::VECTOR_TOPIC]->partitions[0]->errorCode);
+        self::assertSame([self::TOPIC], array_keys($topics), 'the version 10 answer is named back by the request');
+        self::assertSame(self::TOPIC, $topics[self::TOPIC]->topic);
+        self::assertSame(1, $topics[self::TOPIC]->partitions[0]->offset);
+        self::assertSame(0, $topics[self::TOPIC]->partitions[0]->errorCode);
 
         [$lookupId, $fetchId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
@@ -294,10 +298,18 @@ final class AdminClientTest extends TestCase
                     't10',
                     $lookupId
                 )),
-                self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::VECTOR_TOPIC => [0]], 't10', $fetchId)),
+                self::requestFrame(new OffsetFetchRequest(
+                    self::GROUP,
+                    [self::TOPIC => [0]],
+                    't10',
+                    $fetchId,
+                    false,
+                    null,
+                    [self::TOPIC => ResponseFrame::topicIdOf(self::TOPIC)]
+                )),
             ],
             $broker->getReceivedFrames(),
-            'the coordinator lookup comes first, the OffsetFetch v2 goes to the coordinator it named'
+            'the coordinator lookup comes first, the OffsetFetch v10 by topic id goes to the coordinator it named'
         );
         self::assertNotSame($lookupId, $fetchId, 'every request carries its own correlation id');
     }
@@ -306,14 +318,15 @@ final class AdminClientTest extends TestCase
     {
         $broker = $this->scriptBroker(
             ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
         );
 
-        // main's shape: the group alone, which the nullable topic array of the version 2 makes possible
+        // main's shape: the group alone, which the nullable topic array of the version 2 makes possible; the answer
+        // of version 10 names the topic by its id alone, which the metadata of the cluster names back
         $topics = $this->adminClient()->listGroupOffsets(self::GROUP);
 
-        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
-        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+        self::assertSame([self::TOPIC], array_keys($topics));
+        self::assertSame(1, $topics[self::TOPIC]->partitions[0]->offset);
 
         [, $fetchId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
@@ -341,13 +354,68 @@ final class AdminClientTest extends TestCase
         // the error code 0, and the entry is handed back as it is
         $this->scriptBroker(
             ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [1 => [0, -1, '']]], 0, self::GROUP)
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [1 => [0, -1, '']]], 0, self::GROUP)
         );
 
-        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [1]]);
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::TOPIC => [1]]);
 
-        self::assertSame(-1, $topics[self::VECTOR_TOPIC]->partitions[1]->offset);
-        self::assertSame(0, $topics[self::VECTOR_TOPIC]->partitions[1]->errorCode);
+        self::assertSame(-1, $topics[self::TOPIC]->partitions[1]->offset);
+        self::assertSame(0, $topics[self::TOPIC]->partitions[1]->errorCode);
+    }
+
+    /**
+     * A topic the cluster has no id for can not be named by version 10, so the request goes out as version 9
+     */
+    public function testListGroupOffsetsNamesATopicWithoutAnIdWithTheVersionNine(): void
+    {
+        $broker = $this->scriptBroker(
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::offsetFetchV9(0, [self::VECTOR_TOPIC => [0 => [0, -1, '']]], 0, self::GROUP)
+        );
+
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
+
+        self::assertSame(-1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+        [, $fetchId] = $broker->getReceivedCorrelationIds();
+        self::assertSame(
+            self::requestFrame(new OffsetFetchRequestV9(self::GROUP, [self::VECTOR_TOPIC => [0]], 't10', $fetchId)),
+            $broker->getReceivedFrames()[1]
+        );
+    }
+
+    public function testAlterConsumerGroupOffsetsCommitsWithoutAMembershipByTopicId(): void
+    {
+        $broker = $this->scriptBroker(
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => 0, 1 => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]])
+        );
+
+        $admin  = $this->adminClient();
+        $result = $admin->alterConsumerGroupOffsets(
+            self::GROUP,
+            [self::TOPIC => [0 => 5, 1 => new OffsetAndMetadata(7, 'meta')]]
+        );
+
+        self::assertNull($result[self::TOPIC][0]);
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[self::TOPIC][1]);
+
+        [, $commitId] = $broker->getReceivedCorrelationIds();
+        self::assertSame(
+            self::requestFrame(new OffsetCommitRequest(
+                self::GROUP,
+                OffsetCommitRequest::DEFAULT_GENERATION_ID,
+                OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+                OffsetCommitRequest::DEFAULT_RETENTION_TIME,
+                [self::TOPIC => [0 => 5, 1 => new OffsetAndMetadata(7, 'meta')]],
+                't10',
+                $commitId,
+                null,
+                [self::TOPIC => ResponseFrame::topicIdOf(self::TOPIC)]
+            )),
+            $broker->getReceivedFrames()[1],
+            'the generation -1 and the empty member id of a commit without a membership, the topic by its id'
+        );
+        self::assertSame([], $admin->alterConsumerGroupOffsets(self::GROUP, []), 'nothing to commit, nothing sent');
     }
 
     public function testFindCoordinatorResolvesTheNodeOfTheCluster(): void

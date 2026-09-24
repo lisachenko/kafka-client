@@ -1648,7 +1648,7 @@ final class ClientTest extends TestCase
         self::assertSame(FetchMetadata::INITIAL_EPOCH, $metadata->epoch);
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionNine(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionTen(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -1682,16 +1682,73 @@ final class ClientTest extends TestCase
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
         self::assertSame(
-            9,
+            10,
             $this->apiVersionOf($frames[0]),
-            'the client commits with OffsetCommit version 9 since Kafka 3.6 (KIP-848)'
+            'the client commits with OffsetCommit version 10 since Kafka 4.2 (KIP-848)'
         );
+        self::assertStringContainsString(bin2hex(ResponseFrame::topicIdOf(self::TOPIC)), bin2hex($frames[0]));
+        self::assertStringNotContainsString(bin2hex(self::TOPIC), bin2hex($frames[0]), 'the id, and no name');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
         self::assertSame(
-            9,
+            10,
             $this->apiVersionOf($frames[1]),
-            'the client reads the offsets with OffsetFetch version 9 since Kafka 3.7 (KIP-848)'
+            'the client reads the offsets with OffsetFetch version 10 since Kafka 4.2 (KIP-848)'
         );
+        self::assertStringContainsString(bin2hex(ResponseFrame::topicIdOf(self::TOPIC)), bin2hex($frames[1]));
+    }
+
+    /**
+     * A topic the cluster has no id for can not be named by version 10: the commit and the read of its offsets go
+     * out as version 9, which names it, as the Java consumer does (`CommitRequestManager` @ 4.2.0)
+     */
+    public function testATopicWithoutAnIdIsCommittedAndReadWithTheVersionNine(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::offsetCommitV9(0, ['t7-unknown' => [0 => 0]]),
+            ResponseFrame::offsetFetchV9(0, ['t7-unknown' => [0 => [0, 21, '']]], 0, 't7-group')
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client();
+        $node   = $client->getGroupCoordinator('t7-group');
+
+        $client->commitGroupOffsets($node, 't7-group', '', -1, ['t7-unknown' => [0 => 21]], -1);
+
+        self::assertSame(
+            ['t7-unknown' => [0 => 21]],
+            $client->fetchGroupOffsets($node, 't7-group', ['t7-unknown' => [0]])
+        );
+        [$commit, $fetch] = $coordinator->getReceivedFrames();
+        self::assertSame(9, $this->apiVersionOf($commit));
+        self::assertSame(9, $this->apiVersionOf($fetch));
+        self::assertStringContainsString(bin2hex('t7-unknown'), bin2hex($commit), 'version 9 names the topic');
+    }
+
+    /**
+     * The 100 of an id that went stale reloads the metadata, and the retry names the topic by its current id
+     */
+    public function testAStaleTopicIdOfACommitIsRetriedAfterTheMetadataIsReloaded(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => KafkaException::UNKNOWN_TOPIC_ID]]),
+            ResponseFrame::offsetCommit(1, [self::TOPIC => [0 => 0]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata(), $this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client([ClientConfig::RETRIES => 1]);
+        $node   = $client->getGroupCoordinator('t7-group');
+
+        $client->commitGroupOffsets($node, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
+
+        self::assertCount(2, $coordinator->getReceivedFrames(), 'the 100 is retried');
     }
 
     public function testACommitErrorOfAPartitionIsReported(): void
@@ -1728,7 +1785,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(9, $this->apiVersionOf($frame), 'the nullable topic array of the one group of the batch');
+        self::assertSame(10, $this->apiVersionOf($frame), 'the nullable topic array of the one group of the batch');
         self::assertStringEndsWith(
             '0000',
             bin2hex($frame),
@@ -1759,7 +1816,7 @@ final class ClientTest extends TestCase
 
         [$plain, $stable] = $coordinator->getReceivedFrames();
 
-        self::assertSame(9, $this->apiVersionOf($plain));
+        self::assertSame(10, $this->apiVersionOf($plain));
         self::assertStringEndsWith('0000', bin2hex($plain), 'false, then the tag buffer of the body');
         self::assertStringEndsWith('0100', bin2hex($stable), 'true, then the tag buffer of the body');
         self::assertSame(

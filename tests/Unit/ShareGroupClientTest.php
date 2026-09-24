@@ -46,8 +46,8 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * read back field by field.
  *
  * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
  * @see docs/protocol/4.3.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 #[CoversClass(Client::class)]
@@ -165,10 +165,10 @@ final class ShareGroupClientTest extends TestCase
         self::assertCount(4, $answer->responses[0]->partitions[0]->acquiredRecords());
 
         $sent = $this->sent($node, 0, ShareFetchRequest::class);
-        self::assertSame([ApiKeys::SHARE_FETCH, 1], [$sent['apiKey'], $sent['apiVersion']]);
+        self::assertSame([ApiKeys::SHARE_FETCH, 2], [$sent['apiKey'], $sent['apiVersion']]);
         self::assertSame(
-            [1, 250, 1, ShareFetchRequest::DEFAULT_MAX_BYTES, 100, 50],
-            [$sent['shareSessionEpoch'], $sent['maxWaitMs'], $sent['minBytes'], $sent['maxBytes'], $sent['maxRecords'], $sent['batchSize']]
+            [1, 250, 1, ShareFetchRequest::DEFAULT_MAX_BYTES, 100, 50, ShareFetchRequest::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED, false],
+            [$sent['shareSessionEpoch'], $sent['maxWaitMs'], $sent['minBytes'], $sent['maxBytes'], $sent['maxRecords'], $sent['batchSize'], $sent['shareAcquireMode'], $sent['isRenewAck']]
         );
         self::assertSame(
             [[
@@ -181,6 +181,53 @@ final class ShareGroupClientTest extends TestCase
             $sent['topics']
         );
         self::assertSame([['topicId' => ['$bytes' => bin2hex($topicId)], 'partitions' => [4]]], $sent['forgottenTopicsData']);
+    }
+
+    /**
+     * The record-limit mode travels as it is given; a renew fetch goes out with its five limits 0, as the node requires
+     */
+    public function testTheAcquireModeAndTheRenewOfAShareFetchAreSentWithVersionTwo(): void
+    {
+        $node    = $this->script(
+            self::vector('share-fetch', 'sharefetch.v2.record-limit.response'),
+            self::vector('share-fetch', 'sharefetch.v2.renew.response')
+        );
+        $topicId = str_repeat("\x07", 16);
+
+        $limited = $this->client()->shareFetch(
+            $this->node(),
+            self::GROUP_ID,
+            self::MEMBER_ID,
+            0,
+            [$topicId => [0]],
+            [],
+            500,
+            1,
+            2,
+            2,
+            [],
+            ShareFetchRequest::SHARE_ACQUIRE_MODE_RECORD_LIMIT
+        );
+        $this->client()->shareFetch(
+            $this->node(),
+            self::GROUP_ID,
+            self::MEMBER_ID,
+            2,
+            [$topicId => [0]],
+            [$topicId => [0 => [ShareAcknowledgementBatch::of(0, 1, ShareAcknowledgementBatch::RENEW)]]],
+            isRenewAck: true
+        );
+
+        self::assertCount(2, $limited->responses[0]->partitions[0]->acquiredRecords(), 'the record limit of 2');
+
+        $record = $this->sent($node, 0, ShareFetchRequest::class);
+        self::assertSame([2, 2, 1, false], [$record['maxRecords'], $record['batchSize'], $record['shareAcquireMode'], $record['isRenewAck']]);
+        $renew = $this->sent($node, 1, ShareFetchRequest::class);
+        self::assertSame(
+            [0, 0, 0, 0, 0, true],
+            [$renew['maxWaitMs'], $renew['minBytes'], $renew['maxBytes'], $renew['maxRecords'], $renew['batchSize'], $renew['isRenewAck']]
+        );
+        self::assertSame([4], $renew['topics'][0]['partitions'][0]['acknowledgementBatches'][0]['acknowledgeTypes']);
     }
 
     public function testTheSessionCodesOfAShareFetchAreThrown(): void
@@ -204,21 +251,27 @@ final class ShareGroupClientTest extends TestCase
     public function testAPartitionErrorOfShareAcknowledgeStaysInTheAnswer(): void
     {
         $node    = $this->script(
-            self::vector('share-acknowledge', 'shareacknowledge.v1.accept-twice.response'),
-            self::vector('share-acknowledge', 'shareacknowledge.v1.close.response')
+            self::vector('share-acknowledge', 'shareacknowledge.v2.renew-not-acquired.response'),
+            self::vector('share-acknowledge', 'shareacknowledge.v2.close.response')
         );
         $topicId = str_repeat("\x07", 16);
 
-        $answer = $this->client()->shareAcknowledge($this->node(), self::GROUP_ID, self::MEMBER_ID, 3, [
-            $topicId => [0 => [ShareAcknowledgementBatch::of(3, 3, ShareAcknowledgementBatch::ACCEPT)]],
-        ]);
+        $answer = $this->client()->shareAcknowledge($this->node(), self::GROUP_ID, self::MEMBER_ID, 7, [
+            $topicId => [0 => [ShareAcknowledgementBatch::of(2, 2, ShareAcknowledgementBatch::RENEW)]],
+        ], true);
         $closed = $this->client()->shareAcknowledge($this->node(), self::GROUP_ID, self::MEMBER_ID, ShareFetchRequest::FINAL_EPOCH);
 
         self::assertSame(121, $answer->responses[0]->partitions[0]->errorCode, 'the 121 of the partition is not thrown');
+        self::assertSame(30000, $answer->acquisitionLockTimeoutMs, 'the lock timeout of version 2');
         self::assertSame([], $closed->responses);
 
+        $renew = $this->sent($node, 0, ShareAcknowledgeRequest::class);
+        self::assertSame([ApiKeys::SHARE_ACKNOWLEDGE, 2, true], [$renew['apiKey'], $renew['apiVersion'], $renew['isRenewAck']]);
         $close = $this->sent($node, 1, ShareAcknowledgeRequest::class);
-        self::assertSame([ApiKeys::SHARE_ACKNOWLEDGE, -1, []], [$close['apiKey'], $close['shareSessionEpoch'], $close['topics']]);
+        self::assertSame(
+            [ApiKeys::SHARE_ACKNOWLEDGE, -1, [], false],
+            [$close['apiKey'], $close['shareSessionEpoch'], $close['topics'], $close['isRenewAck']]
+        );
     }
 
     public function testAShareGroupIsDescribedByItsCoordinator(): void

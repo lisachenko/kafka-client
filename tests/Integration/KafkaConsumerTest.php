@@ -48,7 +48,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * subscribe(), the rebalance and the heartbeats - is driven by {@see ConsumerGroupTest}.
  *
  * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "Offsets API (key 2, v0 to v4), a.k.a.
- *      ListOffset" and "OffsetFetch API (key 9, v0 to v9)"
+ *      ListOffset" and "OffsetFetch API (key 9, v0 to v10)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(SubscriptionState::class)]

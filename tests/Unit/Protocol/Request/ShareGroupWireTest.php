@@ -28,9 +28,13 @@ use Protocol\Kafka\Protocol\Data\ShareGroupDescribeAssignment;
 use Protocol\Kafka\Protocol\Data\ShareGroupHeartbeatAssignment;
 use Protocol\Kafka\Protocol\Data\ShareLeaderIdAndEpoch;
 use Protocol\Kafka\Protocol\Request\ShareAcknowledgeRequest;
+use Protocol\Kafka\Protocol\Request\ShareAcknowledgeRequestV1;
 use Protocol\Kafka\Protocol\Request\ShareAcknowledgeResponse;
+use Protocol\Kafka\Protocol\Request\ShareAcknowledgeResponseV1;
 use Protocol\Kafka\Protocol\Request\ShareFetchRequest;
+use Protocol\Kafka\Protocol\Request\ShareFetchRequestV1;
 use Protocol\Kafka\Protocol\Request\ShareFetchResponse;
+use Protocol\Kafka\Protocol\Request\ShareFetchResponseV1;
 use Protocol\Kafka\Protocol\Request\ShareGroupDescribeRequest;
 use Protocol\Kafka\Protocol\Request\ShareGroupDescribeResponse;
 use Protocol\Kafka\Protocol\Request\ShareGroupHeartbeatRequest;
@@ -47,7 +51,7 @@ use Protocol\Kafka\Tests\Compliance\VectorFile;
  * topics of a request and read the acquired records of an answer.
  *
  * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 #[CoversClass(ShareGroupHeartbeatRequest::class)]
 #[CoversClass(ShareGroupHeartbeatResponse::class)]
@@ -67,19 +71,21 @@ final class ShareGroupWireTest extends TestCase
     /**
      * The four apis start at version 1 - the version 0 of the 4.0 early access is gone - and are flexible throughout
      */
-    public function testTheFourApisSpeakVersionOneAndAreFlexibleFromTheFirstVersion(): void
+    public function testTheFourApisSpeakTheirVersionsAndAreFlexibleFromTheFirstVersion(): void
     {
         $classes = [
-            ApiKeys::SHARE_GROUP_HEARTBEAT => [ShareGroupHeartbeatRequest::class, ShareGroupHeartbeatResponse::class],
-            ApiKeys::SHARE_GROUP_DESCRIBE  => [ShareGroupDescribeRequest::class, ShareGroupDescribeResponse::class],
-            ApiKeys::SHARE_FETCH           => [ShareFetchRequest::class, ShareFetchResponse::class],
-            ApiKeys::SHARE_ACKNOWLEDGE     => [ShareAcknowledgeRequest::class, ShareAcknowledgeResponse::class],
+            [ApiKeys::SHARE_GROUP_HEARTBEAT, 1, ShareGroupHeartbeatRequest::class, ShareGroupHeartbeatResponse::class],
+            [ApiKeys::SHARE_GROUP_DESCRIBE, 1, ShareGroupDescribeRequest::class, ShareGroupDescribeResponse::class],
+            [ApiKeys::SHARE_FETCH, 2, ShareFetchRequest::class, ShareFetchResponse::class],
+            [ApiKeys::SHARE_FETCH, 1, ShareFetchRequestV1::class, ShareFetchResponseV1::class],
+            [ApiKeys::SHARE_ACKNOWLEDGE, 2, ShareAcknowledgeRequest::class, ShareAcknowledgeResponse::class],
+            [ApiKeys::SHARE_ACKNOWLEDGE, 1, ShareAcknowledgeRequestV1::class, ShareAcknowledgeResponseV1::class],
         ];
 
-        foreach ($classes as $apiKey => [$request, $response]) {
+        foreach ($classes as [$apiKey, $version, $request, $response]) {
             self::assertSame($apiKey, $request::API_KEY);
-            self::assertSame(1, $request::VERSION, "{$request} speaks version 1");
-            self::assertSame(1, $response::VERSION);
+            self::assertSame($version, $request::VERSION, "{$request} speaks version {$version}");
+            self::assertSame($version, $response::VERSION);
             self::assertSame(0, $request::FLEXIBLE_VERSION, 'flexible from the first version');
             self::assertSame(0, $response::FLEXIBLE_VERSION);
         }
@@ -188,17 +194,86 @@ final class ShareGroupWireTest extends TestCase
     {
         self::assertSame(
             ['groupId', 'memberId', 'shareSessionEpoch', 'maxWaitMs', 'minBytes', 'maxBytes', 'maxRecords', 'batchSize', 'topics', 'forgottenTopicsData'],
-            array_slice(array_keys(ShareFetchRequest::getScheme()), -10)
+            array_slice(array_keys(ShareFetchRequestV1::getScheme()), -10)
         );
         self::assertSame(
             ['throttleTimeMs', 'errorCode', 'errorMessage', 'acquisitionLockTimeoutMs', 'responses', 'nodeEndpoints'],
             array_slice(array_keys(ShareFetchResponse::getScheme()), -6)
+        );
+        self::assertSame(
+            array_keys(ShareFetchResponseV1::getScheme()),
+            array_keys(ShareFetchResponse::getScheme()),
+            'version 2 added no field to the answer'
         );
 
         $request = new ShareFetchRequest('g', 'm', ShareFetchRequest::INITIAL_EPOCH);
         self::assertSame(0, $request->getShareSessionEpoch());
         self::assertSame([], $request->getTopics());
         self::assertSame(-1, ShareFetchRequest::FINAL_EPOCH);
+    }
+
+    /**
+     * Version 2 (Kafka 4.2, KIP-1206 and KIP-1222) puts the acquire mode and the renew flag behind `batch_size`
+     */
+    public function testAShareFetchOfVersionTwoCarriesTheAcquireModeAndTheRenewFlagBehindTheBatchSize(): void
+    {
+        self::assertSame(
+            ['maxRecords', 'batchSize', 'shareAcquireMode', 'isRenewAck', 'topics', 'forgottenTopicsData'],
+            array_slice(array_keys(ShareFetchRequest::getScheme()), -6)
+        );
+        self::assertSame(BinarySchema::TYPE_INT8, ShareFetchRequest::getScheme()['shareAcquireMode']);
+        self::assertSame(BinarySchema::TYPE_BOOLEAN, ShareFetchRequest::getScheme()['isRenewAck']);
+
+        $arguments = ['g', 'm', 1, [], 0, 0, 0, 0, 0, [], 'c', 7];
+        $renew     = bin2hex((string) new ShareFetchRequest(...[...$arguments, ShareFetchRequest::SHARE_ACQUIRE_MODE_RECORD_LIMIT, true]));
+        $version1  = bin2hex((string) new ShareFetchRequestV1(...[...$arguments, ShareFetchRequest::SHARE_ACQUIRE_MODE_RECORD_LIMIT, true]));
+
+        // Size ApiKey Version Correlation ClientId(int16) tags | group member epoch 5 x int32 mode flag topics forgotten tags
+        self::assertSame(
+            '0000002d' . '004e' . '0002' . '00000007' . '0001' . '63' . '00'
+            . '0267' . '026d' . '00000001' . '00000000' . '00000000' . '00000000' . '00000000' . '00000000'
+            . '01' . '01' . '01' . '01' . '00',
+            $renew
+        );
+        self::assertSame(
+            '0000002b' . '004e' . '0001' . '00000007' . '0001' . '63' . '00'
+            . '0267' . '026d' . '00000001' . '00000000' . '00000000' . '00000000' . '00000000' . '00000000'
+            . '01' . '01' . '00',
+            $version1,
+            'version 1 writes neither the mode nor the flag'
+        );
+        self::assertSame(1, ShareFetchRequest::SHARE_ACQUIRE_MODE_RECORD_LIMIT);
+        self::assertSame(0, ShareFetchRequest::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED);
+    }
+
+    /**
+     * Version 2 (Kafka 4.2, KIP-1222): the renew flag behind the epoch, and the lock timeout behind the error message
+     */
+    public function testAShareAcknowledgeOfVersionTwoCarriesTheRenewFlagAndItsAnswerTheLockTimeout(): void
+    {
+        self::assertSame(
+            ['groupId', 'memberId', 'shareSessionEpoch', 'isRenewAck', 'topics'],
+            array_slice(array_keys(ShareAcknowledgeRequest::getScheme()), -5)
+        );
+        self::assertSame(
+            ['groupId', 'memberId', 'shareSessionEpoch', 'topics'],
+            array_slice(array_keys(ShareAcknowledgeRequestV1::getScheme()), -4)
+        );
+        self::assertSame(
+            ['throttleTimeMs', 'errorCode', 'errorMessage', 'acquisitionLockTimeoutMs', 'responses', 'nodeEndpoints'],
+            array_slice(array_keys(ShareAcknowledgeResponse::getScheme()), -6)
+        );
+        self::assertSame(
+            ['throttleTimeMs', 'errorCode', 'errorMessage', 'responses', 'nodeEndpoints'],
+            array_slice(array_keys(ShareAcknowledgeResponseV1::getScheme()), -5)
+        );
+
+        $renew = ShareAcknowledgeResponse::unpack(new StringStream(self::vectorBytes(
+            'share-acknowledge',
+            'shareacknowledge.v2.renew.response'
+        )));
+        self::assertSame(30000, $renew->acquisitionLockTimeoutMs);
+        self::assertSame(4, ShareAcknowledgementBatch::RENEW);
     }
 
     /**

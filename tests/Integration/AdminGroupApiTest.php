@@ -21,6 +21,8 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
+use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
@@ -437,6 +439,43 @@ final class AdminGroupApiTest extends IntegrationTestCase
             $this->admin->listGroupOffsets($groupId, []),
             'an empty iterable names no topic at all, which is not the same request as null'
         );
+    }
+
+    /**
+     * `alterConsumerGroupOffsets()` commits by topic id (OffsetCommit v10, Kafka 4.2) for a group without a live
+     * member, and the coordinator refuses the commit of an administrator for a group whose members are running
+     */
+    public function testAlterConsumerGroupOffsetsCommitsForAGroupWithoutALiveMember(): void
+    {
+        $topic = self::committedTopic();
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, 't4-admin-groups')->awaitTopicWithLeaders($topic);
+        $groupId = $this->uniqueGroupId();
+
+        try {
+            self::assertSame(
+                [$topic => [0 => null]],
+                $this->admin->alterConsumerGroupOffsets($groupId, [$topic => [0 => new OffsetAndMetadata(41, 'admin')]])
+            );
+            $committed = $this->admin->listGroupOffsets($groupId, [$topic => [0]]);
+            self::assertSame(41, $committed[$topic]->partitions[0]->offset);
+            self::assertSame('admin', $committed[$topic]->partitions[0]->metadata);
+        } finally {
+            $this->admin->deleteConsumerGroups([$groupId]);
+        }
+
+        $liveGroup = $this->uniqueGroupId();
+        $member    = $this->joinGroup($liveGroup, 't3-42-alter-member');
+        try {
+            $refused = $this->admin->alterConsumerGroupOffsets($liveGroup, [$topic => [0 => 42]]);
+            self::assertInstanceOf(
+                UnknownMemberIdException::class,
+                $refused[$topic][0],
+                'a commit without a membership is refused by a group whose members are running'
+            );
+        } finally {
+            $member->leave();
+            $this->admin->deleteConsumerGroups([$liveGroup]);
+        }
     }
 
     /**

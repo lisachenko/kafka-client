@@ -46,18 +46,22 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV5;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV1;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV1;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV9;
 use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 
 /**
@@ -70,7 +74,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * exercises the versions the coordinator still answers - OffsetCommit 2 and up, OffsetFetch 1 and up.
  *
  * @see docs/protocol/4.3.md, sections "GroupCoordinator API (key 10, v0 to v6)",
- *      "OffsetCommit API (key 8, v0 to v9)" and "OffsetFetch API (key 9, v0 to v9)"
+ *      "OffsetCommit API (key 8, v0 to v10)" and "OffsetFetch API (key 9, v0 to v10)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -701,7 +705,9 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         bool $expectSuccess = true,
         int $retentionTime = OffsetCommitRequest::DEFAULT_RETENTION_TIME
     ): OffsetCommitResponse {
-        new OffsetCommitRequest(
+        // The version 9 frame, which names its topics: this suite is about what the coordinator stores, and the
+        // topic ids of version 10 are the business of MemberEpochCommitApiTest
+        new OffsetCommitRequestV9(
             $groupId,
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
@@ -711,7 +717,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             1
         )->writeTo($stream);
 
-        $response = OffsetCommitResponse::unpack($stream);
+        $response = OffsetCommitResponseV9::unpack($stream);
         if ($expectSuccess) {
             foreach ($response->topics as $topic => $topicResponse) {
                 foreach ($topicResponse->partitions as $partitionId => $partition) {
@@ -757,9 +763,9 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         string $groupId,
         ?array $topicPartitions
     ): OffsetFetchResponse {
-        new OffsetFetchRequest($groupId, $topicPartitions, 'kafka-client-t6', 2)->writeTo($stream);
+        new OffsetFetchRequestV9($groupId, $topicPartitions, 'kafka-client-t6', 2)->writeTo($stream);
 
-        return OffsetFetchResponse::unpack($stream);
+        return OffsetFetchResponseV9::unpack($stream);
     }
 
     /**
