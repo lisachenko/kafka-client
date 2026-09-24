@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * **A null topic array asks for every topic-partition the group holds state for**; an empty one asks for none.
  *
- * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
  */
 final class DescribeShareGroupOffsetsRequestGroup implements BinarySchemaInterface
 {

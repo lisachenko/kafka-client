@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     Partitions => COMPACT_ARRAY of INT32
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
  */
 final class DescribeShareGroupOffsetsRequestTopic implements BinarySchemaInterface
 {
