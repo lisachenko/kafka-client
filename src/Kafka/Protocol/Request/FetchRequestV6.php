@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * fetch sessions that version 7 added (KIP-227), so this class only lowers the version constant that
  * {@see FetchRequest::getScheme()} follows.
  *
- * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v18)"
  */
 final class FetchRequestV6 extends FetchRequest
 {

@@ -38,18 +38,21 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The entry itself did not change again after that; what a version of this class still picks is the shape of its
  * **partition** entries, and version 17 (Kafka 3.9, KIP-853) changed that one once more by declaring the tagged
- * `replica_directory_id` of {@see FetchRequestTopicPartition::$replicaDirectoryId}. This class is the entry of
- * version 17, {@see FetchRequestTopicV13} the one of the versions 13 to 16.
+ * `replica_directory_id` of {@see FetchRequestTopicPartition::$replicaDirectoryId}, and version 18 (Kafka 4.1,
+ * KIP-1166) once more with the tagged `high_watermark` of {@see FetchRequestTopicPartition::$highWatermark}. This
+ * class is the entry of version 18, {@see FetchRequestTopicV17} the one of version 17 and
+ * {@see FetchRequestTopicV13} the one of the versions 13 to 16.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)", "The topic ids of the fetch path
- *      (v13, KIP-516)" and "The replica directory id of KIP-853 (v17)"
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "The topic ids of the fetch path
+ *      (v13, KIP-516)", "The replica directory id of KIP-853 (v17)" and "The high watermark of a follower, KIP-1166
+ *      (v18)"
  */
 class FetchRequestTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Fetch API that this DTO is packed for
      */
-    public const int VERSION = 17;
+    public const int VERSION = 18;
 
     /**
      * Name of the topic to fetch from, the empty string in an entry that was decoded from a version 13 frame
@@ -109,7 +112,8 @@ class FetchRequestTopic implements BinarySchemaInterface
     public static function partitionClass(): string
     {
         return match (true) {
-            static::VERSION >= 17 => FetchRequestTopicPartition::class,
+            static::VERSION >= 18 => FetchRequestTopicPartition::class,
+            static::VERSION >= 17 => FetchRequestTopicPartitionV17::class,
             static::VERSION >= 12 => FetchRequestTopicPartitionV12::class,
             static::VERSION >= 9  => FetchRequestTopicPartitionV9::class,
             static::VERSION >= 5  => FetchRequestTopicPartitionV5::class,

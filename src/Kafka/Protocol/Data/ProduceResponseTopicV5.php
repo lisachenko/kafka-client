@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * partition entry, i.e. the entry without the record errors that version 8 (Kafka 2.4, KIP-467) added, see
  * {@see ProduceResponseTopic}.
  *
- * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v13)"
  */
 final class ProduceResponseTopicV5 extends ProduceResponseTopic
 {

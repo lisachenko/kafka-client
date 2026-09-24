@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * entry, i.e. the entry without the `replica_directory_id` that version 17 (Kafka 3.9, KIP-853) added, see
  * {@see FetchRequestTopic}.
  *
- * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v18)"
  */
 final class FetchRequestTopicV13 extends FetchRequestTopic
 {
