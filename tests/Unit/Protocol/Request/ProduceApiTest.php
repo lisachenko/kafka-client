@@ -38,6 +38,7 @@ use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV11;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
@@ -50,6 +51,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV11;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
@@ -86,7 +88,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
  * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
  * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)", "MessageSet and Message" and
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v12)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]
@@ -116,6 +118,8 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 #[CoversClass(ProduceResponseCurrentLeader::class)]
 #[CoversClass(ProduceResponseNodeEndpoint::class)]
 #[CoversClass(ProduceRequestV10::class)]
+#[CoversClass(ProduceRequestV11::class)]
+#[CoversClass(ProduceResponseV11::class)]
 #[CoversClass(ProduceResponseV10::class)]
 final class ProduceApiTest extends TestCase
 {
@@ -372,7 +376,8 @@ final class ProduceApiTest extends TestCase
         self::assertSame(self::REQUEST_HEADER_V7_HEX . $body, $frames[7]);
         self::assertSame(self::REQUEST_HEADER_V8_HEX . $body, $frames[8]);
         self::assertSame(ProduceRequestV3::getScheme(), ProduceRequestV8::getScheme());
-        self::assertSame(11, ProduceRequest::VERSION, 'the client sends version 11, the one of KIP-890');
+        self::assertSame(12, ProduceRequest::VERSION, 'version 12 is the transaction protocol v2 of KIP-890');
+        self::assertSame(11, ProduceRequestV11::VERSION, 'version 11 is the abortable transaction error of KIP-890');
         self::assertSame(10, ProduceRequestV10::VERSION, 'version 10 is the leader discovery of KIP-951');
         self::assertSame(9, ProduceRequestV9::VERSION, 'version 9 is the flexible one of KIP-482');
         self::assertSame(8, ProduceRequestV8::VERSION, 'version 8 is the one of the record errors');
@@ -398,7 +403,8 @@ final class ProduceApiTest extends TestCase
             ProduceResponseV8::getScheme()['topics'],
             'and the one of version 8 carries the record errors of KIP-467'
         );
-        self::assertSame(11, ProduceResponse::VERSION);
+        self::assertSame(12, ProduceResponse::VERSION);
+        self::assertSame(11, ProduceResponseV11::VERSION);
         self::assertSame(10, ProduceResponseV10::VERSION);
         self::assertSame(9, ProduceResponseV9::VERSION);
         self::assertSame(8, ProduceResponseV8::VERSION);
@@ -783,17 +789,53 @@ final class ProduceApiTest extends TestCase
         ];
 
         $ten    = bin2hex((string) new ProduceRequestV10(...$arguments));
-        $eleven = bin2hex((string) new ProduceRequest(...$arguments));
+        $eleven = bin2hex((string) new ProduceRequestV11(...$arguments));
 
-        self::assertSame(11, ProduceRequest::VERSION);
-        self::assertSame(ProduceRequestV10::getScheme(), ProduceRequest::getScheme());
+        self::assertSame(11, ProduceRequestV11::VERSION);
+        self::assertSame(ProduceRequestV10::getScheme(), ProduceRequestV11::getScheme());
         self::assertSame($ten, substr_replace($eleven, '000a', 12, 4), 'only the api version differs');
         self::assertSame('0000000b', substr($eleven, 8, 8), 'the key 0 and the version 11 of the header');
         self::assertSame(
             'orders-tx',
-            new ProduceRequest(...$arguments)->getTransactionalId(),
+            new ProduceRequestV11(...$arguments)->getTransactionalId(),
             'and the transactional id still travels in the body, as it has since version 3'
         );
+    }
+
+    public function testAVersionTwelveRequestIsTheVersionElevenFrameWithAnotherApiVersion(): void
+    {
+        // `ProduceRequest.json` @ 4.0.0: "Version 12 is the same as version 11 (KIP-890)" - no field again. What
+        // the number changes is the meaning of a TRANSACTIONAL batch on a node with `transaction.version` 2: the
+        // broker adds the partition to the transaction itself, the AddPartitionsToTxn of the protocol v1 is gone
+        $arguments = [
+            ['orders' => [0 => hex2bin(self::RECORD_BATCH_HEX)]],
+            1,
+            1000,
+            'test',
+            5,
+            'orders-tx',
+        ];
+
+        $eleven = bin2hex((string) new ProduceRequestV11(...$arguments));
+        $twelve = bin2hex((string) new ProduceRequest(...$arguments));
+
+        self::assertSame(12, ProduceRequest::VERSION);
+        self::assertSame(ProduceRequestV11::getScheme(), ProduceRequest::getScheme());
+        self::assertSame($eleven, substr_replace($twelve, '000b', 12, 4), 'only the api version differs');
+        self::assertSame('0000000c', substr($twelve, 8, 8), 'the key 0 and the version 12 of the header');
+        self::assertSame(ProduceRequest::FLEXIBLE_VERSION, ProduceRequestV11::FLEXIBLE_VERSION);
+    }
+
+    public function testKafka4RaisedTheBaselineOfTheApiToVersionThree(): void
+    {
+        // `ProduceRequest.json` @ 4.0.0: "Versions 0-2 were removed in Apache Kafka 4.0, version 3 is the new
+        // baseline" - and "validVersions": "3-12" in the same commit that added version 12, which is how a client
+        // tells a 4.x node from its ApiVersions answer: the row still starts at 0 there (KAFKA-18659)
+        self::assertSame(3, ProduceRequest::BASELINE_VERSION);
+        self::assertSame(ProduceRequestV3::VERSION, ProduceRequest::BASELINE_VERSION);
+        self::assertSame(12, ProduceRequest::BASELINE_RAISED_WITH_VERSION);
+        self::assertArrayHasKey('transactionalId', ProduceRequestV3::getScheme(), 'the first version with a batch');
+        self::assertArrayNotHasKey('transactionalId', ProduceRequestV2::getScheme());
     }
 
     public function testAVersionTenAnswerThatRefusedNothingCarriesNeitherTaggedFieldOfKipNineFiveOne(): void
@@ -873,10 +915,10 @@ final class ProduceApiTest extends TestCase
             . '00';
         $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
 
-        $answer    = ProduceResponse::unpack(new StringStream($frame));
+        $answer    = ProduceResponseV11::unpack(new StringStream($frame));
         $partition = $answer->topics['orders']->partitions[1];
 
-        self::assertSame(11, ProduceResponse::VERSION);
+        self::assertSame(11, ProduceResponseV11::VERSION);
         self::assertSame(10, ProduceResponseV10::VERSION);
         self::assertSame(KafkaException::TRANSACTION_ABORTABLE, $partition->errorCode);
         self::assertSame(-1, $partition->baseOffset, 'nothing was appended');
@@ -889,6 +931,11 @@ final class ProduceApiTest extends TestCase
             bin2hex($frame),
             bin2hex((string) ProduceResponseV10::unpack(new StringStream($frame))),
             'and the version 10 class reads the very same bytes - only the broker would not have sent them'
+        );
+        self::assertSame(
+            bin2hex($frame),
+            bin2hex((string) ProduceResponse::unpack(new StringStream($frame))),
+            'and so does the version 12 class: "Version 12 is the same as version 10 (KIP-890)"'
         );
         self::assertInstanceOf(
             TransactionAbortableException::class,

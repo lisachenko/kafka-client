@@ -34,10 +34,11 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 /**
  * **KIP-110** (Kafka 2.1): the zstd codec, and the two versions that are allowed to speak it.
  *
- * The compression type 4 exists in the message format v2 alone, and Kafka guards it with two version rules that
- * this class measures against the container: a **fetch** below version 10 of a topic that is configured
- * `compression.type=zstd` is refused with the error code 76, and a **produce** below version 7 whose record set
- * is compressed with zstd is refused with the same code. The client-side half of the code is the
+ * The compression type 4 exists in the message format v2 alone, and Kafka guarded it with two version rules: a
+ * **fetch** below version 10 of a topic that is configured `compression.type=zstd` was refused with the error code
+ * 76, and a **produce** below version 7 whose record set is compressed with zstd is refused with the same code.
+ * **A node of Kafka 4.0 or later keeps the second rule and dropped the first** - measured here: its Fetch v4 to v9
+ * of a zstd topic are served the zstd batch. The client-side half of the code is the
  * {@see UnsupportedCompressionTypeException} that this package raises without `ext-zstd`.
  *
  * @see docs/protocol/4.3.md, sections "The zstd codec (Kafka 2.1, KIP-110)" and "Version 10 and the zstd codec (KIP-110)"
@@ -95,25 +96,26 @@ final class ZstdCodecTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    public function testAZstdTopicIsRefusedToAFetchBelowVersionTenWithSeventySix(): void
+    public function testAZstdTopicIsServedToAFetchBelowVersionTenOnAKafka4Node(): void
     {
         // The records are produced uncompressed; the topic configuration is what turns them into a zstd batch,
         // because a `compression.type` other than `producer` makes the broker recompress on append
         $this->produce($this->zstdTopic, 'zstd-value', ProduceRequest::class, 1000);
 
-        $refused = $this->fetch($this->zstdTopic, FetchRequestV9::class, FetchResponseV9::class, 1001);
+        $served = $this->fetch($this->zstdTopic, FetchRequestV9::class, FetchResponseV9::class, 1001);
 
-        self::assertSame(KafkaException::UNSUPPORTED_COMPRESSION_TYPE, $refused->errorCode);
-        self::assertSame(76, KafkaException::UNSUPPORTED_COMPRESSION_TYPE);
-        self::assertInstanceOf(
-            UnsupportedCompressionTypeException::class,
-            KafkaException::fromCode($refused->errorCode, ['topic' => $this->zstdTopic])
+        // **A 3.9.2 node refused this partition with the 76 UNSUPPORTED_COMPRESSION_TYPE**:
+        // `KafkaApis.handleFetchRequest` @ 3.9.2 checked `compressionType == ZSTD && versionId < 10`. That check is
+        // gone from `KafkaApis.handleFetchRequest` @ 4.0.0, which removed the down-conversion it belonged to
+        // (KIP-896), so a Fetch v4 to v9 of a zstd topic is served the zstd batch as it lies - the version 10
+        // promise of KIP-110 is not enforced on the fetch side any more
+        self::assertSame(KafkaException::NO_ERROR, $served->errorCode);
+        self::assertSame(1, $served->highWaterMarkOffset);
+        self::assertSame(
+            CompressionCodec::ZSTD,
+            RecordBatch::fromBuffer((string) $served->messageSet)->getCompressionCodec(),
+            'the compression type 4 in the attributes of the batch a version 9 fetch got'
         );
-        self::assertSame(-1, $refused->highWaterMarkOffset, 'the refused partition carries no high water mark');
-
-        // `FetchResponse.partitionResponse(tp, error)` @ 3.9.2 leaves `Records` at the `"default": "null"` of
-        // `FetchResponse.json`, so the node writes the length -1 where the 2.8.2 broker wrote an empty byte array
-        self::assertNull($refused->messageSet, 'and no records at all, as a null record set');
     }
 
     public function testTheSamePartitionIsServedToAFetchOfVersionTen(): void

@@ -37,6 +37,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV1;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV10;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV11;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV12;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
@@ -49,6 +50,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV11;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV12;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
@@ -75,7 +77,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV9;
  *                          [OfflineReplicas [int32]]      # since version 5
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -261,7 +263,8 @@ final class MetadataApiTest extends TestCase
         self::assertSame(9, new MetadataRequestV9()->getApiVersion());
         self::assertSame(10, new MetadataRequestV10()->getApiVersion());
         self::assertSame(11, new MetadataRequestV11()->getApiVersion());
-        self::assertSame(12, new MetadataRequest()->getApiVersion());
+        self::assertSame(12, new MetadataRequestV12()->getApiVersion());
+        self::assertSame(13, new MetadataRequest()->getApiVersion());
         self::assertArrayNotHasKey('allowAutoTopicCreation', MetadataRequestV3::getScheme());
         self::assertArrayHasKey('allowAutoTopicCreation', MetadataRequest::getScheme());
     }
@@ -293,8 +296,10 @@ final class MetadataApiTest extends TestCase
         self::assertSame(9, MetadataResponseV9::VERSION);
         self::assertSame(11, MetadataRequestV11::VERSION);
         self::assertSame(11, MetadataResponseV11::VERSION);
-        self::assertSame(12, MetadataRequest::VERSION);
-        self::assertSame(12, MetadataResponse::VERSION);
+        self::assertSame(12, MetadataRequestV12::VERSION);
+        self::assertSame(12, MetadataResponseV12::VERSION);
+        self::assertSame(13, MetadataRequest::VERSION);
+        self::assertSame(13, MetadataResponse::VERSION);
     }
 
     public function testVersionEightAsksForTheAuthorizedOperationsAndIsAnsweredTwoBitfields(): void
@@ -404,7 +409,7 @@ final class MetadataApiTest extends TestCase
         // KIP-516 (Kafka 3.1): the topic entry carries a real id and a NULL name, which is the shape the Java
         // `describeTopics(TopicCollection.ofTopicIds(...))` sends and the server honours from version 12 on
         $topicId = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
-        $request = MetadataRequest::byTopicIds([$topicId], 't2', 700);
+        $request = MetadataRequestV12::byTopicIds([$topicId], 't2', 700);
 
         self::assertSame(12, $request->getApiVersion());
         self::assertSame([null], $request->getTopics(), 'such an entry has no name');
@@ -421,6 +426,12 @@ final class MetadataApiTest extends TestCase
             . '00'                       // includeTopicAuthorizedOperations = false
             . '00',                      // TAG_BUFFER of the body
             bin2hex((string) $request)
+        );
+
+        // Version 13 (Kafka 4.0) asks the very same question, with another number in its header
+        self::assertSame(
+            substr_replace(bin2hex((string) $request), '000d', 12, 4),
+            bin2hex((string) MetadataRequest::byTopicIds([$topicId], 't2', 700))
         );
 
         // Every version below 12 names its topics, and the entry of this client carries the zero id there
@@ -445,15 +456,57 @@ final class MetadataApiTest extends TestCase
         );
         self::assertSame(array_keys(TopicMetadata::getScheme()), array_keys(TopicMetadataV10::getScheme()));
         self::assertSame(
-            array_keys(MetadataResponse::getScheme()),
+            array_keys(MetadataResponseV12::getScheme()),
             array_keys(MetadataResponseV11::getScheme()),
             'version 12 added no field to the body either'
         );
         self::assertSame(
-            array_keys(MetadataRequest::getScheme()),
+            array_keys(MetadataRequestV12::getScheme()),
             array_keys(MetadataRequestV11::getScheme()),
             'and none to the request'
         );
+    }
+
+    public function testVersionThirteenAppendsATopLevelErrorCodeToTheAnswerAndNothingToTheRequest(): void
+    {
+        // MetadataResponse.json @ 4.0.0: "Version 13 supports top-level error code in the response", a plain int16
+        // behind the topics - the last field of the body - and MetadataRequest.json @ 4.0.0 adds no field at all
+        self::assertSame(MetadataRequestV12::getScheme(), MetadataRequest::getScheme());
+        self::assertSame(
+            array_merge(array_keys(MetadataResponseV12::getScheme()), ['errorCode']),
+            array_keys(MetadataResponse::getScheme())
+        );
+        self::assertSame(BinarySchema::TYPE_INT16, MetadataResponse::getScheme()['errorCode']);
+        self::assertSame(
+            substr_replace(bin2hex((string) new MetadataRequestV12(['orders'], false, 't2', 4001)), '000d', 12, 4),
+            bin2hex((string) new MetadataRequest(['orders'], false, 't2', 4001)),
+            'the api version of the header is the whole difference of the request'
+        );
+    }
+
+    public function testAVersionThirteenAnswerCarriesTheRebootstrapRequiredOfKip1102(): void
+    {
+        // An answer no 4.3.1 node writes (it leaves the field 0), but the one the field exists for: the 129
+        $frame = hex2bin(
+            '00000027' . '00000fa1' . '00'   // Size, CorrelationId, TAG_BUFFER of the response header v1
+            . '00000000'                      // throttle_time_ms
+            . '02' . '00000001' . '0a' . '3132372e302e302e31' . '00002384' . '00' . '00'
+            . '00'                            // cluster_id = null (the compact null)
+            . '00000001'                      // controller_id
+            . '01'                            // topics: none
+            . '0081'                          // error_code = 129 REBOOTSTRAP_REQUIRED
+            . '00'                            // TAG_BUFFER of the body
+        );
+        self::assertIsString($frame);
+
+        $answer = MetadataResponse::unpack(new StringStream($frame));
+
+        self::assertSame(129, $answer->errorCode);
+        self::assertSame([], $answer->topics);
+        self::assertSame([1], array_keys($answer->brokers));
+        self::assertNull($answer->clusterId);
+        self::assertSame(bin2hex($frame), bin2hex((string) $answer));
+        self::assertSame(0, new MetadataResponseV12()->errorCode, 'an answer below version 13 has no code: 0');
     }
 
     public function testRequestTopicsAreNotNullableInVersionZero(): void

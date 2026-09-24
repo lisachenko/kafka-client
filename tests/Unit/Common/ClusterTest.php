@@ -22,6 +22,7 @@ use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\LeaderNotAvailableException;
+use Protocol\Kafka\Common\Errors\RebootstrapRequiredException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
@@ -33,7 +34,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 /**
  * Tests the cluster metadata against a scripted broker.
  *
- * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v12)" and "Cluster readiness"
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)" and "Cluster readiness"
  */
 #[CoversClass(Cluster::class)]
 #[CoversClass(AllBrokersNotAvailableException::class)]
@@ -209,6 +210,52 @@ final class ClusterTest extends TestCase
         ]));
 
         self::assertSame([0, 1], array_keys($cluster->nodes()));
+    }
+
+    public function testAnAnswerThatAsksForARebootstrapIsDroppedForTheNextBootstrapServer(): void
+    {
+        // Metadata v13 (Kafka 4.0, KIP-1102): the top-level 129 says that the metadata of that broker is stale and
+        // the client has to start over from its bootstrap servers, which is what the next address is
+        $stale = new BrokerConnection(ResponseFrame::metadata(
+            0,
+            [[7, 'kafka-7', 9092]],
+            ['orders' => [0 => 7]],
+            errorCode: KafkaException::REBOOTSTRAP_REQUIRED
+        ));
+        $this->broker
+            ->on(self::BOOTSTRAP_ADDRESS, $stale)
+            ->on('tcp://kafka-2:9092', new BrokerConnection($this->clusterMetadata()))
+            ->install();
+
+        $cluster = Cluster::bootstrap($this->configuration([
+            ClientConfig::BOOTSTRAP_SERVERS => [self::BOOTSTRAP_ADDRESS, 'tcp://kafka-2:9092'],
+        ]));
+
+        self::assertSame([0, 1], array_keys($cluster->nodes()), 'the brokers of the stale answer are not taken');
+        self::assertCount(1, $stale->getReceivedFrames());
+    }
+
+    public function testAReloadThatHearsNothingButARebootstrapRequiredThrowsIt(): void
+    {
+        $this->script(
+            new BrokerConnection($this->clusterMetadata()),
+            new BrokerConnection(ResponseFrame::metadata(
+                0,
+                [[0, 'kafka-1', 9092]],
+                errorCode: KafkaException::REBOOTSTRAP_REQUIRED
+            ))
+        );
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        try {
+            $cluster->reload();
+            self::fail('an answer whose top-level error code is set can not become the metadata of the cluster');
+        } catch (RebootstrapRequiredException $expected) {
+            self::assertSame(KafkaException::REBOOTSTRAP_REQUIRED, $expected->getCode());
+            self::assertSame(self::BOOTSTRAP_ADDRESS, $expected->getContext()['address']);
+        }
+
+        self::assertSame([0, 1], array_keys($cluster->nodes()), 'and the metadata the cluster had is kept');
     }
 
     public function testAnAnswerOfAnotherRequestIsNotAcceptedAsMetadata(): void

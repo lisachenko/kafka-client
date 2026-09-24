@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * frame without it). This class only lowers the version constant that {@see MetadataResponse::topicClass()}
  * follows on the answering side.
  *
- * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class MetadataRequestV4 extends MetadataRequest
 {

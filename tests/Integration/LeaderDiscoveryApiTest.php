@@ -59,12 +59,13 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
  * 6 and 74 `FencedLeaderEpoch` in a fetch answer, and for no other. The one broker of this node is the leader of
  * every partition it hosts, so a *produce* of it can never be answered 6 and the produce half of the KIP is
  * documented on the wire alone; the *fetch* half is reachable through the follower fetch of KIP-903, which the
- * node refuses with exactly that 6 - and then names itself.
+ * node refuses with exactly that 6 - and then names itself in the `current_leader`. A 3.9.2 node named its endpoint
+ * in the body as well; **a node of Kafka 4.0 or later leaves the endpoints out of every answer to a follower**.
  *
  * Every topic of this class is named `t2-37-…`, so that it can run next to the other suites on the shared node.
  *
  * @see docs/protocol/4.3.md, sections "The leader discovery of KIP-951 (v10)", "The leader discovery of KIP-951
- *      (v16)", "Produce API (key 0, v0 to v11)" and "Fetch API (key 1, v0 to v17)"
+ *      (v16)", "Produce API (key 0, v0 to v12)" and "Fetch API (key 1, v0 to v17)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
@@ -213,12 +214,11 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
         );
     }
 
-    public function testAFollowerFetchAtVersionSixteenIsAnsweredWithTheLeaderAndItsEndpoint(): void
+    public function testAFollowerFetchAtVersionSixteenIsAnsweredWithTheLeaderButNoEndpoint(): void
     {
         // The one way a client of a one-broker cluster reaches the 6 the KIP writes the hint for: a fetch that
         // claims to be a FOLLOWER the partition does not have, which `Partition.followerReplicaOrThrow` @ 3.9.2
-        // refuses. The node then names ITSELF as the current leader, with the endpoint of the listener the
-        // request arrived on
+        // refuses. The node then names ITSELF as the current leader
         $brokerId = self::clusterBrokers() === [] ? 1 : array_key_first(self::clusterBrokers());
         $answer   = $this->send(
             $this->fetchRequest(FetchRequest::class, 3764, 0, -1, $brokerId, 0),
@@ -231,17 +231,14 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
         self::assertNotNull($partition->currentLeader, 'version 16 is the first one that fills the tag in');
         self::assertSame($brokerId, $partition->currentLeader->leaderId, 'the node names itself');
         self::assertGreaterThanOrEqual(0, $partition->currentLeader->leaderEpoch);
-        self::assertSame(
-            [$brokerId],
-            array_keys($answer->nodeEndpoints),
-            'and the body names that node once, keyed by its id'
-        );
 
-        $endpoint = $answer->nodeEndpoints[$brokerId];
-        self::assertSame($brokerId, $endpoint->nodeId);
-        self::assertNotSame('', $endpoint->host, 'the host of the listener the request arrived on');
-        self::assertGreaterThan(0, $endpoint->port);
-        self::assertNull($endpoint->rack, 'the broker of this node has no rack');
+        // **Kafka 4.0 stopped writing the endpoints into the answer of a FOLLOWER fetch.** A 3.9.2 node named
+        // itself once in the `node_endpoints` of the body here; `KafkaApis.handleFetchRequest` @ 4.0.0 (and @ 4.3.1)
+        // still collects them, but answers a request with `fetchRequest.isFromFollower` through
+        // `fetchContext.updateAndGenerateResponseData(partitions, Seq.empty.asJava)` - a follower has the endpoints
+        // of its quorum already. A consumer fetch refused 6 or 74 still carries them; a one-broker node has no
+        // partition it does not lead, so the follower claim above is the only 6 a client can provoke here
+        self::assertSame([], $answer->nodeEndpoints, 'no endpoint for a follower on a 4.x node');
     }
 
     public function testTheSameFollowerFetchAtVersionFifteenNamesNoLeaderAtAll(): void

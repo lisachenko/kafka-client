@@ -60,6 +60,7 @@ use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
+use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponseCurrentLeader;
@@ -128,9 +129,31 @@ use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV11;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV5;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV6;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV7;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV8;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV9;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV11;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV5;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV6;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV7;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV8;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
@@ -217,6 +240,16 @@ class Client
      */
     private array $throttledUntil = [];
 
+    /**
+     * ApiVersions answer of every node the client had to ask what it serves, by node id
+     *
+     * Only the legacy message formats ask - a Produce request below version 3 is refused by a node of Kafka 4.0 or
+     * later (KIP-896), see {@see self::assertLegacyProduceIsServed()} - and every node is asked once per client.
+     *
+     * @var array<int, ApiVersionsResponse>
+     */
+    private array $apiVersionsOfNodes = [];
+
     public function __construct(
         /**
          * Cluster configuration
@@ -284,9 +317,12 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as **Produce v11** for the message format v2 (`message.format.version=0.11.0` and every
-     * value above it, the default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which
-     * a version 3 request has no place for. Every version from 9 on sends the same body; what the number states is
+     * The request goes out as **Produce v12** (Kafka 4.0) for the message format v2 (`message.format.version=0.11.0`
+     * and every value above it, the default) outside a transaction and inside a transaction of the protocol v2 (a
+     * coordinator that finalizes `transaction.version` 2, KIP-890 part 2), as **v11** inside a transaction of the
+     * protocol v1 - the cap of {@see self::produceVersionCapOf()} - and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version 3
+     * request has no place for and which a node of Kafka 4.0 or later refuses (KIP-896, see
+     * {@see self::produceVersion()}). Every version from 9 on sends the same body; what the number states is
      * what the *client* understands of the answer - the leader discovery of KIP-951 at version 10 and, at version
      * **11** (Kafka 3.8, KIP-890), the error code **120** `TransactionAbortable`
      * ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}), which a transactional produce is
@@ -333,7 +369,8 @@ class Client
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
      * @throws InvalidConfigurationException  For a `compression.type` or a `message.format.version` that this client
-     *         can not write, and for a producer state next to an `acks` other than `all`
+     *         can not write, for a `message.format.version` below 0.11.0 against a node of Kafka 4.0 or later, and
+     *         for a producer state next to an `acks` other than `all`
      */
     public function produce(array $topicPartitionMessages, ?TransactionManager $transactionManager = null): array
     {
@@ -382,7 +419,8 @@ class Client
                     $producerIdAndEpoch->producerId,
                     $producerIdAndEpoch->epoch,
                     $baseSequences,
-                    $transactionManager->getTransactionalId()
+                    $transactionManager->getTransactionalId(),
+                    self::produceVersionCapOf($transactionManager)
                 );
             } catch (TopicPartitionRequestException $exception) {
                 /** @var array<string, array<int, ProduceResponsePartition>> $answered */
@@ -566,20 +604,24 @@ class Client
      *                                                        that is not listed is written without one
      * @param string|null                    $transactionalId Transactional id of the producer, `null` outside of a
      *                                                        transaction
+     * @param int|null                       $maxVersion      Highest Produce version the batch may go out with,
+     *                                                        `null` for no cap, see {@see self::produceVersion()}
      *
      * @return array<string, array<int, ProduceResponsePartition>> Accepted partitions in the form
      *         [topic => [partition => ProduceResponsePartition]], empty for a fire-and-forget request (acks = 0)
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
      * @throws InvalidConfigurationException  For a `compression.type` or a `message.format.version` that this client
-     *         can not write, and for producer state that the configured message format has no place for
+     *         can not write, for producer state that the configured message format has no place for, and for a
+     *         message format below v2 against a node that no longer serves the Produce v2 it needs (KIP-896)
      */
     protected function produceRecords(
         array $topicPartitionMessages,
         int $producerId = RecordBatch::NO_PRODUCER_ID,
         int $producerEpoch = RecordBatch::NO_PRODUCER_EPOCH,
         array $baseSequences = [],
-        ?string $transactionalId = null
+        ?string $transactionalId = null,
+        ?int $maxVersion = null
     ): array {
         $requiredAcks = (int) $this->configuration[ProducerConfig::ACKS];
 
@@ -616,12 +658,17 @@ class Client
         }
 
         // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the
-        // highest version that has no place for a transactional id; the message format v2 goes out as Produce
-        // v11, the version Kafka 3.8 bumped the api to (KIP-890), whose body is the flexible one of version 9 and
-        // whose answer carries the log start offset of every partition, the record errors of KIP-467, the leader
-        // hint of KIP-951 and the 120 `TransactionAbortable` of KIP-890
-        $requestClass  = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceRequest::class : ProduceRequestV2::class;
-        $createRequest = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
+        // highest version that has no place for a transactional id - and a node of Kafka 4.0 or later refuses
+        // every version below 3 (KIP-896), so that request is checked against the node before anything is sent;
+        // the message format v2 goes out as Produce v12 (Kafka 4.0), or at the cap of the caller, whose body is
+        // the flexible one of version 9 and whose answer carries the log start offset of every partition, the
+        // record errors of KIP-467, the leader hint of KIP-951 and the 120 `TransactionAbortable` of KIP-890
+        $version = self::produceVersion($messageFormatMagic, $maxVersion);
+        if ($version < ProduceRequest::BASELINE_VERSION) {
+            $this->assertLegacyProduceIsServed($topicPartitionRecordSets);
+        }
+        [$requestClass, $responseClass] = self::produceClassesOf($version);
+        $createRequest                  = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
             => new $requestClass(
                 $nodeTopicPartitionRecordSets,
                 $requiredAcks,
@@ -630,7 +677,6 @@ class Client
                 $correlationId,
                 $transactionalId
             );
-        $responseClass = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceResponse::class : ProduceResponseV2::class;
 
         // acks = 0 is the only request of the protocol that the broker does not answer, so nothing may be read back
         // from those connections, see ProduceRequest::expectsResponse()
@@ -1135,7 +1181,9 @@ class Client
      * Looks the offsets of the given topic partitions up and reports the timestamp of every message that was found
      *
      * The timestamp-based version 1 of the Offsets api answers each partition with one offset and the timestamp of
-     * the message it points at. A partition whose log holds no message at or after the target time - and every
+     * the message it points at. The request goes out as **version 10** (Kafka 4.0, KIP-1075), whose `timeout_ms` is
+     * the `request.timeout.ms` of this client - how long a broker may wait for a lookup in remote storage, which is
+     * what the Java consumer sends as well; {@see OffsetsRequest::DEFAULT_TIMEOUT_MS} when nothing is configured. A partition whose log holds no message at or after the target time - and every
      * partition of an empty log - is answered with the error code 0 and the offset -1, which arrives here as `null`.
      * {@see OffsetsRequest::LATEST} and {@see OffsetsRequest::EARLIEST} always find an offset, and the broker
      * answers them with the timestamp {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP}, because it does not read
@@ -1166,7 +1214,10 @@ class Client
                 OffsetsRequest::CONSUMER_REPLICA_ID,
                 $this->isolationLevel(),
                 $this->configuration[ConsumerConfig::CLIENT_ID],
-                $correlationId
+                $correlationId,
+                // The timeout of a lookup in remote storage (ListOffsets v10, KIP-1075): the request timeout of
+                // this client, which is what `OffsetFetcher.sendListOffsetRequest` @ 4.0.0 sends as well
+                (int) ($this->configuration[ClientConfig::REQUEST_TIMEOUT_MS] ?? OffsetsRequest::DEFAULT_TIMEOUT_MS)
             ),
             OffsetsResponse::class,
             static function (array $result, OffsetsResponse $response, array &$errors): array {
@@ -3694,6 +3745,161 @@ class Client
         }
 
         throw KafkaException::fromCode($response->errorCode, $context);
+    }
+
+    /**
+     * Chooses the version of a Produce request: the one place this client decides it (Kafka 4.0)
+     *
+     * * A message set of the formats v0 and v1 (`message.format.version` below 0.11.0) goes out as **Produce v2**,
+     *   the highest version that has a place for it - whatever the cap says, because no other version can carry it.
+     * * A record batch of the message format v2 goes out as **Produce v12** (Kafka 4.0, KIP-890 part 2), or at
+     *   `$maxVersion` when that is lower. `ProduceRequest.json` @ 4.0.0: "Version 12 is the same as version 11
+     *   (KIP-890). Note when produce requests are used in transaction, if transaction V2 (KIP_890 part 2) is
+     *   enabled, the produce request will also include the function for a AddPartitionsToTxn call. If V2 is
+     *   disabled, the client can't use produce request version higher than 11 within a transaction." The cap is how
+     *   the transactional path keeps a transaction of the protocol v1 at {@see ProduceRequestV11}; see
+     *   {@see self::produceVersionCapOf()}, which {@see self::produce()} asks for it with the
+     *   {@see TransactionManager::isTransactionV2Enabled()} of the producer.
+     *
+     * A cap below {@see ProduceRequest::BASELINE_VERSION} is raised to it for the message format v2: version 3 is
+     * the first one that carries a record batch.
+     *
+     * @param int      $messageFormatMagic Magic byte of the message format the batch is written in
+     * @param int|null $maxVersion         Highest version the caller allows, `null` for {@see ProduceRequest::VERSION}
+     */
+    public static function produceVersion(int $messageFormatMagic, ?int $maxVersion = null): int
+    {
+        if ($messageFormatMagic < RecordBatch::MAGIC) {
+            return ProduceRequestV2::VERSION;
+        }
+
+        return max(ProduceRequest::BASELINE_VERSION, min(ProduceRequest::VERSION, $maxVersion ?? ProduceRequest::VERSION));
+    }
+
+    /**
+     * Returns the highest Produce version a batch of this producer state may go out with, `null` for no cap
+     *
+     * The transactional half of the version choice of {@see self::produceVersion()}: a Produce **v12** inside a
+     * transaction is the transaction protocol v2 of KIP-890 part 2 - the broker adds the partition to the
+     * transaction itself - which a producer of the protocol v1, the one that sends AddPartitionsToTxn, must not
+     * send: "If V2 is disabled, the client can't use produce request version higher than 11 within a transaction"
+     * (`ProduceRequest.json` @ 4.0.0). So a transactional producer whose {@see TransactionManager} is **not** on the
+     * protocol v2 - its coordinator does not finalize `transaction.version` 2 - is capped at
+     * {@see TransactionManager::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2} ({@see ProduceRequestV11}), exactly as
+     * `ProduceRequest.Builder` @ 4.0.0 caps it with `useTransactionV1Version`; one that is on the protocol v2 sends
+     * v12, which is what enrols its partitions. An idempotent producer writes outside every transaction and is not
+     * capped either.
+     */
+    private static function produceVersionCapOf(TransactionManager $transactionManager): ?int
+    {
+        if (!$transactionManager->isTransactional() || $transactionManager->isTransactionV2Enabled()) {
+            return null;
+        }
+
+        return TransactionManager::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2;
+    }
+
+    /**
+     * Returns the request and response class of a Produce version
+     *
+     * @return array{class-string<ProduceRequest>, class-string<ProduceResponse>}
+     */
+    private static function produceClassesOf(int $version): array
+    {
+        return match ($version) {
+            ProduceRequest::VERSION => [ProduceRequest::class, ProduceResponse::class],
+            11                      => [ProduceRequestV11::class, ProduceResponseV11::class],
+            10                      => [ProduceRequestV10::class, ProduceResponseV10::class],
+            9                       => [ProduceRequestV9::class, ProduceResponseV9::class],
+            8                       => [ProduceRequestV8::class, ProduceResponseV8::class],
+            7                       => [ProduceRequestV7::class, ProduceResponseV7::class],
+            6                       => [ProduceRequestV6::class, ProduceResponseV6::class],
+            5                       => [ProduceRequestV5::class, ProduceResponseV5::class],
+            4                       => [ProduceRequestV4::class, ProduceResponseV4::class],
+            3                       => [ProduceRequestV3::class, ProduceResponseV3::class],
+            2                       => [ProduceRequestV2::class, ProduceResponseV2::class],
+            1                       => [ProduceRequestV1::class, ProduceResponseV1::class],
+            0                       => [ProduceRequestV0::class, ProduceResponseV0::class],
+            default                 => throw new InvalidConfigurationException(
+                "This client has no class for the Produce version {$version}"
+            ),
+        };
+    }
+
+    /**
+     * Refuses a Produce request below version 3 before it is sent to a node that closes the connection on it
+     *
+     * **Kafka 4.0 removed Produce v0 to v2 (KIP-896)**, and with them the only versions that carry a message set of
+     * the formats v0 and v1 - a producer with `message.format.version` below 0.11.0 can not write to such a node at
+     * all. The node does not say so in the way every other removed version is said: "due to a bug in librdkafka,
+     * these versions have to be included in the api versions response (see KAFKA-18659), but are rejected
+     * otherwise" (`ProduceRequest.json` @ 4.0.0), so the ApiVersions answer of a 4.x node still lists Produce from
+     * version **0** and a frame of version 2 costs the connection. What the answer does tell is the other end of the
+     * row: the same commit gave the api its version 12 and its baseline 3 (`"validVersions": "3-12"`), so a node
+     * whose Produce row reaches version 12 serves nothing below 3, and a node whose row starts above 2 says so
+     * itself. A node of Kafka 3.x - whose row is `0-11` - is left alone, and the request goes out as before.
+     *
+     * The ApiVersions answer of every leader is asked once per client and kept.
+     *
+     * @param array<string, array<int, string|\Stringable>> $topicPartitionRecordSets Record sets of the batch
+     *
+     * @throws InvalidConfigurationException For a leader that no longer serves the Produce v2 of a message set
+     */
+    private function assertLegacyProduceIsServed(array $topicPartitionRecordSets): void
+    {
+        $checked = [];
+        foreach ($topicPartitionRecordSets as $topic => $partitionRecordSets) {
+            foreach (array_keys($partitionRecordSets) as $partition) {
+                try {
+                    $leader = $this->cluster->leaderFor((string) $topic, (int) $partition);
+                } catch (KafkaException) {
+                    // A partition without a known leader is the business of the request itself, which refreshes the
+                    // metadata and reports what the cluster answers
+                    continue;
+                }
+                if (isset($checked[$leader->nodeId])) {
+                    continue;
+                }
+                $checked[$leader->nodeId] = true;
+
+                $lowestVersion = $this->lowestProduceVersionOf($leader);
+                if ($lowestVersion > ProduceRequestV2::VERSION) {
+                    throw new InvalidConfigurationException(sprintf(
+                        'The message.format.version %s writes a message set of the format v%d, which only a Produce '
+                        . 'request below version 3 carries, and the node %d serves Produce from version %d only: '
+                        . 'Kafka 4.0 removed the versions 0 to 2 (KIP-896). Use the message.format.version 0.11.0 '
+                        . '(the record batch v2) with this cluster.',
+                        (string) ($this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ''),
+                        ProducerConfig::messageFormatMagic(
+                            $this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0
+                        ),
+                        $leader->nodeId,
+                        $lowestVersion
+                    ));
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns the lowest Produce version a node really serves, from its ApiVersions answer (KIP-896, KAFKA-18659)
+     *
+     * The minimum of the Produce row, raised to {@see ProduceRequest::BASELINE_VERSION} for a node whose row reaches
+     * {@see ProduceRequest::BASELINE_RAISED_WITH_VERSION}: such a node is of Kafka 4.0 or later and advertises the
+     * minimum 0 it no longer serves, see {@see self::assertLegacyProduceIsServed()}.
+     */
+    private function lowestProduceVersionOf(Node $node): int
+    {
+        $answer  = $this->apiVersionsOfNodes[$node->nodeId] ??= $this->apiVersions($node);
+        $produce = $answer->apiVersions[ApiKeys::PRODUCE] ?? null;
+        if ($produce === null) {
+            // A node that does not list the api at all serves no version of it
+            return PHP_INT_MAX;
+        }
+
+        return $produce->maxVersion >= ProduceRequest::BASELINE_RAISED_WITH_VERSION
+            ? max($produce->minVersion, ProduceRequest::BASELINE_VERSION)
+            : $produce->minVersion;
     }
 
     /**

@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * own business: a version 6 request (Kafka 2.8, KIP-482) writes this very scheme with compact types and a
  * tagged-field section, which the engine derives from the top-level message, see {@see BinarySchema}.
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
  */
 class OffsetsRequestTopic implements BinarySchemaInterface
 {

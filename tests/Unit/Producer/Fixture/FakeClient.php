@@ -58,6 +58,13 @@ final class FakeClient extends Client
     public array $producerStates = [];
 
     /**
+     * Highest Produce version every produce request was allowed to go out with, `null` for no cap, in order
+     *
+     * @var list<int|null>
+     */
+    public array $produceVersionCaps = [];
+
+    /**
      * Arguments of every `InitProducerId` request, in the order they were made
      *
      * @var list<array{transactionalId: string|null, transactionTimeoutMs: int}>
@@ -178,8 +185,11 @@ final class FakeClient extends Client
         int $producerId = RecordBatch::NO_PRODUCER_ID,
         int $producerEpoch = RecordBatch::NO_PRODUCER_EPOCH,
         array $baseSequences = [],
-        ?string $transactionalId = null
+        ?string $transactionalId = null,
+        ?int $maxVersion = null
     ): array {
+        $this->produceVersionCaps[] = $maxVersion;
+
         $records = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {

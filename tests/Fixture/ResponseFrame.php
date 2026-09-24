@@ -109,7 +109,7 @@ final class ResponseFrame
     public const int NOT_REQUESTED = -2147483648;
 
     /**
-     * Builds a Metadata response (api key 3, v5 - the version this client sends)
+     * Builds a Metadata response (api key 3, v13 - the version this client sends)
      *
      * <pre>
      *   MetadataResponse => ThrottleTimeMs [Broker] ClusterId ControllerId [TopicMetadata]
@@ -145,6 +145,8 @@ final class ResponseFrame
      * @param array<string, array<int, int>> $leaderEpochs Leader epoch of a partition, the field version 7
      *        (Kafka 2.1, KIP-320) added; 0 by default, which is the epoch of a partition that has been led by the
      *        same broker since it was created
+     * @param int                            $errorCode Top-level error code of the answer, the field version 13
+     *        (Kafka 4.0, KIP-1102) appended to the end of the body; 0 by default, which is all a 4.3.1 node writes
      */
     public static function metadata(
         int $correlationId,
@@ -157,7 +159,8 @@ final class ResponseFrame
         array $offlineReplicas = [],
         array $leaderEpochs = [],
         array $topicAuthorizedOperations = [],
-        array $topicIds = []
+        array $topicIds = [],
+        int $errorCode = 0
     ): string {
         // Version 9 (Kafka 2.4) is the first FLEXIBLE version of this api (KIP-482): every string and every
         // array announces its length as an unsigned varint of `length + 1`, and every structure - the body, a
@@ -202,11 +205,35 @@ final class ResponseFrame
         }
 
         // The `cluster_authorized_operations` of version 8 lived at the very end of the frame and is gone from
-        // version 11 on (KIP-700), so the body simply ends in its tagged-field section
-        $body .= self::tagBuffer();
+        // version 11 on (KIP-700); version 13 (Kafka 4.0, KIP-1102) put the top-level error code there instead,
+        // in front of the tagged-field section of the body
+        $body .= pack('n', $errorCode) . self::tagBuffer();
 
         // The response header v1 of a flexible api: the correlation id and a tag buffer of its own
         return self::of($correlationId, self::tagBuffer() . $body);
+    }
+
+    /**
+     * Builds an ApiVersions response (api key 18, v4 - the version this client sends)
+     *
+     * <pre>
+     *   ApiVersionsResponse => ErrorCode [ApiKey MinVersion MaxVersion TAG_BUFFER] ThrottleTimeMs TAG_BUFFER
+     * </pre>
+     *
+     * The body is flexible (compact array, tag buffers), the response header is **v0** - ApiVersions is the one api
+     * whose answer keeps the old header, so that a client can read it whatever version it asked with - and no
+     * feature is announced in the tagged fields.
+     *
+     * @param array<int, array{int, int}> $apiKeys Served versions as api key => [min version, max version]
+     */
+    public static function apiVersions(int $correlationId, array $apiKeys): string
+    {
+        $body = pack('n', 0) . self::compactArrayLength(count($apiKeys));
+        foreach ($apiKeys as $apiKey => [$minVersion, $maxVersion]) {
+            $body .= pack('nnn', $apiKey, $minVersion, $maxVersion) . self::tagBuffer();
+        }
+
+        return self::of($correlationId, $body . pack('N', 0) . self::tagBuffer());
     }
 
     /**

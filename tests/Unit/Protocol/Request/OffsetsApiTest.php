@@ -43,6 +43,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
@@ -53,6 +54,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV7;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV9;
 
 /**
  * Byte-exact tests for the Offsets (ListOffset) API, versions 0, 1 and 2.
@@ -66,7 +68,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
  *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]
@@ -74,6 +76,8 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
 #[CoversClass(OffsetsRequestV6::class)]
 #[CoversClass(OffsetsRequestV7::class)]
 #[CoversClass(OffsetsRequestV8::class)]
+#[CoversClass(OffsetsRequestV9::class)]
+#[CoversClass(OffsetsResponseV9::class)]
 #[CoversClass(OffsetsResponse::class)]
 #[CoversClass(OffsetsResponseV0::class)]
 #[CoversClass(OffsetsResponseV1::class)]
@@ -248,7 +252,7 @@ final class OffsetsApiTest extends TestCase
 
     public function testLatestOffsetRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new OffsetsRequest(
+        $request = new OffsetsRequestV9(
             ['topic' => [0 => OffsetsRequest::LATEST]],
             -1,
             FetchRequest::READ_UNCOMMITTED,
@@ -258,7 +262,7 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(self::LATEST_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(47, $request->getMessageSize(), 'the compact encoding of KIP-482 is three bytes shorter');
-        self::assertSame(9, $request->getApiVersion(), 'the client sends the version Kafka 3.9 added');
+        self::assertSame(9, $request->getApiVersion(), 'the version Kafka 3.9 added, OffsetsRequestV9');
     }
 
     public function testTheVersionsTwoAndThreeSendOneAndTheSameFrame(): void
@@ -293,7 +297,7 @@ final class OffsetsApiTest extends TestCase
     {
         // KIP-320: `current_leader_epoch` sits between the partition index and the target timestamp of a request,
         // `leader_epoch` behind the offset of an answer - the field order of the JSON, which is the wire order
-        $request = new OffsetsRequest(
+        $request = new OffsetsRequestV9(
             ['topic' => [0 => [OffsetsRequest::LATEST, 7]]],
             -1,
             FetchRequest::READ_UNCOMMITTED,
@@ -327,8 +331,8 @@ final class OffsetsApiTest extends TestCase
         self::assertSame(-1, OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH);
         self::assertSame(4, OffsetsRequestV4::VERSION);
         self::assertSame(4, OffsetsResponseV4::VERSION);
-        self::assertSame(9, OffsetsRequest::VERSION);
-        self::assertSame(9, OffsetsResponse::VERSION);
+        self::assertSame(10, OffsetsRequest::VERSION);
+        self::assertSame(10, OffsetsResponse::VERSION);
     }
 
     public function testVersionFiveIsTheVersionFourFrameAndOneMoreErrorCode(): void
@@ -427,8 +431,8 @@ final class OffsetsApiTest extends TestCase
     public function testVersionNineIsTheSameFrameAgainAndTheLastTieredOffset(): void
     {
         // `ListOffsetsRequest.json` @ 3.9.2 says "Version 9 enables listing offsets by last tiered offset
-        // (KIP-1005)" and declares no field of it either: the version 9 this client sends is the version 8 frame
-        // with another number in its header, and what it buys is the fifth special target time -5
+        // (KIP-1005)" and declares no field of it either: the version 9 is the version 8 frame with another
+        // number in its header, and what it buys is the fifth special target time -5
         $arguments = [
             ['topic' => [0 => OffsetsRequest::LATEST]],
             -1,
@@ -436,24 +440,61 @@ final class OffsetsApiTest extends TestCase
             'test',
             7,
         ];
-        $nine  = bin2hex((string) new OffsetsRequest(...$arguments));
+        $nine  = bin2hex((string) new OffsetsRequestV9(...$arguments));
         $eight = bin2hex((string) new OffsetsRequestV8(...$arguments));
 
         self::assertSame(substr($eight, 2 * 8), substr($nine, 2 * 8), 'the bodies are the same bytes');
         self::assertSame('0009', substr($nine, 2 * 6, 4), 'only the api version of the header differs');
         self::assertSame(self::LATEST_REQUEST_HEX, $nine);
-        self::assertSame(OffsetsRequestV8::getScheme(), OffsetsRequest::getScheme());
-        self::assertSame(OffsetsResponseV8::getScheme(), OffsetsResponse::getScheme());
+        self::assertSame(OffsetsRequestV8::getScheme(), OffsetsRequestV9::getScheme());
+        self::assertSame(OffsetsResponseV8::getScheme(), OffsetsResponseV9::getScheme());
         self::assertSame(8, OffsetsRequestV8::VERSION);
         self::assertSame(8, OffsetsResponseV8::VERSION);
-        self::assertSame(9, OffsetsRequest::VERSION);
-        self::assertSame(9, OffsetsResponse::VERSION);
-        self::assertTrue(OffsetsRequest::isFlexible());
+        self::assertSame(9, OffsetsRequestV9::VERSION);
+        self::assertSame(9, OffsetsResponseV9::VERSION);
+        self::assertTrue(OffsetsRequestV9::isFlexible());
+    }
+
+    public function testVersionTenAppendsTheTimeoutOfKip1075ToTheEndOfTheBody(): void
+    {
+        // `ListOffsetsRequest.json` @ 4.0.0: "Version 10 enables async remote list offsets support (KIP-1075)" and
+        // `{ "name": "TimeoutMs", "type": "int32", "versions": "10+" }` behind the topics - the last field of the
+        // body, in front of its tagged-field section
+        $arguments = [
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7,
+        ];
+        $ten  = bin2hex((string) new OffsetsRequest(...$arguments, timeoutMs: 30000));
+        $nine = bin2hex((string) new OffsetsRequestV9(...$arguments, timeoutMs: 30000));
+
+        self::assertSame(
+            '00000033' . '0002' . '000a' . substr(self::LATEST_REQUEST_HEX, 2 * 8, -2) . '00007530' . '00',
+            $ten,
+            'the size grows by the four bytes of timeout_ms = 30000, which sit in front of the tag buffer'
+        );
+        self::assertSame(self::LATEST_REQUEST_HEX, $nine, 'a version 9 frame has no place for the timeout');
+        self::assertSame(
+            array_merge(array_keys(OffsetsRequestV9::getScheme()), ['timeoutMs']),
+            array_keys(OffsetsRequest::getScheme())
+        );
+        self::assertSame(BinarySchema::TYPE_INT32, OffsetsRequest::getScheme()['timeoutMs']);
+        self::assertSame(OffsetsResponseV9::getScheme(), OffsetsResponse::getScheme(), 'the answer did not change');
+        self::assertSame(10, OffsetsRequest::VERSION);
+        self::assertSame(10, OffsetsResponse::VERSION);
+        self::assertSame(30000, new OffsetsRequest(...$arguments)->getTimeoutMs(), 'the request.timeout.ms of Java');
+        self::assertSame(OffsetsRequest::DEFAULT_TIMEOUT_MS, OffsetsRequest::fromTopicPartitions([])->getTimeoutMs());
+        self::assertSame(
+            250,
+            OffsetsRequest::fromTopicPartitions([], OffsetsRequest::LATEST, -1, 0, 'test', 7, 250)->getTimeoutMs()
+        );
     }
 
     public function testTheLastTieredOffsetOfKip1005IsTheTargetTimeMinusFive(): void
     {
-        $request = new OffsetsRequest(
+        $request = new OffsetsRequestV9(
             ['topic' => [0 => OffsetsRequest::LATEST_TIERED_TIMESTAMP]],
             -1,
             FetchRequest::READ_UNCOMMITTED,
@@ -518,7 +559,7 @@ final class OffsetsApiTest extends TestCase
 
     public function testTheMaxTimestampOfKip734IsTheTargetTimeMinusThree(): void
     {
-        $request = new OffsetsRequest(
+        $request = new OffsetsRequestV9(
             ['topic' => [0 => OffsetsRequest::MAX_TIMESTAMP]],
             -1,
             FetchRequest::READ_UNCOMMITTED,
@@ -536,7 +577,7 @@ final class OffsetsApiTest extends TestCase
 
     public function testTheLocalLogStartOffsetOfKip405IsTheTargetTimeMinusFour(): void
     {
-        $request = new OffsetsRequest(
+        $request = new OffsetsRequestV9(
             ['topic' => [0 => OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP]],
             -1,
             FetchRequest::READ_UNCOMMITTED,
@@ -608,7 +649,7 @@ final class OffsetsApiTest extends TestCase
 
     public function testEarliestOffsetRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new OffsetsRequest(
+        $request = new OffsetsRequestV9(
             ['topic' => [0 => OffsetsRequest::EARLIEST]],
             -1,
             FetchRequest::READ_UNCOMMITTED,
@@ -641,7 +682,7 @@ final class OffsetsApiTest extends TestCase
 
     public function testRequestAcceptsStructuredTopicPartitions(): void
     {
-        $request = OffsetsRequest::fromTopicPartitions(
+        $request = OffsetsRequestV9::fromTopicPartitions(
             [new TopicPartition('topic', 0)],
             OffsetsRequest::EARLIEST,
             -1,
@@ -655,7 +696,7 @@ final class OffsetsApiTest extends TestCase
 
     public function testTheIsolationLevelIsTheByteBehindTheReplicaId(): void
     {
-        $request = new OffsetsRequest(
+        $request = new OffsetsRequestV9(
             ['topic' => [0 => OffsetsRequest::LATEST]],
             -1,
             FetchRequest::READ_COMMITTED,
@@ -704,7 +745,7 @@ final class OffsetsApiTest extends TestCase
 
     public function testRequestPacksEveryPartitionWithItsOwnTimestamp(): void
     {
-        $request = new OffsetsRequest(
+        $request = new OffsetsRequestV9(
             ['topic' => [0 => OffsetsRequest::EARLIEST, 3 => 1451606400000]],
             -1,
             FetchRequest::READ_UNCOMMITTED,
@@ -730,7 +771,7 @@ final class OffsetsApiTest extends TestCase
 
     public function testRequestSchemeDropsTheMaxNumberOfOffsetsOfVersionZero(): void
     {
-        $scheme = OffsetsRequest::getScheme();
+        $scheme = OffsetsRequestV9::getScheme();
 
         self::assertSame(
             [

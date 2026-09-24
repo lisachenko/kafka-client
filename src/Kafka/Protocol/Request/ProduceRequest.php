@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 11
+ * The produce API, version 12
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -115,7 +115,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * **Version 11 (Kafka 3.8, KIP-890) sends the very same body an eighth time** - `ProduceRequest.json` @ 3.8.1
  * declares no field of it and its whole comment is "Version 11 adds support for new error code
  * TRANSACTION_ABORTABLE (KIP-890)" - so a version 11 request is a version 10 request with another number in its
- * header, which is the version this class sends. What it states is that the client understands the error code
+ * header. What it states is that the client understands the error code
  * **120** ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}) in a partition of the answer: the
  * broker's way of saying "this transaction can not be committed any more, abort it and carry on with the same
  * transactional id" instead of the fatal-looking **48** `InvalidTxnState` the versions below are answered.
@@ -128,7 +128,23 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * coordinator has not verified is answered **120** at this version and **48** with the message "Partition was
  * not added to the transaction" at version 10, see the section of the document.
  *
- * {@see ProduceRequestV10}, {@see ProduceRequestV9}, {@see ProduceRequestV8}, {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
+ * **Version 12 (Kafka 4.0, KIP-890 part 2) sends the very same body a ninth time**, which is the version this class
+ * sends. `ProduceRequest.json` @ 4.0.0 declares no field of it - "Version 12 is the same as version 11 (KIP-890)"
+ * - and what the number changes is the meaning of a **transactional** batch on a node that finalizes the feature
+ * `transaction.version` 2 (the transaction protocol v2): "if transaction V2 (KIP_890 part 2) is enabled, the
+ * produce request will also include the function for a AddPartitionsToTxn call. If V2 is disabled, the client
+ * can't use produce request version higher than 11 within a transaction". A batch outside a transaction - no
+ * transactional id - is appended exactly as at version 11, so the client sends version 12 there, and caps a
+ * transaction at {@see ProduceRequestV11} unless its producer speaks the protocol v2, see
+ * {@see \Protocol\Kafka\Client::produceVersion()}.
+ *
+ * **Kafka 4.0 also removed the versions 0 to 2 (KIP-896)**: "Versions 0-2 were removed in Apache Kafka 4.0, version
+ * 3 is the new baseline". A 4.x node still lists Produce from version 0 in its ApiVersions answer - "due to a bug in
+ * librdkafka, these versions have to be included in the api versions response (see KAFKA-18659), but are rejected
+ * otherwise" - and closes the connection on a frame of them. The classes of those versions stay, for the wire
+ * vectors of the lines below and for a peer of Kafka 3.x.
+ *
+ * {@see ProduceRequestV11}, {@see ProduceRequestV10}, {@see ProduceRequestV9}, {@see ProduceRequestV8}, {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
  * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
  * them the legacy message sets - available.
  *
@@ -137,8 +153,8 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)" and "The abortable transaction error of
- *      KIP-890 (v11)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v12)", "The abortable transaction error of
+ *      KIP-890 (v11)" and "The transaction protocol v2 of KIP-890 part 2 (v12)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -150,7 +166,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 11;
+    public const int VERSION = 12;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -160,6 +176,26 @@ class ProduceRequest extends AbstractRequest
      * **compact** byte array - an unsigned varint of `length + 1` in front of the batches instead of an int32.
      */
     public const int FLEXIBLE_VERSION = 9;
+
+    /**
+     * Lowest version a node of Kafka 4.0 or later serves (KIP-896), and the first one that carries a record batch
+     *
+     * `ProduceRequest.json` @ 4.0.0: "Versions 0-2 were removed in Apache Kafka 4.0, version 3 is the new baseline".
+     * Version 3 (Kafka 0.11.0, KIP-98) is also where the message format v2 and the transactional id came in, so a
+     * message set of the formats v0 and v1 has no place in any version a 4.x node accepts.
+     */
+    public const int BASELINE_VERSION = 3;
+
+    /**
+     * Version the api gained in the release that raised its baseline to {@see self::BASELINE_VERSION}
+     *
+     * `ProduceRequest.json` @ 4.0.0 declares `"validVersions": "3-12"` in the commit that removed the versions 0 to 2
+     * and added version 12, and the ApiVersions answer of a node of Kafka 4.0 or later still lists Produce from
+     * version **0** (KAFKA-18659, `ApiKeys.PRODUCE_API_VERSIONS_RESPONSE_MIN_VERSION` @ 4.0.0) - so it is the
+     * **top** of the row that tells whether the node serves the versions below 3: a row that reaches this version
+     * does not, whatever its minimum says.
+     */
+    public const int BASELINE_RAISED_WITH_VERSION = 12;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all

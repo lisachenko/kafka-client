@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * therefore never fail to resolve one, see {@see MetadataResponse} and
  * {@see \Protocol\Kafka\Common\TopicMetadataV10}.
  *
- * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v12)" and "Metadata by topic id (v12, KIP-516)"
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)" and "Metadata by topic id (v12, KIP-516)"
  */
 final class MetadataResponseV11 extends MetadataResponse
 {

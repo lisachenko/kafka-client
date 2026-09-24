@@ -100,20 +100,26 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
  * lower** request that asks for `-5` is answered **35** `UNSUPPORTED_VERSION` for that partition, see
  * {@see OffsetsRequestV8}.
  *
+ * **Version 10 (Kafka 4.0, KIP-1075) is that answer a fourth time**, and this class is version 10:
+ * `ListOffsetsResponse.json` @ 4.0.0 says "Version 10 enables async remote list offsets support (KIP-1075)" and
+ * declares no field of it, so {@see OffsetsResponseV9} decodes the very same bytes. What changed is on the request
+ * side, the `timeout_ms` of {@see OffsetsRequest}; a broker that could not finish a remote lookup within it answers
+ * that partition with **7** `REQUEST_TIMED_OUT` (`DelayedRemoteListOffsets` @ 4.0.0).
+ *
  * A target timestamp that no message matches - one above the timestamp of every message of the log, and any
  * timestamp on an empty log - is **not** an error: the broker answers the code 0 with
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/4.3.md, sections "Offsets API (key 2, v0 to v9), a.k.a. ListOffset",
- *      "Quotas and throttle time" and "The leader epoch (KIP-320)"
+ * @see docs/protocol/4.3.md, sections "Offsets API (key 2, v0 to v10), a.k.a. ListOffset", "The timeout of
+ *      KIP-1075 (v10)", "Quotas and throttle time" and "The leader epoch (KIP-320)"
  */
 class OffsetsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 9;
+    public const int VERSION = 10;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

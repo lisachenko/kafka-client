@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV8;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Produce response object, version 11
+ * Produce response object, version 12
  *
  * <pre>
  *   ProduceResponse (Version: 8) => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset
@@ -103,17 +103,22 @@ use Protocol\Kafka\Protocol\TaggedField;
  * with the message "Partition was not added to the transaction". A broker picks between the two on the api
  * version alone, see {@see ProduceRequest}.
  *
+ * **Version 12 (Kafka 4.0, KIP-890 part 2) adds no field either** - `ProduceResponse.json` @ 4.0.0: "Version 12 is
+ * the same as version 10 (KIP-890)" - so this class decodes the version 10 frame once more, and
+ * {@see ProduceResponseV11} the very same bytes for the version below. What version 12 changes is what a
+ * transactional batch of the request means, see {@see ProduceRequest}.
+ *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v11)", "The leader discovery of KIP-951 (v10)"
- *      and "The abortable transaction error of KIP-890 (v11)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v12)", "The leader discovery of KIP-951 (v10)",
+ *      "The abortable transaction error of KIP-890 (v11)" and "The transaction protocol v2 of KIP-890 part 2 (v12)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
      * Version of the Produce API that this class decodes the answer of
      */
-    public const int VERSION = 11;
+    public const int VERSION = 12;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

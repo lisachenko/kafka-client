@@ -43,11 +43,11 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV10;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV6;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
-use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -59,6 +59,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -70,8 +71,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * container: the value the broker reports, the fencing of an epoch the leader is not on, and the fields the lower
  * version of each api does not have.
  *
- * @see docs/protocol/4.3.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v12)" and
- *      "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v13)" and
+ *      "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
@@ -265,7 +266,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         self::assertSame(4, OffsetsRequestV4::VERSION, 'the version Kafka 2.1 added');
         self::assertSame(5, OffsetsRequestV5::VERSION, 'the version Kafka 2.2 added');
         self::assertSame(6, OffsetsRequestV6::VERSION, 'the flexible version Kafka 2.8 added');
-        self::assertSame(9, OffsetsRequest::VERSION, 'and the client sends the version Kafka 3.9 added');
+        self::assertSame(10, OffsetsRequest::VERSION, 'and the version Kafka 4.0 added (KIP-1075)');
 
         $partitionFour = $four->topics[$this->topic]->partitions[0];
         $partitionFive = $five->topics[$this->topic]->partitions[0];
@@ -311,20 +312,22 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         self::assertSame(OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH_OFFSET, $fenced->endOffset);
     }
 
-    public function testTheVersionOneOfTheSameQuestionHasNeitherFieldAndIsNeverFenced(): void
+    public function testTheVersionOneOfTheSameQuestionHasNeitherFieldAndClosesTheConnection(): void
     {
         $epoch = $this->leaderEpoch();
 
-        $stream = $this->connect();
-        new OffsetForLeaderEpochRequestV1([$this->topic => [0 => $epoch]], self::CLIENT_ID, 960)->writeTo($stream);
-        $response = OffsetForLeaderEpochResponseV1::unpack($stream);
-
+        // `OffsetForLeaderEpochRequest.json` @ 4.0.0 starts at version 2 (KIP-896): the version 1 without the
+        // `current_leader_epoch` that fences it - the one a 3.9.2 node still answered, never fenced - and the
+        // version 0 before it close the connection on a 4.x node
+        $probe = new RemovedVersionProbe(self::firstBootstrapServer());
         self::assertSame(
-            0,
-            $response->throttleTimeMs,
-            'the property of a version 1 answer keeps its default, because the frame has no such field'
+            RemovedVersionProbe::CLOSED,
+            $probe->send(new OffsetForLeaderEpochRequestV1([$this->topic => [0 => $epoch]], self::CLIENT_ID, 960))
         );
-        self::assertSame(1, $response->topics[$this->topic]->partitions[0]->endOffset);
+        self::assertSame(
+            RemovedVersionProbe::CLOSED,
+            $probe->send(new OffsetForLeaderEpochRequestV0([$this->topic => [0 => $epoch]], self::CLIENT_ID, 961))
+        );
 
         // A version 2 frame differs from a version 1 one in the four bytes of the `current_leader_epoch` of the
         // partition entry, and a version 3 one in the four bytes of the `replica_id` on top of that

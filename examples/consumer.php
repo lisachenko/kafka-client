@@ -115,9 +115,9 @@ function produceDemoRecords(string $brokerAddress, string $topic, array $configu
         $records[]         = $record;
     }
 
-    // The record set of a Produce v3 request is a record batch of the message format v2, and nothing else: a
-    // 0.11.0.3 broker closes the connection on a version 3 request whose magic is below 2. Use ProduceRequestV2
-    // with a MessageSet to write the older formats.
+    // The record set of a Produce v3 or higher request is a record batch of the message format v2, and nothing
+    // else: a 4.x node answers an older magic with the error code 87. ProduceRequestV2 with a MessageSet writes the
+    // older formats to a broker of Kafka 3.x; a node of Kafka 4.0 or later closes the connection on it (KIP-896).
     $stream = new SocketStream($brokerAddress, $configuration, 5.0);
     new ProduceRequest(
         [$topic => [0 => RecordBatch::fromRecords($records)]],

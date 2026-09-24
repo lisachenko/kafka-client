@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * lowers the version constant that {@see ProduceResponsePartition::getScheme()} follows; `$logAppendTime` keeps
  * its default of -1, "the broker reported none".
  *
- * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v11)"
+ * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v12)"
  */
 final class ProduceResponsePartitionV0 extends ProduceResponsePartition
 {
