@@ -131,7 +131,7 @@ final class FetchDirectoryIdTest extends IntegrationTestCase
     public function testAVersionSeventeenConsumerFetchIsTheVersionSixteenFrameWithAnotherApiVersion(): void
     {
         $sixteen   = $this->fetchRequest(FetchRequestV16::class, 3900);
-        $seventeen = $this->fetchRequest(FetchRequest::class, 3900);
+        $seventeen = $this->fetchRequest(FetchRequestV17::class, 3900);
 
         self::assertSame(17, $seventeen->getApiVersion());
         self::assertSame(

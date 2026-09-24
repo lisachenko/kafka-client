@@ -167,7 +167,7 @@ final class TopicIdsFetchApiTest extends IntegrationTestCase
             [$this->topic => $this->topicId]
         );
 
-        self::assertSame(17, $request->getApiVersion(), 'the client sends the version of Kafka 3.9 now');
+        self::assertSame(18, $request->getApiVersion(), 'the client sends the version of Kafka 4.1 now');
         self::assertSame([$this->topic => $this->topicId], $request->getTopicIds());
         self::assertStringNotContainsString(
             $this->topic,
