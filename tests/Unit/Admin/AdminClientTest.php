@@ -38,6 +38,7 @@ use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
@@ -270,6 +271,36 @@ final class AdminClientTest extends TestCase
         $this->expectException(UnsupportedForMessageFormatException::class);
 
         $this->adminClient()->listOffsets([self::TOPIC => [0]], 1600000000000);
+    }
+
+    public function testListEarliestPendingUploadOffsetsAsksForTheTargetTimeMinusSixOfKip1023(): void
+    {
+        // `OffsetSpec.earliestPendingUpload()` of the Java admin client @ 4.2.0: the target time -6 at version 11,
+        // answered -1 with the code 0 by a broker without tiered storage - "nothing is pending upload"
+        $broker = $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [0, -1, -1]]]));
+
+        $offsets = $this->adminClient()->listEarliestPendingUploadOffsets([self::TOPIC => [0]]);
+
+        self::assertSame([self::TOPIC => [0 => -1]], $offsets, 'nothing is pending upload, and that is not an error');
+        $request = new OffsetsRequest(
+            [self::TOPIC => [0 => OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP]],
+            OffsetsRequest::CONSUMER_REPLICA_ID,
+            FetchRequest::READ_UNCOMMITTED,
+            't10',
+            $broker->getReceivedCorrelationIds()[0]
+        );
+        self::assertSame([self::requestFrame($request)], $broker->getReceivedFrames());
+        self::assertSame(11, $request->getApiVersion(), 'the version Kafka 4.2 added (KIP-1023)');
+    }
+
+    public function testListEarliestPendingUploadOffsetsThrowsTheThirtyFiveOfABrokerBeforeKafka42(): void
+    {
+        // A broker of Kafka 4.0 or 4.1 does not know the target time -6 and refuses it per partition with the 35
+        $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [35, -1, -1]]]));
+
+        $this->expectException(UnsupportedVersionException::class);
+
+        $this->adminClient()->listEarliestPendingUploadOffsets([self::TOPIC => [0]]);
     }
 
     public function testListGroupOffsetsAsksTheCoordinatorAndReturnsTheCommittedOffsets(): void

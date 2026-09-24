@@ -52,7 +52,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Metadata **v11** (KIP-700) takes `cluster_authorized_operations` out again.
  *
  * @see docs/protocol/4.3.md, sections "Topic ids (v10, KIP-516)", "Metadata API (key 3, v0 to v13)",
- *      "Produce API (key 0, v0 to v13)" and "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
+ *      "Produce API (key 0, v0 to v13)" and "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]

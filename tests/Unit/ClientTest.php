@@ -609,9 +609,10 @@ final class ClientTest extends TestCase
         $this->client([ClientConfig::REQUEST_TIMEOUT_MS => 12345])
             ->fetchTopicPartitionOffsets([self::TOPIC => [0 => -1]]);
 
-        // ListOffsets v10 (Kafka 4.0): `timeout_ms` is the last field of the body, in front of its tag buffer
+        // ListOffsets v10 (Kafka 4.0): `timeout_ms` is the last field of the body, in front of its tag buffer; the
+        // client sends the v11 of Kafka 4.2 (KIP-1023), the same frame with another number in its header
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        self::assertStringStartsWith('0002000a', $frame, 'ListOffsets v10');
+        self::assertStringStartsWith('0002000b', $frame, 'ListOffsets v11');
         self::assertStringEndsWith('00003039' . '00', $frame, 'timeout_ms = 12345, the request.timeout.ms');
     }
 
