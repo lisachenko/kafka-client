@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * member of KIP-848, and {@see OffsetFetchRequest} the version 9 this client sends.
  *
  * @see docs/protocol/4.3.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
- * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
  */
 final class OffsetFetchRequestV7 extends OffsetFetchRequest
 {

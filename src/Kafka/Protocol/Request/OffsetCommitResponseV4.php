@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Neither KIP-211 (version 5, which removes a field from the REQUEST) nor KIP-320 (version 6, which adds one to
  * the request's partitions) touched the answer, so the four versions decode the same bytes.
  *
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
  */
 final class OffsetCommitResponseV4 extends OffsetCommitResponse
 {

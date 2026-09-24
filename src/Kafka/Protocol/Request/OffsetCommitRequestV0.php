@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
  * Unlike the later versions, this request does not have to be sent to the coordinator of the group: any broker of
  * the cluster answers it, because it only writes to ZooKeeper.
  *
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
  */
 final class OffsetCommitRequestV0 extends OffsetCommitRequest
 {

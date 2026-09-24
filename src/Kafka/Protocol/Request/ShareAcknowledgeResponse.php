@@ -19,10 +19,12 @@ use Protocol\Kafka\Protocol\Data\ShareAcknowledgeResponseTopic;
 use Protocol\Kafka\Protocol\Data\ShareNodeEndpoint;
 
 /**
- * ShareAcknowledge response, version 1 (key 79, Kafka 4.1, KIP-932)
+ * ShareAcknowledge response, version 2 (key 79, Kafka 4.2, KIP-932)
  *
  * <pre>
- *   ShareAcknowledge Response (Version: 1) => throttle_time_ms error_code error_message [responses] [node_endpoints]
+ *   ShareAcknowledge Response (Version: 2) => throttle_time_ms error_code error_message acquisition_lock_timeout_ms
+ *                                             [responses] [node_endpoints]
+ *     acquisition_lock_timeout_ms => INT32   -- since version 2
  *     responses => topic_id [partitions]
  *       partitions => partition_index error_code error_message current_leader
  * </pre>
@@ -30,14 +32,20 @@ use Protocol\Kafka\Protocol\Data\ShareNodeEndpoint;
  * The top-level code is the one of the share session (122, 123) and of the request (42, 30); every partition answers
  * its acknowledgements on its own, the **121** `InvalidRecordState` of an offset the member does not hold among them.
  *
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+ * **Version 2 (Kafka 4.2, KIP-1222)** puts the `acquisition_lock_timeout_ms` of the ShareFetch answer behind the
+ * error message - `ShareAcknowledgeResponse.json` @ 4.2.0, `"versions": "2+"` - which is how long a record the
+ * request renewed stays locked for the member from now on. {@see ShareAcknowledgeResponseV1} decodes the answer
+ * without it.
+ *
+ * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+ * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
  */
 class ShareAcknowledgeResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * The api is flexible from its first version
@@ -60,6 +68,13 @@ class ShareAcknowledgeResponse extends AbstractResponse
     public ?string $errorMessage = null;
 
     /**
+     * How long the records of the request stay locked for this member, in milliseconds
+     *
+     * @since Version 2 of protocol (Kafka 4.2, KIP-1222)
+     */
+    public int $acquisitionLockTimeoutMs = 0;
+
+    /**
      * Topics of the answer
      *
      * @var list<ShareAcknowledgeResponseTopic>
@@ -78,13 +93,18 @@ class ShareAcknowledgeResponse extends AbstractResponse
      */
     public static function getScheme(): array
     {
-        return parent::getScheme() + [
+        $body = [
             'throttleTimeMs' => BinarySchema::TYPE_INT32,
             'errorCode'      => BinarySchema::TYPE_INT16,
             'errorMessage'   => BinarySchema::TYPE_NULLABLE_STRING,
-            'responses'      => [ShareAcknowledgeResponseTopic::class],
-            'nodeEndpoints'  => [ShareNodeEndpoint::class],
         ];
+        if (static::VERSION >= 2) {
+            $body['acquisitionLockTimeoutMs'] = BinarySchema::TYPE_INT32;
+        }
+        $body['responses']     = [ShareAcknowledgeResponseTopic::class];
+        $body['nodeEndpoints'] = [ShareNodeEndpoint::class];
+
+        return parent::getScheme() + $body;
     }
 
     /**

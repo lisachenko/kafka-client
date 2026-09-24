@@ -1,8 +1,8 @@
 {
     "api": "offset-commit",
     "apiKey": 8,
-    "section": "OffsetCommit API (key 8, v0 to v9)",
-    "description": "Wire vectors of the OffsetCommit API (key 8, v0 to v9), replayed by tests/Compliance.",
+    "section": "OffsetCommit API (key 8, v0 to v10)",
+    "description": "Wire vectors of the OffsetCommit API (key 8, v0 to v10), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetcommit.request.v2",
@@ -517,7 +517,7 @@
         {
             "id": "offsetcommit.request.v9",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV9",
             "version": 9,
             "source": "broker",
             "description": "OffsetCommit request v9 (Kafka 3.6, KIP-848): the version 8 frame with the number 9 in its header - \"the request is the same as version 8\" - sent by a classic member of a classic group, whose generation stands in the field that Kafka 3.6 renamed to `generation_id_or_member_epoch`.",
@@ -551,7 +551,7 @@
         {
             "id": "offsetcommit.response.v9",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The accepted answer v9: the throttle time and one compact topic array, exactly the answer of version 8. The two error codes the version exists for - the 69 and the 113 - are what the same bytes can carry now.",
@@ -577,7 +577,7 @@
         {
             "id": "offsetcommit.request.v9.illegal-generation",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same commit with a generation the group does not have. A **classic** group validates it exactly as it does below version 9: `ClassicGroup::validateOffsetCommit` @ 3.9.2 compares the number with its own generation and knows nothing of member epochs.",
@@ -611,7 +611,7 @@
         {
             "id": "offsetcommit.response.v9.illegal-generation",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The answer: the **22** `IllegalGeneration` per partition, not the 113 of KIP-848 - the stale member epoch belongs to the members of a consumer group of the new protocol alone.",
@@ -637,7 +637,7 @@
         {
             "id": "offsetcommit.request.v9.unknown-member",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same commit with a member id the group does not have, the generation being the right one.",
@@ -671,7 +671,7 @@
         {
             "id": "offsetcommit.response.v9.unknown-member",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The **25** `UnknownMemberId` per partition, which is the answer of every version from 1 on.",
@@ -697,7 +697,7 @@
         {
             "id": "offsetcommit.request.v9.group-id-not-found",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV9",
             "version": 9,
             "source": "broker",
             "description": "A commit that names a group the coordinator has never heard of, with a generation of 1: the frame the version 9 exists for on the classic side of KIP-848.",
@@ -731,7 +731,7 @@
         {
             "id": "offsetcommit.response.v9.group-id-not-found",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The **69** `GroupIdNotFound` per partition - \"we return GROUP_ID_NOT_FOUND if the group does not exist. This error works for both the old and the new protocol for clients using this version of the API\", `OffsetMetadataManager::validateOffsetCommit` @ 3.9.2.",
@@ -817,7 +817,7 @@
         {
             "id": "offsetcommit.request.v9.simple-group",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV9",
             "version": 9,
             "source": "broker",
             "description": "A commit of a group that does not exist either, but with the generation -1 and an empty member id: the frame an admin client or a consumer without a group management sends.",
@@ -851,7 +851,7 @@
         {
             "id": "offsetcommit.response.v9.simple-group",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The code **0**: the coordinator creates a so-called simple group for it instead of answering the 69, because the 69 of version 9 is the answer of a *negative* generation check - `if (request.generationIdOrMemberEpoch() < 0)` comes first in `validateOffsetCommit` @ 3.9.2.",
@@ -877,7 +877,7 @@
         {
             "id": "offsetcommit.request.v9.member-epoch",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The commit of a member of a **KIP-848** group, created on the node with a hand-built ConsumerGroupHeartbeat (key 68) - the api of the last wave of this line. The field the classic member writes its generation into carries the **member epoch** the coordinator answered its heartbeat with, and the member id is the uuid the member generated for itself.",
@@ -911,7 +911,7 @@
         {
             "id": "offsetcommit.response.v9.member-epoch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The code 0: the epoch is the one the coordinator holds for that member.",
@@ -937,7 +937,7 @@
         {
             "id": "offsetcommit.request.v9.stale-member-epoch",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same member committing with the epoch below the one it holds.",
@@ -971,7 +971,7 @@
         {
             "id": "offsetcommit.response.v9.stale-member-epoch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The **113** `StaleMemberEpoch` of Kafka 3.6, per partition: the code this version of the api was added for. An epoch *above* the current one is answered with the same 113.",
@@ -1052,6 +1052,326 @@
                         ]
                     }
                 }
+            }
+        },
+        {
+            "id": "offsetcommit.v10.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "OffsetCommit v10 (Kafka 4.2, KIP-848) of a group without a membership: the generation -1, the empty member id, the null instance id and one topic entry that names `t3-42-vectors` by its **topic id** - the 16 raw bytes of the uuid in place of the compact string of the name - with the offset 21, the leader epoch -1 and the null metadata of partition 0.",
+            "hex": "0000005d0008000a0000a41000126b61666b612d636c69656e742d74332d3432001474332d34322d766563746f72732d67726f7570ffffffff010002c9ea04c005a94a6284fa9dc3ef9fa17702000000000000000000000015ffffffff00000000",
+            "fields": {
+                "messageSize": 93,
+                "apiKey": 8,
+                "apiVersion": 10,
+                "correlationId": 42000,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-42-vectors-group",
+                "generationId": -1,
+                "memberName": "",
+                "groupInstanceId": null,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 21,
+                                "leaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The answer names the topic by the same id and nothing else, the partition with the code 0: the commit creates the simple classic group `t3-42-vectors-group`.",
+            "hex": "000000240000a410000000000002c9ea04c005a94a6284fa9dc3ef9fa17702000000000000000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 42000,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.gone-topic.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "A second commit of the group for the partition 0 of `t3-42-vectors-gone`, by its id, before the topic is deleted.",
+            "hex": "0000005d0008000a0000a41100126b61666b612d636c69656e742d74332d3432001474332d34322d766563746f72732d67726f7570ffffffff01000200bcd95746e141f6bb06acfe29242e9a02000000000000000000000003ffffffff00000000",
+            "fields": {
+                "messageSize": 93,
+                "apiKey": 8,
+                "apiVersion": 10,
+                "correlationId": 42001,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-42-vectors-group",
+                "generationId": -1,
+                "memberName": "",
+                "groupInstanceId": null,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "00bcd95746e141f6bb06acfe29242e9a"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 3,
+                                "leaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.gone-topic.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The code 0.",
+            "hex": "000000240000a41100000000000200bcd95746e141f6bb06acfe29242e9a02000000000000000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 42001,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "00bcd95746e141f6bb06acfe29242e9a"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.deleted-topic.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "The same commit for `t3-42-vectors-gone` after the topic was deleted: the id the client still holds.",
+            "hex": "0000005d0008000a0000a41400126b61666b612d636c69656e742d74332d3432001474332d34322d766563746f72732d67726f7570ffffffff01000200bcd95746e141f6bb06acfe29242e9a02000000000000000000000004ffffffff00000000",
+            "fields": {
+                "messageSize": 93,
+                "apiKey": 8,
+                "apiVersion": 10,
+                "correlationId": 42004,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-42-vectors-group",
+                "generationId": -1,
+                "memberName": "",
+                "groupInstanceId": null,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "00bcd95746e141f6bb06acfe29242e9a"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 4,
+                                "leaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.deleted-topic.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The **100** `UNKNOWN_TOPIC_ID` on the partition, the code the JSON lists for version 10 alone: `KafkaApis.handleOffsetCommitRequest` @ 4.3.1 names the topic through its metadata cache and answers every partition of an id it cannot name with the 100, before the coordinator is asked. The version 9 answer of a topic the node does not know is the 3.",
+            "hex": "000000240000a41400000000000200bcd95746e141f6bb06acfe29242e9a02000000000064000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 42004,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "00bcd95746e141f6bb06acfe29242e9a"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 100
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.member-epoch.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "The commit of the one member of the KIP-848 group `t3-42-vectors-modern`, with its member epoch 2 in `generation_id_or_member_epoch` and the topic by its id.",
+            "hex": "000000740008000a0000a41700126b61666b612d636c69656e742d74332d3432001574332d34322d766563746f72732d6d6f6465726e000000021755426a4e4e386f5951675356527664365546527a53770002c9ea04c005a94a6284fa9dc3ef9fa17702000000000000000000000021ffffffff00000000",
+            "fields": {
+                "messageSize": 116,
+                "apiKey": 8,
+                "apiVersion": 10,
+                "correlationId": 42007,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-42-vectors-modern",
+                "generationId": 2,
+                "memberName": "UBjNN8oYQgSVRvd6UFRzSw",
+                "groupInstanceId": null,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 33,
+                                "leaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.member-epoch.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The code 0: the member epoch checks of version 9 hold at version 10 unchanged.",
+            "hex": "000000240000a417000000000002c9ea04c005a94a6284fa9dc3ef9fa17702000000000000000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 42007,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.stale-member-epoch.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "The same member committing with the epoch below the one the coordinator holds.",
+            "hex": "000000740008000a0000a41800126b61666b612d636c69656e742d74332d3432001574332d34322d766563746f72732d6d6f6465726e000000011755426a4e4e386f5951675356527664365546527a53770002c9ea04c005a94a6284fa9dc3ef9fa17702000000000000000000000022ffffffff00000000",
+            "fields": {
+                "messageSize": 116,
+                "apiKey": 8,
+                "apiVersion": 10,
+                "correlationId": 42008,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-42-vectors-modern",
+                "generationId": 1,
+                "memberName": "UBjNN8oYQgSVRvd6UFRzSw",
+                "groupInstanceId": null,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 34,
+                                "leaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "offsetcommit.v10.stale-member-epoch.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The **113** `StaleMemberEpoch` on the partition, as at version 9.",
+            "hex": "000000240000a418000000000002c9ea04c005a94a6284fa9dc3ef9fa17702000000000071000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 42008,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 113
+                            }
+                        ]
+                    }
+                ]
             }
         }
     ]

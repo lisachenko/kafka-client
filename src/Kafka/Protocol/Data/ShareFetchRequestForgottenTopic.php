@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *   ForgottenTopic => topic_id [partitions]
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareFetchRequestForgottenTopic implements BinarySchemaInterface
 {

@@ -35,6 +35,7 @@ use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Common\Uuid;
+use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
@@ -51,6 +52,7 @@ use Protocol\Kafka\Protocol\Data\DescribeTransactionsResponseTopic;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
+use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
@@ -121,8 +123,14 @@ use Protocol\Kafka\Protocol\Request\ListTransactionsRequest;
 use Protocol\Kafka\Protocol\Request\ListTransactionsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV9;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\RemoveRaftVoterRequest;
@@ -432,6 +440,11 @@ class AdminClient
      * after the topics, which reports that this broker is not the coordinator of the group (16), that it is still
      * loading its offsets (14) or that the group may not be read (30).
      *
+     * The frame is the **version 10** of Kafka 4.2 (KIP-848), which names every topic by its id: the ids come from
+     * the metadata of the cluster, the topics of the answer are named back, and a request that names a topic whose
+     * id the cluster does not know goes out as the version 9, which names it (see
+     * {@see Client::fetchGroupOffsets()}).
+     *
      * @param string                                                 $groupId         Name of the consumer group
      * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Partitions to read the offsets
      *        of, null for every topic-partition of the group
@@ -443,17 +456,30 @@ class AdminClient
      */
     public function listGroupOffsets(string $groupId, ?iterable $topicPartitions = null): array
     {
-        $partitions    = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
-        $createRequest = fn(int $correlationId): OffsetFetchRequest =>
-            new OffsetFetchRequest($groupId, $partitions, $this->clientId(), $correlationId);
+        $partitions                     = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
+        [$topicIds, $useTopicIds]       = $this->offsetTopicIdsOf(array_keys($partitions ?? []));
+        [$requestClass, $responseClass] = $useTopicIds
+            ? [OffsetFetchRequest::class, OffsetFetchResponse::class]
+            : [OffsetFetchRequestV9::class, OffsetFetchResponseV9::class];
+        $createRequest = fn(int $correlationId): OffsetFetchRequest => new $requestClass(
+            $groupId,
+            $partitions,
+            $this->clientId(),
+            $correlationId,
+            false,
+            null,
+            $topicIds
+        );
 
         // Version 2 reads the offsets out of __consumer_offsets, which only the coordinator of the group serves
+        /** @var OffsetFetchResponse $response */
         $response = $this->sendTo(
             $this->findCoordinator($groupId)->getConnection($this->configuration),
             $createRequest,
-            OffsetFetchResponse::class,
+            $responseClass,
             ['groupId' => $groupId]
         );
+        $this->nameOffsetFetchTopics($response, $topicIds);
 
         return self::checkedTopicsOfGroup($response, $groupId);
     }
@@ -475,9 +501,10 @@ class AdminClient
      * An **empty** batch answers an empty array without sending anything: a 3.9.2 node answers a `groups = []`
      * frame with nothing at all and strands the connection.
      *
-     * The frame that goes out is the **version 9** of Kafka 3.7, whose `member_id` and `member_epoch` of KIP-848
-     * stay at `null` and `-1` in every entry of the batch - the values of an administrative reader, which the
-     * coordinator accepts without looking a member up, for a classic and for a KIP-848 group alike.
+     * The frame that goes out is the **version 10** of Kafka 4.2 (KIP-848), whose topics are named by id - the
+     * version 9 of Kafka 3.7 when one of the topics has no id the cluster knows - and whose `member_id` and
+     * `member_epoch` of KIP-848 stay at `null` and `-1` in every entry of the batch - the values of an administrative
+     * reader, which the coordinator accepts without looking a member up, for a classic and for a KIP-848 group alike.
      *
      * @param array<string, array<string, list<int>>|iterable<TopicPartition>|null> $groupTopicPartitions Partitions
      *        to read the offsets of, per group; a `null` value asks for every topic-partition of that group
@@ -516,16 +543,31 @@ class AdminClient
 
         $result = [];
         foreach ($batches as [$node, $groupsOfNode]) {
+            $topics = [];
+            foreach ($groupsOfNode as $partitions) {
+                foreach (array_keys($partitions ?? []) as $topic) {
+                    $topics[(string) $topic] = true;
+                }
+            }
+            [$topicIds, $useTopicIds]       = $this->offsetTopicIdsOf(array_keys($topics));
+            [$requestClass, $responseClass] = $useTopicIds
+                ? [OffsetFetchRequest::class, OffsetFetchResponse::class]
+                : [OffsetFetchRequestV9::class, OffsetFetchResponseV9::class];
+
+            /** @var OffsetFetchResponse $response */
             $response = $this->sendTo(
                 $node->getConnection($this->configuration),
-                fn(int $correlationId): OffsetFetchRequest => OffsetFetchRequest::forGroups(
+                fn(int $correlationId): OffsetFetchRequest => $requestClass::forGroups(
                     $groupsOfNode,
                     $this->clientId(),
-                    $correlationId
+                    $correlationId,
+                    false,
+                    $topicIds
                 ),
-                OffsetFetchResponse::class,
+                $responseClass,
                 ['groupId' => implode(', ', array_keys($groupsOfNode))]
             );
+            $this->nameOffsetFetchTopics($response, $topicIds);
 
             foreach (array_keys($groupsOfNode) as $groupId) {
                 $result[$groupId] = self::checkedTopicsOfGroup($response, (string) $groupId);
@@ -4034,6 +4076,122 @@ class AdminClient
         }
 
         return $resources;
+    }
+
+    /**
+     * Commits offsets for a consumer group that has no live member, as its administrator (ApiKey 8, Kafka 4.2)
+     *
+     * The admin half of the OffsetCommit api, and the shape of `Admin.alterConsumerGroupOffsets()`: the request goes
+     * to the coordinator of the group without a membership - the generation -1 and the empty member id - which the
+     * coordinator accepts for a group that is **empty** (every member gone) or does not exist yet, and refuses for a
+     * group with live members, whose commits belong to them. The frame is the **version 10** (Kafka 4.2, KIP-848),
+     * which names every topic by its id; the ids come from the metadata of the cluster, and a request that names a
+     * topic whose id the cluster does not know goes out as the version 9, which names it, as
+     * {@see Client::commitGroupOffsets()} does. An offset is a plain integer or an {@see OffsetAndMetadata}.
+     *
+     * @param string                                           $groupId The group to commit for
+     * @param array<string, array<int, int|OffsetAndMetadata>> $offsets Offsets to commit, per topic and partition
+     *
+     * @return array<string, array<int, KafkaException|null>> One entry per partition, indexed by topic and
+     *         partition index: `null` when the offset is committed, the exception of its code otherwise - among them
+     *         100 `UnknownTopicId` for an id the node does not know and 3 for a partition it does not have
+     *
+     * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+     */
+    public function alterConsumerGroupOffsets(string $groupId, array $offsets): array
+    {
+        if ($offsets === []) {
+            return [];
+        }
+
+        [$topicIds, $useTopicIds]       = $this->offsetTopicIdsOf(array_keys($offsets));
+        [$requestClass, $responseClass] = $useTopicIds
+            ? [OffsetCommitRequest::class, OffsetCommitResponse::class]
+            : [OffsetCommitRequestV9::class, OffsetCommitResponseV9::class];
+
+        /** @var OffsetCommitResponse $response */
+        $response = $this->sendTo(
+            $this->findCoordinator($groupId)->getConnection($this->configuration),
+            fn(int $correlationId): OffsetCommitRequest => new $requestClass(
+                $groupId,
+                OffsetCommitRequest::DEFAULT_GENERATION_ID,
+                OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+                OffsetCommitRequest::DEFAULT_RETENTION_TIME,
+                $offsets,
+                $this->clientId(),
+                $correlationId,
+                null,
+                $topicIds
+            ),
+            $responseClass,
+            ['groupId' => $groupId]
+        );
+
+        $result = [];
+        foreach ($response->topicsByName($topicIds) as $topic => $topicResponse) {
+            /** @var OffsetCommitResponsePartition $partition */
+            foreach ($topicResponse->partitions as $partitionId => $partition) {
+                $result[$topic][$partitionId] = $partition->errorCode === KafkaException::NO_ERROR
+                    ? null
+                    : KafkaException::fromCode(
+                        $partition->errorCode,
+                        ['groupId' => $groupId, 'topic' => $topic, 'partition' => $partitionId]
+                    );
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolves the ids of the topics an OffsetCommit or OffsetFetch request names (version 10, Kafka 4.2, KIP-848)
+     *
+     * @param list<array-key> $topics Names of the topics
+     *
+     * @return array{0: array<string, string>, 1: bool} The ids, as name => the 16 raw bytes of the uuid, and whether
+     *         every topic has one - the condition of the version 10, as `canUseTopicIds` of the Java consumer
+     */
+    private function offsetTopicIdsOf(array $topics): array
+    {
+        $names    = array_map(strval(...), $topics);
+        $topicIds = $this->cluster->topicIdsOf($names);
+
+        return [$topicIds, count($topicIds) === count(array_unique($names))];
+    }
+
+    /**
+     * Names the topics of every group of a version 10 OffsetFetch answer, which names them by id alone
+     *
+     * The ids of the request name themselves, and an id it did not name - an answer to "every topic of the group" -
+     * is looked up in the metadata of the cluster, reloaded once when it does not know one of them.
+     *
+     * @param array<string, string> $topicIds Ids of the request, as name => the 16 raw bytes of the uuid
+     */
+    private function nameOffsetFetchTopics(OffsetFetchResponse $response, array $topicIds): void
+    {
+        if ($response::VERSION < OffsetFetchRequest::MIN_TOPIC_ID_VERSION) {
+            return;
+        }
+
+        $namesById = array_flip($topicIds);
+        $reloaded  = false;
+        foreach ($response->groups as $group) {
+            foreach ($group->unnamedTopicIds() as $topicId) {
+                if (isset($namesById[$topicId])) {
+                    continue;
+                }
+                $name = $this->cluster->topicNameById($topicId);
+                if ($name === null && !$reloaded) {
+                    $this->cluster->reload();
+                    $reloaded = true;
+                    $name     = $this->cluster->topicNameById($topicId);
+                }
+                if ($name !== null) {
+                    $namesById[$topicId] = $name;
+                }
+            }
+            $group->nameTopics($namesById);
+        }
     }
 
     /**

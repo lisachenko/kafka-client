@@ -1,6 +1,9 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 4.x line has captured **238** vectors of its own so far, on the `kafka-4-3-1` node — the 8 frames of
+The 4.x line has captured **278** vectors of its own so far, on the `kafka-4-3-1` node — the 40 frames of Kafka 4.2
+on the offset and share-group apis: OffsetCommit v10 and OffsetFetch v10 by topic id (KIP-848), 10 each in
+`offset-commit.json` and `offset-fetch.json`, and ShareFetch v2 and ShareAcknowledge v2 (KIP-1206, KIP-1222), 10 each
+in `share-fetch.json` and `share-acknowledge.json`. And the 8 frames of
 ListOffsets v11 of Kafka 4.2 (the earliest pending upload offset `-6` of KIP-1023) in `offsets.json`. And the 10 frames of the
 admin and transaction half of Kafka 4.2: the 4 of DescribeShareGroupOffsets v1 (the lag of KIP-1226) in
 `describe-share-group-offsets.json` and the 6 of WriteTxnMarkers v2 (KIP-1228) in `write-txn-markers.json`. And the 18
@@ -107,7 +110,8 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1373** of them in **74** files: **8** are ListOffsets v11 of Kafka 4.2 (KIP-1023), captured on
+hex dumps. There are **1413** of them in **74** files: **40** are the offset and share-group apis of Kafka 4.2 (OffsetCommit
+and OffsetFetch v10, ShareFetch and ShareAcknowledge v2), captured on the `kafka-4-3-1` node - **8** are ListOffsets v11 of Kafka 4.2 (KIP-1023), captured on
 the `kafka-4-3-1` node - **18** are the raft-voter and share-state apis of Kafka 4.2,
 captured on the `kafka-4-3-1` node - **10** are the two versions Kafka 4.2 added to the admin and transaction apis,
 captured on the same node - the DescribeShareGroupOffsets v1 pairs of the share-partition lag of KIP-1226 in

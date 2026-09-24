@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * which can never reach a version 8 answer because such a member may not send a version 8 request.
  *
  * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
  */
 final class OffsetCommitResponseV8 extends OffsetCommitResponse
 {

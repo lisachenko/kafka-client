@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *   ShareAcknowledgeTopicResponse => topic_id [partitions]
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+ * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
  */
 final class ShareAcknowledgeResponseTopic implements BinarySchemaInterface
 {

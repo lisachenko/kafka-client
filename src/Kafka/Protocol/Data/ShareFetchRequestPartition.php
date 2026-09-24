@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * earlier, which a share fetch may piggyback - except the first one of a session, whose acknowledgements the broker
  * refuses with the 42.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareFetchRequestPartition implements BinarySchemaInterface
 {

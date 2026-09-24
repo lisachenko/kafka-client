@@ -45,9 +45,11 @@ use Protocol\Kafka\Protocol\Request\ShareFetchResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * ShareFetch (key 78) and ShareAcknowledge (key 79) of KIP-932 against the 4.3.1 KRaft node, at their version 1
- * (Kafka 4.1): the acquisition of records by a share member, their delivery count, the three acknowledgements
- * accept, release and reject, the redelivery of released records and the share session with its epochs and codes.
+ * ShareFetch (key 78) and ShareAcknowledge (key 79) of KIP-932 against the 4.3.1 KRaft node, at their version 2
+ * (Kafka 4.2): the acquisition of records by a share member, their delivery count, the three acknowledgements
+ * accept, release and reject, the redelivery of released records and the share session with its epochs and codes of
+ * the version 1 (Kafka 4.1) - and what the version 2 added, the record-limit acquire mode of KIP-1206 and the Renew
+ * acknowledgement of KIP-1222, which starts the acquisition lock of a record over.
  *
  * Every test has a group and a topic of its own with one partition: the member joins, heartbeats until the
  * partition is assigned to it and reads with its own share session on the leader. A share group reads from
@@ -57,8 +59,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group of this class carries the `t3-41-sf-` prefix; every member closes its share session (epoch -1) and
  * leaves (epoch -1) in {@see self::tearDownAfterClass()} at the latest, and every group is deleted there.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+ * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(ShareFetchRequest::class)]
@@ -355,6 +358,192 @@ final class ShareFetchApiTest extends IntegrationTestCase
                 $answer->partitionOf($topicId, 0)?->acquiredRecords() ?? []
             )
         );
+    }
+
+    /**
+     * KIP-1206: the record-limit mode acquires `max_records` records at most, the batch-optimized one whole batches
+     */
+    public function testTheRecordLimitModeAcquiresNoMoreThanMaxRecords(): void
+    {
+        [$groupId, $topicId, $leader] = $this->shareGroup(['v0', 'v1', 'v2', 'v3', 'v4', 'v5']);
+        $member = $this->joinedMember($groupId, $topicId);
+
+        $epoch    = ShareFetchRequest::INITIAL_EPOCH;
+        $deadline = microtime(true) + self::WAIT_TIMEOUT;
+        do {
+            $limited = $this->client()->shareFetch(
+                $leader,
+                $groupId,
+                $member,
+                $epoch++,
+                [$topicId => [0]],
+                [],
+                self::MAX_WAIT_MS,
+                1,
+                2,
+                2,
+                [],
+                ShareFetchRequest::SHARE_ACQUIRE_MODE_RECORD_LIMIT
+            );
+            $acquired = $limited->partitionOf($topicId, 0)?->acquiredRecords() ?? [];
+        } while ($acquired === [] && microtime(true) < $deadline);
+
+        self::assertSame([0, 1], array_keys($acquired), 'two records of the batch of six, the record limit');
+
+        $optimized = $this->client()->shareFetch(
+            $leader,
+            $groupId,
+            $member,
+            $epoch,
+            [$topicId => [0]],
+            [],
+            self::MAX_WAIT_MS,
+            1,
+            2,
+            2,
+            [],
+            ShareFetchRequest::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED
+        );
+
+        self::assertSame(
+            [2, 3, 4, 5],
+            array_keys($optimized->partitionOf($topicId, 0)?->acquiredRecords() ?? []),
+            'the batch-optimized mode finishes the batch it started, four records against the limit of two'
+        );
+    }
+
+    /**
+     * KIP-1222: a renew keeps the records acquired; the fetch that renews fetches nothing, the acknowledge that
+     * renews answers the lock timeout
+     */
+    public function testARenewKeepsTheRecordsAcquiredForAnotherLockDuration(): void
+    {
+        [$groupId, $topicId, $leader] = $this->shareGroup(['v0', 'v1', 'v2', 'v3', 'v4', 'v5']);
+        $member = $this->joinedMember($groupId, $topicId);
+        [, $epoch] = $this->fetchUntilAcquired($leader, $groupId, $member, $topicId);
+
+        $renewed = $this->client()->shareFetch(
+            $leader,
+            $groupId,
+            $member,
+            $epoch++,
+            [$topicId => [0]],
+            [$topicId => [0 => [ShareAcknowledgementBatch::of(0, 2, ShareAcknowledgementBatch::RENEW)]]],
+            isRenewAck: true
+        );
+        $partition = $renewed->partitionOf($topicId, 0);
+        self::assertNotNull($partition);
+        self::assertSame(KafkaException::NO_ERROR, $partition->acknowledgeErrorCode);
+        self::assertSame([], $partition->acquiredRecords, 'a renew fetch fetches nothing');
+
+        $acknowledged = $this->client()->shareAcknowledge(
+            $leader,
+            $groupId,
+            $member,
+            $epoch++,
+            [$topicId => [0 => [ShareAcknowledgementBatch::of(3, 5, ShareAcknowledgementBatch::RENEW)]]],
+            true
+        );
+        self::assertSame(KafkaException::NO_ERROR, $acknowledged->partitionOf($topicId, 0)?->errorCode);
+        self::assertSame(30000, $acknowledged->acquisitionLockTimeoutMs, 'the lock timeout of version 2');
+
+        $accepted = $this->client()->shareAcknowledge(
+            $leader,
+            $groupId,
+            $member,
+            $epoch,
+            [$topicId => [0 => [ShareAcknowledgementBatch::of(0, 5, ShareAcknowledgementBatch::ACCEPT)]]]
+        );
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $accepted->partitionOf($topicId, 0)?->errorCode,
+            'the renewed records are still acquired by the member'
+        );
+    }
+
+    /**
+     * A Renew is the 42 of its partition in a request that does not say `is_renew_ack`, mixed with other types or not
+     */
+    public function testARenewWithoutTheFlagIsTheFortyTwoOfItsPartition(): void
+    {
+        [$groupId, $topicId, $leader] = $this->shareGroup(['v0', 'v1', 'v2', 'v3']);
+        $member = $this->joinedMember($groupId, $topicId);
+        [, $epoch] = $this->fetchUntilAcquired($leader, $groupId, $member, $topicId);
+        $mixed  = [$topicId => [0 => [new ShareAcknowledgementBatch(0, 1, [
+            ShareAcknowledgementBatch::ACCEPT,
+            ShareAcknowledgementBatch::RENEW,
+        ])]]];
+
+        $withoutFlag = $this->client()->shareAcknowledge($leader, $groupId, $member, $epoch++, $mixed);
+        self::assertSame(KafkaException::INVALID_REQUEST, $withoutFlag->partitionOf($topicId, 0)?->errorCode);
+
+        $inAFetch = $this->client()->shareFetch(
+            $leader,
+            $groupId,
+            $member,
+            $epoch++,
+            [$topicId => [0]],
+            $mixed,
+            self::MAX_WAIT_MS
+        );
+        self::assertSame(KafkaException::NO_ERROR, $inAFetch->errorCode, 'the fetch half is fine');
+        self::assertSame(KafkaException::INVALID_REQUEST, $inAFetch->partitionOf($topicId, 0)?->acknowledgeErrorCode);
+
+        $withFlag = $this->client()->shareAcknowledge($leader, $groupId, $member, $epoch, $mixed, true);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $withFlag->partitionOf($topicId, 0)?->errorCode,
+            'with the flag a batch may mix the Renew with the other types'
+        );
+    }
+
+    /**
+     * The renew starts the lock over: after the lock duration the renewed records are still the member's, the rest
+     * went back and is acquired again with the next delivery count
+     */
+    public function testARenewExtendsTheAcquisitionLock(): void
+    {
+        [$groupId, $topicId, $leader] = $this->shareGroup(['v0', 'v1', 'v2', 'v3', 'v4', 'v5']);
+        // 15000 is the lowest lock duration the node accepts (`group.share.min.record.lock.duration.ms`)
+        $this->setGroupConfig($groupId, 'share.record.lock.duration.ms', '15000');
+        $member = $this->joinedMember($groupId, $topicId);
+        [$first, $epoch] = $this->fetchUntilAcquired($leader, $groupId, $member, $topicId);
+        self::assertSame(15000, $first->acquisitionLockTimeoutMs);
+        self::assertSame([0, 1, 2, 3, 4, 5], array_keys($first->partitionOf($topicId, 0)?->acquiredRecords() ?? []));
+
+        sleep(10);
+        $renewed = $this->client()->shareAcknowledge(
+            $leader,
+            $groupId,
+            $member,
+            $epoch++,
+            [$topicId => [0 => [ShareAcknowledgementBatch::of(0, 2, ShareAcknowledgementBatch::RENEW)]]],
+            true
+        );
+        self::assertSame(KafkaException::NO_ERROR, $renewed->partitionOf($topicId, 0)?->errorCode);
+        self::assertSame(15000, $renewed->acquisitionLockTimeoutMs);
+
+        // 18 s after the acquisition: the lock of 3-5 ran out at 15 s, the lock of 0-2 runs until 25 s
+        sleep(8);
+        $again = $this->client()->shareFetch($leader, $groupId, $member, $epoch++, [$topicId => [0]], [], self::MAX_WAIT_MS);
+
+        self::assertSame(
+            [3 => 2, 4 => 2, 5 => 2],
+            array_map(
+                static fn(array $acquired): int => $acquired['deliveryCount'],
+                $again->partitionOf($topicId, 0)?->acquiredRecords() ?? []
+            ),
+            'the records whose lock expired come back with the delivery count 2, the renewed ones do not'
+        );
+
+        $accepted = $this->client()->shareAcknowledge(
+            $leader,
+            $groupId,
+            $member,
+            $epoch,
+            [$topicId => [0 => [ShareAcknowledgementBatch::of(0, 5, ShareAcknowledgementBatch::ACCEPT)]]]
+        );
+        self::assertSame(KafkaException::NO_ERROR, $accepted->partitionOf($topicId, 0)?->errorCode);
     }
 
     /**

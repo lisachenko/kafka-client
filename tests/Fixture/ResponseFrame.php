@@ -667,19 +667,41 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetCommit response (api key 8, v8 - the flexible version this client sends)
+     * Builds an OffsetCommit response (api key 8, v10 - Kafka 4.2, every topic named by its id, KIP-848)
      *
-     * The versions 0, 1 and 2 share one response format, version 3 (KIP-124) put the throttle time in front of it
-     * and version 8 (KIP-482, Kafka 2.4) writes the very same fields with the compact types and a tagged-field
-     * section per structure.
+     * The versions 0, 1 and 2 share one response format, version 3 (KIP-124) put the throttle time in front of it,
+     * version 8 (KIP-482, Kafka 2.4) writes the very same fields with the compact types and a tagged-field section
+     * per structure, and version 10 names every topic by its id - the stable id `topicIdOf()` gives it in the
+     * Metadata answer of `metadata()` - in place of its name. {@see self::offsetCommitV9()} is the answer by name.
      *
      * @param array<string, array<int, int>> $topics topic => partition => error code
      */
     public static function offsetCommit(int $correlationId, array $topics): string
     {
+        return self::offsetCommitFrame($correlationId, $topics, true);
+    }
+
+    /**
+     * Builds an OffsetCommit response of the versions 8 and 9, which name every topic by its name
+     *
+     * @param array<string, array<int, int>> $topics topic => partition => error code
+     */
+    public static function offsetCommitV9(int $correlationId, array $topics): string
+    {
+        return self::offsetCommitFrame($correlationId, $topics, false);
+    }
+
+    /**
+     * Builds a flexible OffsetCommit response by topic id (version 10) or by topic name (versions 8 and 9)
+     *
+     * @param array<string, array<int, int>> $topics topic => partition => error code
+     */
+    private static function offsetCommitFrame(int $correlationId, array $topics, bool $byId): string
+    {
         $body = pack('N', 0) . self::compactCount(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
+            $body .= ($byId ? self::topicIdOf((string) $topic) : self::compactString((string) $topic))
+                . self::compactCount(count($partitions));
             foreach ($partitions as $partitionId => $errorCode) {
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . self::tagBuffer();
             }
@@ -690,13 +712,15 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9, v8 - the version this client sends)
+     * Builds an OffsetFetch response (api key 9, v10 - Kafka 4.2, every topic named by its id, KIP-848)
      *
      * v0 and v1 share the response format, v2 appended the group-level error code, v3 (KIP-124) put the throttle
      * time in front of the topics - the answer therefore carries a number at each of its ends - v5 (KIP-320)
      * inserted the `committed_leader_epoch` of every partition between its offset and its metadata, and **v8**
      * (Kafka 3.0) moved the topics and the group-level error code into a `groups` array, one entry per group of
      * the request. This fixture answers the one group it is given, which is what a single-group request gets.
+     * **v10** (Kafka 4.2, KIP-848) names every topic of a group entry by its id, the stable id `topicIdOf()` gives
+     * it; {@see self::offsetFetchV9()} is the answer by name.
      *
      * @param array<string, array<int, array{int, int, string}|array{int, int, string, int}>> $topics topic =>
      *        partition => [errorCode, offset, metadata] with an optional fourth element, the committed leader
@@ -714,18 +738,35 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a batched OffsetFetch response (api key 9, v8): one entry per group of the request
+     * Builds an OffsetFetch response of the versions 8 and 9, which name every topic by its name
+     *
+     * @param array<string, array<int, array{int, int, string}|array{int, int, string, int}>> $topics topic =>
+     *        partition => [errorCode, offset, metadata(, committed leader epoch)]
+     */
+    public static function offsetFetchV9(
+        int $correlationId,
+        array $topics,
+        int $groupErrorCode = 0,
+        string $groupId = ''
+    ): string {
+        return self::offsetFetchOfGroups($correlationId, [$groupId => [$topics, $groupErrorCode]], false);
+    }
+
+    /**
+     * Builds a batched OffsetFetch response (api key 9, v10 by topic id, or v8/v9 by name): one entry per group
      *
      * @param array<string, array{array<string, array<int, array{int, int, string}|array{int, int, string, int}>>,
      *         int}> $groups group id => [topics as {@see self::offsetFetch()} takes them, group-level error code]
+     * @param bool $byId Whether the topics are named by the id of version 10, or by the name of the versions below
      */
-    public static function offsetFetchOfGroups(int $correlationId, array $groups): string
+    public static function offsetFetchOfGroups(int $correlationId, array $groups, bool $byId = true): string
     {
         $body = pack('N', 0) . self::compactCount(count($groups));
         foreach ($groups as $groupId => [$topics, $groupErrorCode]) {
             $body .= self::compactString((string) $groupId) . self::compactCount(count($topics));
             foreach ($topics as $topic => $partitions) {
-                $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
+                $body .= ($byId ? self::topicIdOf((string) $topic) : self::compactString((string) $topic))
+                    . self::compactCount(count($partitions));
                 foreach ($partitions as $partitionId => $partition) {
                     [$errorCode, $offset, $metadata] = $partition;
                     $body .= pack('N', $partitionId)

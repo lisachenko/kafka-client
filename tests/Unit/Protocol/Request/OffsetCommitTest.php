@@ -15,6 +15,8 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
@@ -27,8 +29,10 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV6;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
+use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopicV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
@@ -39,6 +43,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
@@ -48,9 +53,10 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV7;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 
 /**
- * Byte-exact tests for the OffsetCommit API (key 8), versions 0 to 9.
+ * Byte-exact tests for the OffsetCommit API (key 8), versions 0 to 10.
  *
  * Version 3 (KIP-124, Kafka 0.11) is the leading `ThrottleTimeMs` of the answer and nothing else: the request of
  * v2 and v3 is one and the same body, and the three lower versions of the answer are one and the same layout.
@@ -59,9 +65,11 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
  * field alone. Kafka 2.1 changed the frame twice more: version 5 **removes** `retention_time` (KIP-211) and
  * version 6 gives every partition a `committed_leader_epoch` (KIP-320). Version 7 (KIP-345) added the
  * `group_instance_id`, version 8 (KIP-482) is that frame in the flexible encoding, and **version 9** (KIP-848,
- * Kafka 3.6) is the version 8 frame with another number in its header - the version this client sends.
+ * Kafka 3.6) is the version 8 frame with another number in its header. **Version 10** (KIP-848, Kafka 4.2) names
+ * every topic by its id instead of its name.
  *
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]
@@ -72,6 +80,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
 #[CoversClass(OffsetCommitRequestV6::class)]
 #[CoversClass(OffsetCommitRequestV7::class)]
 #[CoversClass(OffsetCommitRequestV8::class)]
+#[CoversClass(OffsetCommitRequestV9::class)]
 #[CoversClass(OffsetCommitRequestV4::class)]
 #[CoversClass(OffsetCommitResponse::class)]
 #[CoversClass(OffsetCommitResponseV0::class)]
@@ -81,16 +90,19 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
 #[CoversClass(OffsetCommitResponseV5::class)]
 #[CoversClass(OffsetCommitResponseV7::class)]
 #[CoversClass(OffsetCommitResponseV8::class)]
+#[CoversClass(OffsetCommitResponseV9::class)]
 #[CoversClass(OffsetCommitResponseV4::class)]
 #[CoversClass(OffsetCommitRequestTopic::class)]
 #[CoversClass(OffsetCommitRequestTopicV0::class)]
 #[CoversClass(OffsetCommitRequestTopicV1::class)]
 #[CoversClass(OffsetCommitRequestTopicV2::class)]
+#[CoversClass(OffsetCommitRequestTopicV6::class)]
 #[CoversClass(OffsetCommitRequestPartition::class)]
 #[CoversClass(OffsetCommitRequestPartitionV0::class)]
 #[CoversClass(OffsetCommitRequestPartitionV1::class)]
 #[CoversClass(OffsetCommitRequestPartitionV2::class)]
 #[CoversClass(OffsetCommitResponseTopic::class)]
+#[CoversClass(OffsetCommitResponseTopicV0::class)]
 #[CoversClass(OffsetCommitResponsePartition::class)]
 final class OffsetCommitTest extends TestCase
 {
@@ -659,9 +671,16 @@ final class OffsetCommitTest extends TestCase
         );
 
         self::assertSame(
-            ['topic' => OffsetCommitRequestTopic::class],
-            OffsetCommitRequest::getScheme()['topicPartitions']
+            [OffsetCommitRequestTopic::class],
+            OffsetCommitRequest::getScheme()['topicPartitions'],
+            'version 10 names its topics by id, so nothing indexes the array'
         );
+        self::assertSame(
+            ['topic' => OffsetCommitRequestTopicV6::class],
+            OffsetCommitRequestV9::getScheme()['topicPartitions']
+        );
+        self::assertSame(['topicId', 'partitions'], array_keys(OffsetCommitRequestTopic::getScheme()));
+        self::assertSame(['topic', 'partitions'], array_keys(OffsetCommitRequestTopicV6::getScheme()));
         self::assertSame(
             ['topic' => OffsetCommitRequestTopicV2::class],
             OffsetCommitRequestV4::getScheme()['topicPartitions'],
@@ -770,10 +789,10 @@ final class OffsetCommitTest extends TestCase
     public function testVersion9SendsTheVersion8FrameWithAnotherNumberInItsHeader(): void
     {
         $arguments = ['my-group', 7, 'consumer-1', -1, ['topic' => [0 => 42]], 'test', 1, null];
-        $version9  = bin2hex((string) new OffsetCommitRequest(...$arguments));
+        $version9  = bin2hex((string) new OffsetCommitRequestV9(...$arguments));
         $version8  = bin2hex((string) new OffsetCommitRequestV8(...$arguments));
 
-        self::assertSame(9, OffsetCommitRequest::VERSION);
+        self::assertSame(9, OffsetCommitRequestV9::VERSION);
         self::assertSame(8, OffsetCommitRequestV8::VERSION);
         self::assertSame(
             $version8,
@@ -782,7 +801,7 @@ final class OffsetCommitTest extends TestCase
         );
         self::assertSame(
             OffsetCommitRequestV8::getScheme(),
-            OffsetCommitRequest::getScheme(),
+            OffsetCommitRequestV9::getScheme(),
             'and therefore no field of the scheme either'
         );
     }
@@ -803,9 +822,9 @@ final class OffsetCommitTest extends TestCase
             . '00'
             . '00';
 
-        $response = OffsetCommitResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = OffsetCommitResponseV9::unpack(new StringStream((string) hex2bin($frame)));
 
-        self::assertSame(9, OffsetCommitResponse::VERSION);
+        self::assertSame(9, OffsetCommitResponseV9::VERSION);
         self::assertSame(8, OffsetCommitResponseV8::VERSION);
         self::assertSame(113, $response->topics['abc']->partitions[0]->errorCode);
         self::assertSame($frame, bin2hex((string) $response));
@@ -829,5 +848,104 @@ final class OffsetCommitTest extends TestCase
         $response = OffsetCommitResponseV2::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(12, $response->topics['topic']->partitions[0]->errorCode);
+    }
+
+    /**
+     * OffsetCommit request v10 (Kafka 4.2, KIP-848), the commit of the version 9 test above by topic id.
+     *
+     *   Size, ApiKey 00 08, ApiVersion 00 0a, CorrelationId, ClientId "test", TAG_BUFFER 00
+     *   GroupId         => 09 "my-group"
+     *   GenerationId    => 00 00 00 07
+     *   MemberId        => 0b "consumer-1"
+     *   GroupInstanceId => 00 (null)
+     *   Topics          => 02 (one)
+     *     TopicId       => 01 02 ... 10 (16 raw bytes, in place of the name "topic")
+     *     Partitions    => 02: partition 0, offset 42, leader epoch -1, metadata 00 (null), TAG_BUFFER 00
+     *     TAG_BUFFER    => 00
+     *   TAG_BUFFER      => 00
+     */
+    public function testVersion10NamesEveryTopicByItsId(): void
+    {
+        $topicId = (string) hex2bin('0102030405060708090a0b0c0d0e0f10');
+        $request = new OffsetCommitRequest(
+            'my-group',
+            7,
+            'consumer-1',
+            -1,
+            ['topic' => [0 => 42]],
+            'test',
+            1,
+            null,
+            ['topic' => $topicId]
+        );
+
+        self::assertSame(10, OffsetCommitRequest::VERSION);
+        self::assertSame(
+            '0000004e' . '0008' . '000a' . '00000001' . '0004' . bin2hex('test') . '00'
+            . '09' . bin2hex('my-group') . '00000007' . '0b' . bin2hex('consumer-1') . '00'
+            . '02' . '0102030405060708090a0b0c0d0e0f10'
+            . '02' . '00000000' . '000000000000002a' . 'ffffffff' . '00' . '00'
+            . '00'
+            . '00',
+            bin2hex((string) $request)
+        );
+        self::assertSame(['topic' => $topicId], $request->getTopicIds());
+
+        $decoded = OffsetCommitRequest::unpack(new StringStream((string) $request));
+        self::assertSame($topicId, new \ReflectionProperty($decoded, 'topicPartitions')->getValue($decoded)[0]->topicId);
+    }
+
+    public function testVersion10WithoutTheIdOfATopicIsRefusedBeforeItIsBuilt(): void
+    {
+        $this->expectException(UnknownTopicIdException::class);
+
+        new OffsetCommitRequest('my-group', -1, '', -1, ['topic' => [0 => 42]], 'test', 1);
+    }
+
+    public function testVersion9IgnoresTheIdsAndNamesTheTopics(): void
+    {
+        $arguments = ['my-group', 7, 'consumer-1', -1, ['topic' => [0 => 42]], 'test', 1, null];
+
+        self::assertSame(
+            bin2hex((string) new OffsetCommitRequestV9(...$arguments)),
+            bin2hex((string) new OffsetCommitRequestV9(...[...$arguments, ['topic' => Uuid::fromString('AQIDBAUGBwgJCgsMDQ4PEA')]]))
+        );
+    }
+
+    public function testTheAnswerOfVersion10IsNamedBackByTheIdsOfTheRequest(): void
+    {
+        // The answer of the commit above: the topic by its id, partition 0 with the code 0, and a second topic whose
+        // id the node does not know, partition 3 with the 100 UNKNOWN_TOPIC_ID of version 10
+        $frame = '0000003d'
+            . '00000001'
+            . '00'
+            . '00000000'
+            . '03'
+            . '0102030405060708090a0b0c0d0e0f10' . '02' . '00000000' . '0000' . '00' . '00'
+            . 'a0a1a2a3a4a5a6a7a8a9aaabacadaeaf' . '02' . '00000003' . '0064' . '00' . '00'
+            . '00';
+
+        $response = OffsetCommitResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(10, OffsetCommitResponse::VERSION);
+        self::assertSame($frame, bin2hex((string) $response));
+        self::assertSame('', $response->topics[0]->topic, 'a version 10 entry carries no name');
+
+        $topics = $response->topicsByName(['topic' => (string) hex2bin('0102030405060708090a0b0c0d0e0f10')]);
+        $stale  = Uuid::toString((string) hex2bin('a0a1a2a3a4a5a6a7a8a9aaabacadaeaf'));
+        self::assertSame(['topic', $stale], array_keys($topics));
+        self::assertSame(0, $topics['topic']->partitions[0]->errorCode);
+        self::assertSame(100, $topics[$stale]->partitions[3]->errorCode);
+    }
+
+    public function testTheAnswerBelowVersion10IsIndexedByNameAlready(): void
+    {
+        $frame = '00000018' . '00000001' . '00' . '00000000' . '02' . '04' . bin2hex('abc')
+            . '02' . '00000000' . '0000' . '00' . '00' . '00';
+
+        $response = OffsetCommitResponseV9::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(['abc'], array_keys($response->topicsByName()));
+        self::assertInstanceOf(OffsetCommitResponseTopicV0::class, $response->topics['abc']);
     }
 }

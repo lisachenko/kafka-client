@@ -1,8 +1,8 @@
 {
     "api": "offset-fetch",
     "apiKey": 9,
-    "section": "OffsetFetch API (key 9, v0 to v9)",
-    "description": "Wire vectors of the OffsetFetch API (key 9, v0 to v9), replayed by tests/Compliance.",
+    "section": "OffsetFetch API (key 9, v0 to v10)",
+    "description": "Wire vectors of the OffsetFetch API (key 9, v0 to v10), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetfetch.request.v2",
@@ -979,7 +979,7 @@
         {
             "id": "offsetfetch.request.v9",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "OffsetFetch request v9 (Kafka 3.7, KIP-848): the version 8 batch whose group entry gained a nullable `member_id` and a `member_epoch`, here at their defaults - the compact `00` of a null string and the four bytes `ff ff ff ff` of the epoch -1. This is the frame `Client::fetchGroupOffsets()` and `AdminClient::listGroupOffsets()` send for every read of a classic group.",
@@ -1012,7 +1012,7 @@
         {
             "id": "offsetfetch.response.v9",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The answer v9 of the committed offset 21: byte for byte the answer of version 8 - \"the response is the same as version 8 but can return STALE_MEMBER_EPOCH and UNKNOWN_MEMBER_ID errors when the new consumer group protocol is used\".",
@@ -1047,7 +1047,7 @@
         {
             "id": "offsetfetch.request.v9.classic-member",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same read of the same **classic** group, with a member id the group never had and the epoch 7 in the two new fields.",
@@ -1080,7 +1080,7 @@
         {
             "id": "offsetfetch.response.v9.classic-member",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The committed offset again: a classic group **ignores** both fields. `ClassicGroup::validateOffsetFetch` @ 3.9.2 takes the member id and the epoch and looks at neither - it only refuses a group in the state `Dead` - so neither the 25 nor the 113 can ever come out of one.",
@@ -1115,7 +1115,7 @@
         {
             "id": "offsetfetch.request.v9.unknown-group",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "A group the coordinator has never heard of, asked at version 9 with a member id and an epoch.",
@@ -1148,7 +1148,7 @@
         {
             "id": "offsetfetch.response.v9.unknown-group",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The group-level code **0** and the offset -1 for the partition that was named: unlike OffsetCommit, whose version 9 answers the 69 `GroupIdNotFound`, OffsetFetch keeps the rule of every version below it. `OffsetMetadataManager::fetchOffsets` @ 3.9.2 catches the `GroupIdNotFoundException` of the lookup and fails every partition with the offset -1 instead - the member fields are never even looked at.",
@@ -1183,7 +1183,7 @@
         {
             "id": "offsetfetch.request.v9.member-epoch",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "A member of a **KIP-848** group reading its own committed offset: the member id is the uuid the member generated for itself and the epoch is the one the coordinator answered its ConsumerGroupHeartbeat (key 68) with. The group was created on the node with a hand-built heartbeat - the api is the last wave of this line.",
@@ -1216,7 +1216,7 @@
         {
             "id": "offsetfetch.response.v9.member-epoch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The code 0 and the offset 33: the member id and the epoch are the ones the coordinator holds.",
@@ -1251,7 +1251,7 @@
         {
             "id": "offsetfetch.request.v9.stale-member-epoch",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same member reading with the epoch below the one it holds.",
@@ -1284,7 +1284,7 @@
         {
             "id": "offsetfetch.response.v9.stale-member-epoch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The **113** `StaleMemberEpoch` of KIP-848, in the **group-level** error code of the entry, whose topic array is empty. An epoch *above* the current one is answered with the same 113, and so is the epoch **-1** as soon as a member id stands next to it: `ConsumerGroup::validateOffsetFetch` @ 3.9.2 skips the member lookup only when the id is null **and** the epoch is negative.",
@@ -1306,7 +1306,7 @@
         {
             "id": "offsetfetch.request.v9.unknown-member-id",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same group asked with a member id it does not hold and the current epoch.",
@@ -1339,7 +1339,7 @@
         {
             "id": "offsetfetch.response.v9.unknown-member-id",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The **25** `UnknownMemberId`, the second code version 9 exists for, again at the group level and with an empty topic array. An **empty** member id - the `01` of a compact string of length 0 - is answered with the very same 25, because it is a member id like any other for the lookup.",
@@ -1361,7 +1361,7 @@
         {
             "id": "offsetfetch.request.v9.null-member-id",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same KIP-848 group asked with the **null** member id of the default and an epoch that is not negative - a frame the specification allows and no client of the new protocol sends.",
@@ -1394,7 +1394,7 @@
         {
             "id": "offsetfetch.response.v9.null-member-id",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The **-1** `UnknownServerError`: `ConsumerGroup::validateOffsetFetch` @ 3.9.2 returns early only when the member id is null *and* the epoch is below zero, and looks the null id up in its member table otherwise, where `BaseHashTable::findSlot` dereferences the key. The group-level code is the int16 `ff ff` and the connection stays usable - the next request on it is answered normally.",
@@ -1416,7 +1416,7 @@
         {
             "id": "offsetfetch.request.v9.all-topics",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The same member asking for **every** topic-partition its group committed an offset for: the compact `00` of the null topic array behind the member epoch.",
@@ -1442,7 +1442,7 @@
         {
             "id": "offsetfetch.response.v9.all-topics",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The one partition the group has an offset for, named by the coordinator itself. The member is validated before the topics are collected, so this shape answers the 113 and the 25 exactly as the named one does.",
@@ -1477,7 +1477,7 @@
         {
             "id": "offsetfetch.request.v9.stable",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "The `require_stable` flag of KIP-447 (the `01` behind the group array) together with the member epoch: the two are independent, and the flag still holds for the whole batch while the member is named per entry.",
@@ -1510,7 +1510,7 @@
         {
             "id": "offsetfetch.response.v9.stable",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The committed offset: no transaction of this partition is open. A stale epoch is answered with the 113 on this path as well, although the coordinator serves a `require_stable` read with a write operation of its own runtime rather than with a read one.",
@@ -1545,7 +1545,7 @@
         {
             "id": "offsetfetch.request.v9.batch",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV9",
             "version": 9,
             "source": "broker",
             "description": "Two groups in one version 9 request: the classic group with the defaults of the two new fields and the KIP-848 member with a stale epoch. Every entry carries its own member, the one `require_stable` behind the array holds for both.",
@@ -1591,7 +1591,7 @@
         {
             "id": "offsetfetch.response.v9.batch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV9",
             "version": 9,
             "source": "broker",
             "description": "One entry per group, and the member validation is per entry as well: the classic group answers its offset with the code 0, the KIP-848 entry next to it the **113** with no topic at all. A bad member never costs the other groups of the batch their answer.",
@@ -1622,6 +1622,364 @@
                     },
                     "t3-37-vectors-modern": {
                         "groupId": "t3-37-vectors-modern",
+                        "topics": [],
+                        "errorCode": 113
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.v10.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "OffsetFetch v10 (Kafka 4.2, KIP-848) of the group: its one entry with the null member id and the epoch -1 of an administrative reader, and one topic entry that names `t3-42-vectors` by its **id**, asking for the partitions 0 and 1 (the topic has one).",
+            "hex": "000000550009000a0000a41200126b61666b612d636c69656e742d74332d343200021474332d34322d766563746f72732d67726f757000ffffffff02c9ea04c005a94a6284fa9dc3ef9fa17703000000000000000100000000",
+            "fields": {
+                "messageSize": 85,
+                "apiKey": 9,
+                "apiVersion": 10,
+                "correlationId": 42002,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-42-vectors-group": {
+                        "groupId": "t3-42-vectors-group",
+                        "memberId": null,
+                        "memberEpoch": -1,
+                        "topics": [
+                            {
+                                "topicId": {
+                                    "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                                },
+                                "partitions": [
+                                    0,
+                                    1
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "requireStable": false
+            }
+        },
+        {
+            "id": "offsetfetch.v10.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The group entry names the topic by the id of the request: the partition 0 with the committed offset 21, the leader epoch -1, the empty metadata and the code 0, and the partition 1, which the topic does not have, with the offset -1 and the code 0 - the coordinator answers every partition it is asked for.",
+            "hex": "0000005d0000a4120000000000021474332d34322d766563746f72732d67726f757002c9ea04c005a94a6284fa9dc3ef9fa17703000000000000000000000015ffffffff0100000000000001ffffffffffffffffffffffff010000000000000000",
+            "fields": {
+                "messageSize": 93,
+                "correlationId": 42002,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-42-vectors-group": {
+                        "groupId": "t3-42-vectors-group",
+                        "topics": [
+                            {
+                                "topicId": {
+                                    "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                                },
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": 21,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    },
+                                    {
+                                        "partition": 1,
+                                        "offset": -1,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        ],
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.v10.all-topics.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "OffsetFetch v10 of every topic the group committed: the compact null topic array (`00`), which names no topic and so no id.",
+            "hex": "0000003b0009000a0000a41300126b61666b612d636c69656e742d74332d343200021474332d34322d766563746f72732d67726f757000ffffffff00000000",
+            "fields": {
+                "messageSize": 59,
+                "apiKey": 9,
+                "apiVersion": 10,
+                "correlationId": 42003,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-42-vectors-group": {
+                        "groupId": "t3-42-vectors-group",
+                        "memberId": null,
+                        "memberEpoch": -1,
+                        "topics": null
+                    }
+                },
+                "requireStable": false
+            }
+        },
+        {
+            "id": "offsetfetch.v10.all-topics.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "Every committed topic of the group, each named by its id alone: `t3-42-vectors-gone` and `t3-42-vectors`. A client names them back through its metadata.",
+            "hex": "0000006f0000a4130000000000021474332d34322d766563746f72732d67726f75700300bcd95746e141f6bb06acfe29242e9a02000000000000000000000003ffffffff0100000000c9ea04c005a94a6284fa9dc3ef9fa17702000000000000000000000015ffffffff010000000000000000",
+            "fields": {
+                "messageSize": 111,
+                "correlationId": 42003,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-42-vectors-group": {
+                        "groupId": "t3-42-vectors-group",
+                        "topics": [
+                            {
+                                "topicId": {
+                                    "$bytes": "00bcd95746e141f6bb06acfe29242e9a"
+                                },
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": 3,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    }
+                                ]
+                            },
+                            {
+                                "topicId": {
+                                    "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                                },
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": 21,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        ],
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.v10.deleted-topic.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "OffsetFetch v10 of the partition 0 of the deleted topic, by its old id.",
+            "hex": "000000510009000a0000a41500126b61666b612d636c69656e742d74332d343200021474332d34322d766563746f72732d67726f757000ffffffff0200bcd95746e141f6bb06acfe29242e9a020000000000000000",
+            "fields": {
+                "messageSize": 81,
+                "apiKey": 9,
+                "apiVersion": 10,
+                "correlationId": 42005,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-42-vectors-group": {
+                        "groupId": "t3-42-vectors-group",
+                        "memberId": null,
+                        "memberEpoch": -1,
+                        "topics": [
+                            {
+                                "topicId": {
+                                    "$bytes": "00bcd95746e141f6bb06acfe29242e9a"
+                                },
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "requireStable": false
+            }
+        },
+        {
+            "id": "offsetfetch.v10.deleted-topic.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The partition with the committed offset -1 and the **100** `UNKNOWN_TOPIC_ID` - \"It can return UNKNOWN_TOPIC_ID if topic IDs used and the topic is not found in metadata\", the comment `OffsetFetchResponse.json` gained at 4.3.1 - and the group-level code 0. The committed offset of the deleted topic is gone from the group as well: the answer to every topic now names `t3-42-vectors` alone.",
+            "hex": "000000490000a4150000000000021474332d34322d766563746f72732d67726f75700200bcd95746e141f6bb06acfe29242e9a0200000000ffffffffffffffffffffffff010064000000000000",
+            "fields": {
+                "messageSize": 73,
+                "correlationId": 42005,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-42-vectors-group": {
+                        "groupId": "t3-42-vectors-group",
+                        "topics": [
+                            {
+                                "topicId": {
+                                    "$bytes": "00bcd95746e141f6bb06acfe29242e9a"
+                                },
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": -1,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 100
+                                    }
+                                ]
+                            }
+                        ],
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.v10.member-epoch.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "The read of the same member: its member id and its epoch in the group entry, and the topic by its id.",
+            "hex": "000000680009000a0000a41900126b61666b612d636c69656e742d74332d343200021574332d34322d766563746f72732d6d6f6465726e1755426a4e4e386f5951675356527664365546527a53770000000202c9ea04c005a94a6284fa9dc3ef9fa177020000000000000000",
+            "fields": {
+                "messageSize": 104,
+                "apiKey": 9,
+                "apiVersion": 10,
+                "correlationId": 42009,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-42-vectors-modern": {
+                        "groupId": "t3-42-vectors-modern",
+                        "memberId": "UBjNN8oYQgSVRvd6UFRzSw",
+                        "memberEpoch": 2,
+                        "topics": [
+                            {
+                                "topicId": {
+                                    "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                                },
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "requireStable": false
+            }
+        },
+        {
+            "id": "offsetfetch.v10.member-epoch.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The committed offset 33 under the id of the request, the code 0.",
+            "hex": "0000004a0000a4190000000000021574332d34322d766563746f72732d6d6f6465726e02c9ea04c005a94a6284fa9dc3ef9fa17702000000000000000000000021ffffffff010000000000000000",
+            "fields": {
+                "messageSize": 74,
+                "correlationId": 42009,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-42-vectors-modern": {
+                        "groupId": "t3-42-vectors-modern",
+                        "topics": [
+                            {
+                                "topicId": {
+                                    "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                                },
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": 33,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        ],
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.v10.stale-member-epoch.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "The read of the same member with an epoch above the one the coordinator holds.",
+            "hex": "000000680009000a0000a41a00126b61666b612d636c69656e742d74332d343200021574332d34322d766563746f72732d6d6f6465726e1755426a4e4e386f5951675356527664365546527a53770000000502c9ea04c005a94a6284fa9dc3ef9fa177020000000000000000",
+            "fields": {
+                "messageSize": 104,
+                "apiKey": 9,
+                "apiVersion": 10,
+                "correlationId": 42010,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-42-vectors-modern": {
+                        "groupId": "t3-42-vectors-modern",
+                        "memberId": "UBjNN8oYQgSVRvd6UFRzSw",
+                        "memberEpoch": 5,
+                        "topics": [
+                            {
+                                "topicId": {
+                                    "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                                },
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "requireStable": false
+            }
+        },
+        {
+            "id": "offsetfetch.v10.stale-member-epoch.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The group-level **113** `StaleMemberEpoch` and no topic, as at version 9: an epoch that is not the current one, above it or below it.",
+            "hex": "000000240000a41a0000000000021574332d34322d766563746f72732d6d6f6465726e0100710000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 42010,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-42-vectors-modern": {
+                        "groupId": "t3-42-vectors-modern",
                         "topics": [],
                         "errorCode": 113
                     }

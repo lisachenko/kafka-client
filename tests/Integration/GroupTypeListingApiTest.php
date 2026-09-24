@@ -42,7 +42,8 @@ use Protocol\Kafka\Protocol\Request\ListGroupsRequestV4;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
-use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -556,7 +557,7 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
         string $topic,
         int $correlationId
     ): void {
-        new OffsetCommitRequest(
+        new OffsetCommitRequestV9(
             $groupId,
             $generationId,
             $memberId,
@@ -565,7 +566,7 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
             self::CLIENT_ID,
             $correlationId
         )->writeTo($stream);
-        $answer = OffsetCommitResponse::unpack($stream);
+        $answer = OffsetCommitResponseV9::unpack($stream);
 
         self::assertSame(
             KafkaException::NO_ERROR,
