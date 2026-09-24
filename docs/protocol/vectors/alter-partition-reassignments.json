@@ -1,13 +1,13 @@
 {
     "api": "alter-partition-reassignments",
     "apiKey": 45,
-    "section": "AlterPartitionReassignments API (key 45, v0)",
-    "description": "Wire vectors of the AlterPartitionReassignments API (key 45, v0), replayed by tests/Compliance.",
+    "section": "AlterPartitionReassignments API (key 45, v0 and v1)",
+    "description": "Wire vectors of the AlterPartitionReassignments API (key 45, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "alterpartitionreassignments.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "AlterPartitionReassignments request v0: partition 0 of the topic t1-reassign-vectors to the replica set [0], which is where it already is. The api is flexible from its version 0, so the frame carries the request header v2 and every string, array and structure of it is compact.",
@@ -38,7 +38,7 @@
         {
             "id": "alterpartitionreassignments.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The controller accepted the reassignment: the top-level error code 0 with an EMPTY error message (the compact 01, not the null 00) and the partition error code 0 with a NULL message. A reassignment to the replica set a partition already has is accepted and completed at once.",
@@ -67,7 +67,7 @@
         {
             "id": "alterpartitionreassignments.request.v0.cancel",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "The cancellation of the same partition: the replicas array is the compact NULL (00), which is the second meaning of that field.",
@@ -96,7 +96,7 @@
         {
             "id": "alterpartitionreassignments.response.v0.no-reassignment-in-progress",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "There was nothing to cancel: the partition carries the error code 85 (NoReassignmentInProgress) and the message \"No partition reassignment is in progress.\", while the top-level error stays 0.",
@@ -125,7 +125,7 @@
         {
             "id": "alterpartitionreassignments.request.v0.unknown-broker",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "A reassignment of the same partition to the replica set [0, 7], where the broker 7 does not exist in this cluster.",
@@ -157,7 +157,7 @@
         {
             "id": "alterpartitionreassignments.response.v0.invalid-replica-assignment",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer to it: the partition error code 39 (InvalidReplicaAssignment) and the message of the controller, which names the replica list it was given and the live brokers it knows.",
@@ -186,7 +186,7 @@
         {
             "id": "alterpartitionreassignments.request.v0.unknown-topic",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "A reassignment of a topic that does not exist at all.",
@@ -217,7 +217,7 @@
         {
             "id": "alterpartitionreassignments.response.v0.unknown-topic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer to it: the partition error code 3 (UnknownTopicOrPartition) with the message \"The partition does not exist.\" - the api reports an unknown topic per partition, like an unknown partition of a topic that exists.",
@@ -239,6 +239,131 @@
                                 "errorMessage": "The partition does not exist."
                             }
                         ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "AlterPartitionReassignments request v1 (Kafka 4.1): the one-byte `allow_replication_factor_change` = false between the timeout of 30 seconds and the topics - \"Version 1 adds the ability to allow/disallow changing the replication factor as part of the request\" (`AlterPartitionReassignmentsRequest.json` @ 4.1.0). The target of partition 0 of `t4-41-vectors` is `[1]`, the replica set it already has.",
+            "hex": "0000003e002d00010000100400126b61666b612d636c69656e742d74342d3431000000753000020e74342d34312d766563746f727302000000000200000001000000",
+            "fields": {
+                "messageSize": 62,
+                "apiKey": 45,
+                "apiVersion": 1,
+                "correlationId": 4100,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "timeoutMs": 30000,
+                "allowReplicationFactorChange": false,
+                "topics": {
+                    "t4-41-vectors": {
+                        "name": "t4-41-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "replicas": [
+                                    1
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer repeats the flag behind the throttle time - `allow_replication_factor_change` = false, the field the version 1 added to the answer - and accepts the partition with 0: the size of the replica set does not change, and a target the partition already has is nothing to do.",
+            "hex": "0000002700001004000000000000000000020e74342d34312d766563746f72730200000000000000000000",
+            "fields": {
+                "messageSize": 39,
+                "correlationId": 4100,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "allowReplicationFactorChange": false,
+                "errorCode": 0,
+                "errorMessage": null,
+                "responses": {
+                    "t4-41-vectors": {
+                        "name": "t4-41-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.request.v1.replication-factor-change",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The same flag false, and a target of TWO replicas `[1, 2]` for partition 1 - the change of the replication factor the flag forbids.",
+            "hex": "00000042002d00010000100500126b61666b612d636c69656e742d74342d3431000000753000020e74342d34312d766563746f72730200000001030000000100000002000000",
+            "fields": {
+                "messageSize": 66,
+                "apiKey": 45,
+                "apiVersion": 1,
+                "correlationId": 4101,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "timeoutMs": 30000,
+                "allowReplicationFactorChange": false,
+                "topics": {
+                    "t4-41-vectors": {
+                        "name": "t4-41-vectors",
+                        "partitions": {
+                            "1": {
+                                "partitionIndex": 1,
+                                "replicas": [
+                                    1,
+                                    2
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.response.v1.replication-factor-change",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Answered **39** `InvalidReplicaAssignment` with `The manual partition assignment includes broker 2, but no such broker is registered.`, not the 38 of the flag: `ReplicationControlManager.changePartitionReassignment()` @ 4.3.1 validates the replica list before the replication factor, and the one node of the cluster has no second broker to name. The 38 `The replication factor is changed from 1 to 2` needs a cluster of two.",
+            "hex": "0000007b00001005000000000000000000020e74342d34312d766563746f72730200000001002755546865206d616e75616c20706172746974696f6e2061737369676e6d656e7420696e636c756465732062726f6b657220322c20627574206e6f20737563682062726f6b657220697320726567697374657265642e000000",
+            "fields": {
+                "messageSize": 123,
+                "correlationId": 4101,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "allowReplicationFactorChange": false,
+                "errorCode": 0,
+                "errorMessage": null,
+                "responses": {
+                    "t4-41-vectors": {
+                        "name": "t4-41-vectors",
+                        "partitions": {
+                            "1": {
+                                "partitionIndex": 1,
+                                "errorCode": 39,
+                                "errorMessage": "The manual partition assignment includes broker 2, but no such broker is registered."
+                            }
+                        }
                     }
                 }
             }

@@ -26,6 +26,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV12;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV13;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV17;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
 use Protocol\Kafka\Protocol\TaggedField;
@@ -161,23 +162,31 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   really lies on can be kept in step without a separate api call. A **consumer never writes the tag**: the zero
  *   uuid is the default of the field and a tagged field whose value is its default is left off the wire, so the
  *   version 17 frame of this client is the version 16 frame with another number in its header, see
- *   {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$replicaDirectoryId}. This class is that
- *   version.
+ *   {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$replicaDirectoryId}
+ *   ({@see FetchRequestV17} keeps that version);
+ * * **v18** (Kafka 4.1, KIP-1166) adds the **high watermark a follower knows** to every partition entry:
+ *   `FetchRequest.json` @ 4.1.0 declares a `HighWatermark` int64 `"versions": "18+", "taggedVersions": "18+",
+ *   "tag": 1` with the default `9223372036854775807` ("the feature is not supported") - "Version 18 adds
+ *   high-watermark from KIP-1166" - and `FetchResponse.json` "Version 18 no changes to the response (KIP-1166)". A
+ *   consumer again writes nothing, so the version 18 frame of this client is the version 17 frame with another
+ *   number in its header; a follower states the value as the fourth element of a partition value, see
+ *   {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$highWatermark}. This class is that version.
  *
  * A request of version 7 and above **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
  * which is what this class sends when it is given no metadata - is served exactly like a version 6 request: the
  * whole requested set comes back and the answer reports `session_id = 0`. That is what
  * {@see \Protocol\Kafka\Client::fetchPartitions()} sends today.
  *
- * {@see FetchRequestV16}, {@see FetchRequestV15}, {@see FetchRequestV14}, {@see FetchRequestV13}, {@see FetchRequestV12}, {@see FetchRequestV11},
+ * {@see FetchRequestV17}, {@see FetchRequestV16}, {@see FetchRequestV15}, {@see FetchRequestV14}, {@see FetchRequestV13}, {@see FetchRequestV12}, {@see FetchRequestV11},
  * {@see FetchRequestV10}, {@see FetchRequestV9}, {@see FetchRequestV8},
  * {@see FetchRequestV7}, {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4},
  * {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower
  * versions available.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "Fetch sessions (v7, KIP-227)",
  *      "The topic ids of the fetch path (v13, KIP-516)", "The replica state of KIP-903 (v15)",
- *      "The leader discovery of KIP-951 (v16)" and "The replica directory id of KIP-853 (v17)"
+ *      "The leader discovery of KIP-951 (v16)", "The replica directory id of KIP-853 (v17)" and
+ *      "The high watermark of a follower, KIP-1166 (v18)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -189,7 +198,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 17;
+    public const int VERSION = 18;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -322,7 +331,11 @@ class FetchRequest extends AbstractRequest
      *                                                          (KIP-320) puts on the wire, or the triple
      *                                                          `[offset, currentLeaderEpoch, lastFetchedEpoch]`,
      *                                                          which adds the epoch of the last record it really
-     *                                                          read (version 12, KIP-595); a plain integer is the
+     *                                                          read (version 12, KIP-595), or the quadruple
+     *                                                          `[offset, currentLeaderEpoch, lastFetchedEpoch,
+     *                                                          highWatermark]` of a follower, which adds the high
+     *                                                          watermark it knows (version 18, KIP-1166); a plain
+     *                                                          integer is the
      *                                                          offset with
      *                                                          {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::UNKNOWN_LEADER_EPOCH},
      *                                                          which is what every call written before Kafka 2.1
@@ -465,7 +478,8 @@ class FetchRequest extends AbstractRequest
                     FetchRequestTopicPartition::INVALID_LOG_START_OFFSET,
                     $currentLeaderEpoch,
                     self::lastFetchedEpochOf($fetchOffset),
-                    $replicaDirectoryId ?? Uuid::ZERO
+                    $replicaDirectoryId ?? Uuid::ZERO,
+                    self::highWatermarkOf($fetchOffset)
                 );
             }
             $entry = new $topicClass((string) $topic, $partitions, self::idOf($topicIds, (string) $topic));
@@ -568,6 +582,25 @@ class FetchRequest extends AbstractRequest
         }
 
         return FetchRequestTopicPartition::UNKNOWN_LAST_FETCHED_EPOCH;
+    }
+
+    /**
+     * Reads the `high_watermark` of version 18 out of a value of the `$topicPartitions` map (KIP-1166)
+     *
+     * The fourth element of the quadruple `[offset, currentLeaderEpoch, lastFetchedEpoch, highWatermark]` is the
+     * high watermark a follower knows of the partition; everything shorter means
+     * {@see FetchRequestTopicPartition::HIGH_WATERMARK_NOT_SUPPORTED}, which a consumer sends and which is left off
+     * the wire.
+     *
+     * @param int|array{int, int}|array{int, int, int}|array{int, int, int, int} $fetchOffset
+     */
+    public static function highWatermarkOf(int|array $fetchOffset): int
+    {
+        if (is_array($fetchOffset) && isset($fetchOffset[3])) {
+            return (int) $fetchOffset[3];
+        }
+
+        return FetchRequestTopicPartition::HIGH_WATERMARK_NOT_SUPPORTED;
     }
 
     /**
@@ -705,7 +738,8 @@ class FetchRequest extends AbstractRequest
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 17 => FetchRequestTopic::class,
+            static::VERSION >= 18 => FetchRequestTopic::class,
+            static::VERSION >= 17 => FetchRequestTopicV17::class,
             static::VERSION >= 13 => FetchRequestTopicV13::class,
             static::VERSION >= 12 => FetchRequestTopicV12::class,
             static::VERSION >= 9  => FetchRequestTopicV9::class,

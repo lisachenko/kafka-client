@@ -39,6 +39,7 @@ use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\MemoryRecords;
@@ -135,6 +136,7 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV11;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
@@ -148,6 +150,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV11;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
@@ -325,8 +328,9 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as **Produce v12** (Kafka 4.0) for the message format v2 (`message.format.version=0.11.0`
-     * and every value above it, the default) outside a transaction and inside a transaction of the protocol v2 (a
+     * The request goes out as **Produce v13** (Kafka 4.1), which names every topic by its id (KIP-516), for the
+     * message format v2 (`message.format.version=0.11.0` and every value above it, the default) outside a
+     * transaction and inside a transaction of the protocol v2 (a
      * coordinator that finalizes `transaction.version` 2, KIP-890 part 2), as **v11** inside a transaction of the
      * protocol v1 - the cap of {@see self::produceVersionCapOf()} - and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version 3
      * request has no place for and which a node of Kafka 4.0 or later refuses (KIP-896, see
@@ -668,7 +672,7 @@ class Client
         // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the
         // highest version that has no place for a transactional id - and a node of Kafka 4.0 or later refuses
         // every version below 3 (KIP-896), so that request is checked against the node before anything is sent;
-        // the message format v2 goes out as Produce v12 (Kafka 4.0), or at the cap of the caller, whose body is
+        // the message format v2 goes out as Produce v13 (Kafka 4.1), or at the cap of the caller, whose body is
         // the flexible one of version 9 and whose answer carries the log start offset of every partition, the
         // record errors of KIP-467, the leader hint of KIP-951 and the 120 `TransactionAbortable` of KIP-890
         $version = self::produceVersion($messageFormatMagic, $maxVersion);
@@ -676,15 +680,34 @@ class Client
             $this->assertLegacyProduceIsServed($topicPartitionRecordSets);
         }
         [$requestClass, $responseClass] = self::produceClassesOf($version);
-        $createRequest                  = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
-            => new $requestClass(
+
+        // Produce v13 (Kafka 4.1, KIP-516) names every topic by its id, so the names of the batch are resolved
+        // against the cluster before every round - `Cluster::topicIdOf()` reloads the metadata once for a topic it
+        // does not know, and a round that still misses an id fails that topic with the retriable 100, after which
+        // the retry of the request reloads the cluster again. The answer names its topics by id as well, and is
+        // read back through the same map
+        $topicIds      = [];
+        $createRequest = function (array $nodeTopicPartitionRecordSets, int $correlationId) use (
+            &$topicIds,
+            $version,
+            $requestClass,
+            $requiredAcks,
+            $transactionalId
+        ): ProduceRequest {
+            if ($version >= 13) {
+                $topicIds = $this->cluster->topicIdsOf(array_keys($nodeTopicPartitionRecordSets)) + $topicIds;
+            }
+
+            return new $requestClass(
                 $nodeTopicPartitionRecordSets,
                 $requiredAcks,
                 $this->configuration[ProducerConfig::TIMEOUT_MS],
                 $this->configuration[ProducerConfig::CLIENT_ID],
                 $correlationId,
-                $transactionalId
+                $transactionalId,
+                $topicIds
             );
+        };
 
         // acks = 0 is the only request of the protocol that the broker does not answer, so nothing may be read back
         // from those connections, see ProduceRequest::expectsResponse()
@@ -694,60 +717,80 @@ class Client
             return [];
         }
 
-        return $this->clusterRequest(
-            $topicPartitionRecordSets,
-            $createRequest,
-            $responseClass,
-            static function (array $result, ProduceResponse $response, array &$errors): array {
-                foreach ($response->topics as $topic => $topicResult) {
-                    /** @var ProduceResponsePartition[] $partitions */
-                    $partitions = $topicResult->partitions;
-                    foreach ($partitions as $partitionId => $partitionInfo) {
-                        if ($partitionInfo->errorCode !== KafkaException::NO_ERROR) {
-                            // The log start offset travels with the *error* as well, because it is what decides
-                            // what a producer does about a 59 (UnknownProducerId): the field is the only way to
-                            // tell the head of the log being deleted under a producer from a real out-of-order
-                            // sequence, see TransactionManager::canRetryBatch()
-                            $context = [
-                                'topic'          => $topic,
-                                'partitionId'    => $partitionId,
-                                'logStartOffset' => $partitionInfo->logStartOffset,
-                            ];
-                            // The record errors of KIP-467 (Produce v8): which records of the sent batch the
-                            // broker refused, and why. They travel into the exception, because "the batch was
-                            // refused" without them is what every version below 8 already said
-                            if ($partitionInfo->errorMessage !== null) {
-                                $context['errorMessage'] = $partitionInfo->errorMessage;
-                            }
-                            if ($partitionInfo->recordErrors !== []) {
-                                $context['recordErrors'] = array_map(
-                                    static fn(ProduceResponseRecordError $recordError): ?string
-                                        => $recordError->batchIndexErrorMessage,
-                                    $partitionInfo->recordErrors
+        try {
+            $result = $this->clusterRequest(
+                $topicPartitionRecordSets,
+                $createRequest,
+                $responseClass,
+                static function (array $result, ProduceResponse $response, array &$errors) use (&$topicIds): array {
+                    $topicNamesById = array_flip($topicIds);
+                    foreach ($response->topics as $topicKey => $topicResult) {
+                        // A version 13 answer names the topic by its id alone (KIP-516)
+                        $topic = $response::VERSION >= 13
+                            ? ($topicNamesById[$topicResult->topicId] ?? Uuid::toString($topicResult->topicId))
+                            : $topicKey;
+                        /** @var ProduceResponsePartition[] $partitions */
+                        $partitions = $topicResult->partitions;
+                        foreach ($partitions as $partitionId => $partitionInfo) {
+                            if ($partitionInfo->errorCode !== KafkaException::NO_ERROR) {
+                                // The log start offset travels with the *error* as well, because it is what decides
+                                // what a producer does about a 59 (UnknownProducerId): the field is the only way to
+                                // tell the head of the log being deleted under a producer from a real out-of-order
+                                // sequence, see TransactionManager::canRetryBatch()
+                                $context = [
+                                    'topic'          => $topic,
+                                    'partitionId'    => $partitionId,
+                                    'logStartOffset' => $partitionInfo->logStartOffset,
+                                ];
+                                // The record errors of KIP-467 (Produce v8): which records of the sent batch the
+                                // broker refused, and why. They travel into the exception, because "the batch was
+                                // refused" without them is what every version below 8 already said
+                                if ($partitionInfo->errorMessage !== null) {
+                                    $context['errorMessage'] = $partitionInfo->errorMessage;
+                                }
+                                if ($partitionInfo->recordErrors !== []) {
+                                    $context['recordErrors'] = array_map(
+                                        static fn(ProduceResponseRecordError $recordError): ?string
+                                            => $recordError->batchIndexErrorMessage,
+                                        $partitionInfo->recordErrors
+                                    );
+                                }
+                                // The leader discovery of KIP-951 (Produce v10): the node and the epoch the partition
+                                // is really led with, and where that node can be reached. A broker writes them for
+                                // the error code 6 alone, which is the one a producer has to move for
+                                $context += self::leaderHintOf($partitionInfo->currentLeader, $response->nodeEndpoints);
+
+                                $errors[$topic][$partitionId] = KafkaException::fromCode(
+                                    $partitionInfo->errorCode,
+                                    $context
                                 );
+                                continue;
                             }
-                            // The leader discovery of KIP-951 (Produce v10): the node and the epoch the partition
-                            // is really led with, and where that node can be reached. A broker writes them for
-                            // the error code 6 alone, which is the one a producer has to move for
-                            $context += self::leaderHintOf($partitionInfo->currentLeader, $response->nodeEndpoints);
+                            // Version 1 reports one ThrottleTime for the whole answer, and a batch is split by
+                            // partition leaders, so the value of this answer is carried onto every partition of it
+                            $partitionInfo->throttleTimeMs = $response->throttleTime;
 
-                            $errors[$topic][$partitionId] = KafkaException::fromCode(
-                                $partitionInfo->errorCode,
-                                $context
-                            );
-                            continue;
+                            $result[$topic][$partitionId] = $partitionInfo;
                         }
-                        // Version 1 reports one ThrottleTime for the whole answer, and a batch is split by
-                        // partition leaders, so the value of this answer is carried onto every partition of it
-                        $partitionInfo->throttleTimeMs = $response->throttleTime;
-
-                        $result[$topic][$partitionId] = $partitionInfo;
                     }
-                }
 
-                return $result;
+                    return $result;
+                }
+            );
+        } catch (TopicPartitionRequestException $exception) {
+            // A 100 of a version 13 answer means that the id this client named went stale - the topic was deleted,
+            // or deleted and created again under the same name - and that nothing was appended. With a retry left
+            // the loop of clusterRequest() has reloaded the cluster already; without one the batch is reported,
+            // and the metadata is reloaded here all the same, so that the next call names the topic by its
+            // current id instead of failing until `metadata.max.age.ms` runs out
+            if ($version >= 13 && self::failedWith($exception, UnknownTopicIdException::class)) {
+                $this->reloadCluster();
             }
-        );
+
+            throw $exception;
+        }
+
+        return $result;
     }
 
     /**
@@ -2940,7 +2983,8 @@ class Client
     public function alterPartitionReassignments(
         Node $controller,
         array $reassignments,
-        int $timeoutMs = AlterPartitionReassignmentsRequest::DEFAULT_TIMEOUT_MS
+        int $timeoutMs = AlterPartitionReassignmentsRequest::DEFAULT_TIMEOUT_MS,
+        bool $allowReplicationFactorChange = true
     ): array {
         $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
 
@@ -2950,7 +2994,8 @@ class Client
                 $reassignments,
                 $timeoutMs,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $allowReplicationFactorChange
             ),
             AlterPartitionReassignmentsResponse::class,
             static function (AlterPartitionReassignmentsResponse $response) use ($reassignments): array {
@@ -3756,12 +3801,13 @@ class Client
     }
 
     /**
-     * Chooses the version of a Produce request: the one place this client decides it (Kafka 4.0)
+     * Chooses the version of a Produce request: the one place this client decides it (Kafka 4.0 and 4.1)
      *
      * * A message set of the formats v0 and v1 (`message.format.version` below 0.11.0) goes out as **Produce v2**,
      *   the highest version that has a place for it - whatever the cap says, because no other version can carry it.
-     * * A record batch of the message format v2 goes out as **Produce v12** (Kafka 4.0, KIP-890 part 2), or at
-     *   `$maxVersion` when that is lower. `ProduceRequest.json` @ 4.0.0: "Version 12 is the same as version 11
+     * * A record batch of the message format v2 goes out as **Produce v13** (Kafka 4.1, the topic ids of KIP-516),
+     *   or at `$maxVersion` when that is lower. Version 12 (Kafka 4.0, KIP-890 part 2) is where the cap comes from,
+     *   `ProduceRequest.json` @ 4.0.0: "Version 12 is the same as version 11
      *   (KIP-890). Note when produce requests are used in transaction, if transaction V2 (KIP_890 part 2) is
      *   enabled, the produce request will also include the function for a AddPartitionsToTxn call. If V2 is
      *   disabled, the client can't use produce request version higher than 11 within a transaction." The cap is how
@@ -3795,8 +3841,8 @@ class Client
      * protocol v2 - its coordinator does not finalize `transaction.version` 2 - is capped at
      * {@see TransactionManager::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2} ({@see ProduceRequestV11}), exactly as
      * `ProduceRequest.Builder` @ 4.0.0 caps it with `useTransactionV1Version`; one that is on the protocol v2 sends
-     * v12, which is what enrols its partitions. An idempotent producer writes outside every transaction and is not
-     * capped either.
+     * the highest version, v13 (anything from v12 on enrols its partitions). An idempotent producer writes outside
+     * every transaction and is not capped either.
      */
     private static function produceVersionCapOf(TransactionManager $transactionManager): ?int
     {
@@ -3816,6 +3862,7 @@ class Client
     {
         return match ($version) {
             ProduceRequest::VERSION => [ProduceRequest::class, ProduceResponse::class],
+            12                      => [ProduceRequestV12::class, ProduceResponseV12::class],
             11                      => [ProduceRequestV11::class, ProduceResponseV11::class],
             10                      => [ProduceRequestV10::class, ProduceResponseV10::class],
             9                       => [ProduceRequestV9::class, ProduceResponseV9::class],
@@ -4271,5 +4318,23 @@ class Client
         }
 
         throw KafkaException::fromCode($response->errorCode, $context);
+    }
+
+    /**
+     * Tells whether one of the partitions of a failed request failed with an exception of the given class
+     *
+     * @param class-string<\Throwable> $exceptionClass
+     */
+    private static function failedWith(TopicPartitionRequestException $exception, string $exceptionClass): bool
+    {
+        foreach ($exception->getExceptions() as $partitionExceptions) {
+            foreach ($partitionExceptions as $partitionException) {
+                if ($partitionException instanceof $exceptionClass) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

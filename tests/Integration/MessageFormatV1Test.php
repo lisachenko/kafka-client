@@ -35,10 +35,10 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -141,9 +141,9 @@ final class MessageFormatV1Test extends IntegrationTestCase
         new ProduceRequestV3([$this->topic => [self::PARTITION => $messageSet]], 1, self::PRODUCE_TIMEOUT_MS, self::CLIENT_ID, 2)
             ->writeTo($stream);
         $three = ProduceResponseV3::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
-        new ProduceRequest([$this->topic => [self::PARTITION => $messageSet]], 1, self::PRODUCE_TIMEOUT_MS, self::CLIENT_ID, 3)
+        new ProduceRequestV12([$this->topic => [self::PARTITION => $messageSet]], 1, self::PRODUCE_TIMEOUT_MS, self::CLIENT_ID, 3)
             ->writeTo($stream);
-        $twelve = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+        $twelve = ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
 
         self::assertSame(KafkaException::INVALID_RECORD, $three->errorCode);
         self::assertSame(KafkaException::INVALID_RECORD, $twelve->errorCode);

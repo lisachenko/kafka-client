@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * that a **session** started with names: mixing the two in one session is the **106** `FetchSessionTopicIdError`
  * that Kafka 3.1 added.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)" and "The topic ids of the fetch path
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "The topic ids of the fetch path
  *      (v13, KIP-516)"
  */
 final class FetchRequestV12 extends FetchRequest

@@ -32,6 +32,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV13;
 use Protocol\Kafka\Protocol\Request\FetchRequestV15;
 use Protocol\Kafka\Protocol\Request\FetchRequestV16;
+use Protocol\Kafka\Protocol\Request\FetchRequestV17;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
@@ -47,9 +48,9 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV5;
 use Protocol\Kafka\Protocol\Request\FetchResponseV6;
 use Protocol\Kafka\Protocol\Request\FetchResponseV7;
 use Protocol\Kafka\Protocol\Request\FetchResponseV8;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -70,7 +71,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * truncated message of a version below 3. Those tests measure the refusal now; the test data of this class is
  * written as record batches v2 through a Produce v3, the lowest version the node serves.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]
@@ -285,7 +286,8 @@ final class FetchApiTest extends IntegrationTestCase
         self::assertSame(13, FetchRequestV13::VERSION, 'the version Kafka 3.1 added');
         self::assertSame(15, FetchRequestV15::VERSION, 'the version Kafka 3.5 added');
         self::assertSame(16, FetchRequestV16::VERSION, 'the version Kafka 3.7 added');
-        self::assertSame(17, FetchRequest::VERSION, 'and the client sends the version Kafka 3.9 added');
+        self::assertSame(17, FetchRequestV17::VERSION, 'the version Kafka 3.9 added');
+        self::assertSame(18, FetchRequest::VERSION, 'and the client sends the version Kafka 4.1 added');
     }
 
     public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void
@@ -617,7 +619,7 @@ final class FetchApiTest extends IntegrationTestCase
     private function produceRecordBatch(int $partition, array $records): void
     {
         $stream = $this->connect();
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$this->topic => [$partition => RecordBatch::fromRecords($records)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -625,7 +627,7 @@ final class FetchApiTest extends IntegrationTestCase
             2
         )->writeTo($stream);
 
-        $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+        $errorCode = ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
         if ($errorCode !== 0) {
             throw KafkaException::fromCode($errorCode, ['topic' => $this->topic, 'partitionId' => $partition]);
         }

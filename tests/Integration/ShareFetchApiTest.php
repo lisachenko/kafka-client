@@ -36,8 +36,8 @@ use Protocol\Kafka\Protocol\Data\ShareAcknowledgementBatch;
 use Protocol\Kafka\Protocol\Data\ShareFetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ShareAcknowledgeRequest;
 use Protocol\Kafka\Protocol\Request\ShareAcknowledgeResponse;
 use Protocol\Kafka\Protocol\Request\ShareFetchRequest;
@@ -440,10 +440,10 @@ final class ShareFetchApiTest extends IntegrationTestCase
         }
 
         $stream = $this->connect();
-        new ProduceRequest([$topic => [0 => RecordBatch::fromRecords($records)]], 1, 10000, self::CLIENT_ID)
+        new ProduceRequestV12([$topic => [0 => RecordBatch::fromRecords($records)]], 1, 10000, self::CLIENT_ID)
             ->writeTo($stream);
 
-        $errorCode = ProduceResponse::unpack($stream)->topics[$topic]->partitions[0]->errorCode;
+        $errorCode = ProduceResponseV12::unpack($stream)->topics[$topic]->partitions[0]->errorCode;
         if ($errorCode !== KafkaException::NO_ERROR) {
             throw KafkaException::fromCode($errorCode, ['topic' => $topic]);
         }

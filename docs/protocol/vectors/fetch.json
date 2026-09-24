@@ -1,8 +1,8 @@
 {
     "api": "fetch",
     "apiKey": 1,
-    "section": "Fetch API (key 1, v0 to v17)",
-    "description": "Wire vectors of the Fetch API (key 1, v0 to v17), replayed by tests/Compliance.",
+    "section": "Fetch API (key 1, v0 to v18)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 to v18), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "fetch.request.v4",
@@ -3002,7 +3002,7 @@
         {
             "id": "fetch.request.v17",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV17",
             "version": 17,
             "source": "broker",
             "description": "Fetch request v17 (Kafka 3.9, KIP-853), the version this client sends: the version 16 frame of KIP-951, field for field and byte for byte - what version 17 adds is a TAGGED replica_directory_id (tag 0) inside every partition entry, whose default is the zero uuid, and a tagged field whose value is its default is not written at all. The partition entry therefore still ends in the empty tag buffer 00, and the only byte that separates this frame from fetch.request.v16 is the api version of its header.",
@@ -3049,7 +3049,7 @@
         {
             "id": "fetch.response.v17",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV17",
             "version": 17,
             "source": "broker",
             "description": "The answer v17: `FetchResponse.json` @ 3.9.2 declares no field for the version and comments \"Version 17 no changes to the response (KIP-853)\", so this is the version 16 answer with the record batch of the two records of t2-39-vectors and the empty tagged node_endpoints of KIP-951 at the end of the body.",
@@ -3091,7 +3091,7 @@
         {
             "id": "fetch.request.v17.replica-directory-id",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV17",
             "version": 17,
             "source": "broker",
             "description": "The same consumer fetch with the replica_directory_id really written: the tagged field costs 18 bytes at the end of the partition entry - the tag 0, the size 16 and the 16 raw bytes of the uuid - and the tag buffer of the entry counts 01 instead of 00. The value is the directory.id the node wrote into the meta.properties of /tmp/kafka-logs. It is the field of a FOLLOWER; a broker that serves the partition as its leader parses it and does nothing with it, which is what the answer shows.",
@@ -3138,7 +3138,7 @@
         {
             "id": "fetch.response.v17.replica-directory-id",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV17",
             "version": 17,
             "source": "broker",
             "description": "The answer: the records, exactly as for the frame without the tag. A directory id in a fetch of the DATA plane is never even looked at - `ReplicaManager.fetchMessages` @ 3.9.2 does not read the field - it is `KafkaRaftClient.handleFetchRequest` @ 3.9.2 that builds a ReplicaKey out of the replica id and this directory id, i.e. the fetch of __cluster_metadata on the CONTROLLER listener, which is what KIP-853 added it for.",
@@ -3180,7 +3180,7 @@
         {
             "id": "fetch.request.v17.follower-directory-id",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV17",
             "version": 17,
             "source": "broker",
             "description": "A version 17 fetch that claims to be the FOLLOWER 1 with the broker epoch 0 (the tagged replica_state of KIP-903) and names the directory it keeps the replica in (the tagged replica_directory_id of KIP-853): the two tags of the two KIPs in one frame, the first inside the partition entry and the second at the end of the body.",
@@ -3230,7 +3230,7 @@
         {
             "id": "fetch.response.v17.follower-directory-id",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV17",
             "version": 17,
             "source": "broker",
             "description": "The answer is the one of the very same request at version 15 and 16: the one broker of this node is the LEADER of the partition and not one of its followers, so `Partition.followerReplicaOrThrow` @ 3.9.2 refuses it with 6 NotLeaderForPartition long before any directory is looked at, and the leader hint of KIP-951 is written next to it - the tagged current_leader 1 / 0 of the partition entry and the tagged node_endpoints 1 => 127.0.0.1:9092 of the body. The directory id changes nothing: an unknown one, the id of the other log directory of the node and none at all are answered byte for byte the same.",
@@ -3282,7 +3282,7 @@
         {
             "id": "fetch.request.v17.session",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV17",
             "version": 17,
             "source": "broker",
             "description": "An incremental fetch of version 17 that continues a session a version 16 full fetch opened: the session id the node handed out and the epoch 1 of the first incremental request, with the partition at the offset the full fetch read to.",
@@ -3329,7 +3329,7 @@
         {
             "id": "fetch.response.v17.session",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV17",
             "version": 17,
             "source": "broker",
             "description": "The node serves it: the top-level error code 0, the same session id and an empty topics array, because nothing has changed since the full fetch. Raising the version inside a session is no more an error at 16 -> 17 than it was at 15 -> 16 or at 13 -> 15.",
@@ -3342,6 +3342,192 @@
                 "errorCode": 0,
                 "sessionId": 51379240,
                 "topics": [],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "fetch.request.v18",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 18,
+            "source": "broker",
+            "description": "Fetch request v18 (Kafka 4.1, KIP-1166) of a consumer, session-less, from the offset 0 with the current leader epoch 0: the version 17 frame with the 18 in its header. FetchRequest.json @ 4.1.0 declares the new `HighWatermark` as the tag 1 of the partition entry with the default 9223372036854775807, \"the feature is not supported\", and a consumer leaves it there, so the tag is not on the wire.",
+            "hex": "00000069000100120000100700126b61666b612d636c69656e742d74322d343100000000fa00000001032000000000000000ffffffff020478c367d5e64d8cb164d64be53970690200000000000000000000000000000000ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 105,
+                "apiKey": 1,
+                "apiVersion": 18,
+                "correlationId": 4103,
+                "clientId": "kafka-client-t2-41",
+                "headerTaggedFields": [],
+                "maxWaitTime": 250,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "0478c367d5e64d8cb164d64be5397069"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 0,
+                                "fetchOffset": 0,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576,
+                                "replicaDirectoryId": {
+                                    "$bytes": "00000000000000000000000000000000"
+                                },
+                                "highWatermark": 9223372036854775807
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null,
+                "replicaState": null
+            }
+        },
+        {
+            "id": "fetch.response.v18",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 18,
+            "source": "broker",
+            "description": "The answer: FetchResponse.json @ 4.1.0, \"Version 18 no changes to the response (KIP-1166)\" - the version 17 answer with the one record of produce.request.v13, the high watermark and the last stable offset 1.",
+            "hex": "00000098000010070000000000000000000000020478c367d5e64d8cb164d64be53970690200000000000000000000000000010000000000000001000000000000000000ffffffff510000000000000000000000440000000002ad7afd83000000000000000001a0c4506c00000001a0c4506c00ffffffffffffffffffffffffffff0000000124000000026b1674322d343120627920696400000000",
+            "fields": {
+                "messageSize": 152,
+                "correlationId": 4103,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "0478c367d5e64d8cb164d64be5397069"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 1,
+                                "lastStableOffset": 1,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000440000000002ad7afd83000000000000000001a0c4506c00000001a0c4506c00ffffffffffffffffffffffffffff0000000124000000026b1674322d343120627920696400"
+                                },
+                                "divergingEpoch": null,
+                                "currentLeader": null,
+                                "snapshotId": null
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "fetch.request.v18.follower-high-watermark",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 18,
+            "source": "broker",
+            "description": "The shape of a follower's fetch: the tagged replica_state of KIP-903 claiming the replica 1 with the broker epoch 0 (tag 1 of the body), no current leader epoch, and the tagged high_watermark 1 of KIP-1166 - the tag 1, the size 8 and the int64 at the end of the partition entry, whose tag buffer counts 01. The client writes it for a partition value [offset, currentLeaderEpoch, lastFetchedEpoch, highWatermark].",
+            "hex": "00000082000100120000100800126b61666b612d636c69656e742d74322d343100000000fa00000001032000000000000000ffffffff020478c367d5e64d8cb164d64be53970690200000000ffffffff0000000000000000ffffffffffffffffffffffff00100000010108000000000000000100010101010d00000001000000000000000000",
+            "fields": {
+                "messageSize": 130,
+                "apiKey": 1,
+                "apiVersion": 18,
+                "correlationId": 4104,
+                "clientId": "kafka-client-t2-41",
+                "headerTaggedFields": [],
+                "maxWaitTime": 250,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "0478c367d5e64d8cb164d64be5397069"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 0,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576,
+                                "replicaDirectoryId": {
+                                    "$bytes": "00000000000000000000000000000000"
+                                },
+                                "highWatermark": 1
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null,
+                "replicaState": {
+                    "replicaId": 1,
+                    "replicaEpoch": 0
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v18.follower-high-watermark",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 18,
+            "source": "broker",
+            "description": "The answer of the one-broker node: the per-partition 6 NotLeaderForPartition with the tagged current_leader 1 / 0 and an empty node_endpoints - the answer the same claim gets without the tag. The broker is the leader of the partition, not a follower of it, and nothing on the fetch path of a broker partition reads the high watermark of the request at 4.1.0 to 4.3.1: KIP-1166 is read by the KRaft leader of the metadata log (KafkaRaftClient.isHighWatermarkUpdated @ 4.1.0), which is served on the controller listener.",
+            "hex": "00000053000010080000000000000000000000020478c367d5e64d8cb164d64be539706902000000000006ffffffffffffffffffffffffffffffffffffffffffffffff00ffffffff010101090000000100000000000000",
+            "fields": {
+                "messageSize": 83,
+                "correlationId": 4104,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "0478c367d5e64d8cb164d64be5397069"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 6,
+                                "highWaterMarkOffset": -1,
+                                "lastStableOffset": -1,
+                                "logStartOffset": -1,
+                                "abortedTransactions": null,
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": ""
+                                },
+                                "divergingEpoch": null,
+                                "currentLeader": {
+                                    "leaderId": 1,
+                                    "leaderEpoch": 0
+                                },
+                                "snapshotId": null
+                            }
+                        ]
+                    }
+                ],
                 "nodeEndpoints": []
             }
         }

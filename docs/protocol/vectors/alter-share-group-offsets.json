@@ -1,0 +1,203 @@
+{
+    "api": "alter-share-group-offsets",
+    "apiKey": 91,
+    "section": "AlterShareGroupOffsets API (key 91, v0)",
+    "description": "Wire vectors of the AlterShareGroupOffsets API (key 91, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "altersharegroupoffsets.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterShareGroupOffsets request v0 (Kafka 4.1, KIP-932) for the share group `t4-41-vectors-share`, which does not exist yet: the start offset 3 for partition 0 of `t4-41-vectors`, 0 for partition 1, 0 for a partition 2 the two-partition topic does not have, and 0 for partition 0 of `t4-41-vectors-missing`, a topic the node does not have.",
+            "hex": "0000008f005b00000000100600126b61666b612d636c69656e742d74342d3431001474342d34312d766563746f72732d7368617265030e74342d34312d766563746f727304000000000000000000000003000000000100000000000000000000000002000000000000000000001674342d34312d766563746f72732d6d697373696e6702000000000000000000000000000000",
+            "fields": {
+                "messageSize": 143,
+                "apiKey": 91,
+                "apiVersion": 0,
+                "correlationId": 4102,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groupId": "t4-41-vectors-share",
+                "topics": {
+                    "t4-41-vectors": {
+                        "topicName": "t4-41-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "startOffset": 3
+                            },
+                            {
+                                "partitionIndex": 1,
+                                "startOffset": 0
+                            },
+                            {
+                                "partitionIndex": 2,
+                                "startOffset": 0
+                            }
+                        ]
+                    },
+                    "t4-41-vectors-missing": {
+                        "topicName": "t4-41-vectors-missing",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "startOffset": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "altersharegroupoffsets.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The top-level 0: `GroupMetadataManager.alterShareGroupOffsets()` @ 4.3.1 creates the share group (\"Get or create the share group\"). Partitions 0 and 1 are answered 0 and carry the topic id; partition 2 and the missing topic are answered **3** `UnknownTopicOrPartition` with `This server does not host this topic-partition.`, the missing topic with the zero uuid. The node lists the missing topic first.",
+            "hex": "000000d4000010060000000000000000031674342d34312d766563746f72732d6d697373696e67000000000000000000000000000000000200000000000330546869732073657276657220646f6573206e6f7420686f7374207468697320746f7069632d706172746974696f6e2e00000e74342d34312d766563746f72735ada87210cb34fbb8c130e523583ce5f040000000000000000000000010000000000000002000330546869732073657276657220646f6573206e6f7420686f7374207468697320746f7069632d706172746974696f6e2e000000",
+            "fields": {
+                "messageSize": 212,
+                "correlationId": 4102,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "responses": {
+                    "t4-41-vectors-missing": {
+                        "topicName": "t4-41-vectors-missing",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 3,
+                                "errorMessage": "This server does not host this topic-partition."
+                            }
+                        ]
+                    },
+                    "t4-41-vectors": {
+                        "topicName": "t4-41-vectors",
+                        "topicId": {
+                            "$bytes": "5ada87210cb34fbb8c130e523583ce5f"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null
+                            },
+                            {
+                                "partitionIndex": 1,
+                                "errorCode": 0,
+                                "errorMessage": null
+                            },
+                            {
+                                "partitionIndex": 2,
+                                "errorCode": 3,
+                                "errorMessage": "This server does not host this topic-partition."
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "altersharegroupoffsets.request.v0.not-a-share-group",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterShareGroupOffsets for `t4-41-vectors-classic`, a group of the classic protocol that committed an offset a moment before.",
+            "hex": "00000052005b00000000100c00126b61666b612d636c69656e742d74342d3431001674342d34312d766563746f72732d636c6173736963020e74342d34312d766563746f727302000000000000000000000000000000",
+            "fields": {
+                "messageSize": 82,
+                "apiKey": 91,
+                "apiVersion": 0,
+                "correlationId": 4108,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groupId": "t4-41-vectors-classic",
+                "topics": {
+                    "t4-41-vectors": {
+                        "topicName": "t4-41-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "startOffset": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "altersharegroupoffsets.response.v0.not-a-share-group",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The top-level **69** with `Group t4-41-vectors-classic is not a share group.`: one group id space, and a share-group api refuses a group of another type the way it refuses one that does not exist.",
+            "hex": "0000003f0000100c000000000000453247726f75702074342d34312d766563746f72732d636c6173736963206973206e6f7420612073686172652067726f75702e0100",
+            "fields": {
+                "messageSize": 63,
+                "correlationId": 4108,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 69,
+                "errorMessage": "Group t4-41-vectors-classic is not a share group.",
+                "responses": []
+            }
+        },
+        {
+            "id": "altersharegroupoffsets.request.v0.non-empty",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterShareGroupOffsets for `t4-41-vectors-member`, a share group whose one member - the `kafka-console-share-consumer.sh` of the image - is subscribed to `t4-41-vectors` while the frame is sent.",
+            "hex": "00000051005b00000000100d00126b61666b612d636c69656e742d74342d3431001574342d34312d766563746f72732d6d656d626572020e74342d34312d766563746f727302000000000000000000000000000000",
+            "fields": {
+                "messageSize": 81,
+                "apiKey": 91,
+                "apiVersion": 0,
+                "correlationId": 4109,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groupId": "t4-41-vectors-member",
+                "topics": {
+                    "t4-41-vectors": {
+                        "topicName": "t4-41-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "startOffset": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "altersharegroupoffsets.response.v0.non-empty",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The top-level **68** `NonEmptyGroup` with `The group is not empty.`: the offsets of a share group are altered while nobody consumes (`throwIfShareGroupIsNotEmpty` @ 4.3.1).",
+            "hex": "000000250000100d00000000000044185468652067726f7570206973206e6f7420656d7074792e0100",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 4109,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 68,
+                "errorMessage": "The group is not empty.",
+                "responses": []
+            }
+        }
+    ]
+}

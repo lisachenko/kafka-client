@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * specified in partition reassignment."*), and so is a set that names a broker that is not alive (*"Replica
  * assignment has brokers that are not alive. Replica list: ArrayBuffer(7), live broker list: Set(0)"*).
  *
- * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0)"
+ * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
  */
 class ReassignablePartition implements BinarySchemaInterface
 {
