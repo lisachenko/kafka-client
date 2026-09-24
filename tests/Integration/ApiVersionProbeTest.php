@@ -43,8 +43,10 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/4.3.md`: **75
  * keys**, the `broker` listener set of the JSON message specifications @ 4.3.1 minus the two telemetry apis
  * ({@see self::SERVED_APIS}). Kafka 4.0 is the first release whose table does not start every row at 0: KIP-896
- * removed the versions below the Kafka 2.1 baseline, and fifteen rows start at 1 or 2 now - every frame below a
- * minimum closes the connection ({@see self::testTheBrokerClosesTheConnectionForAVersionKafka4Removed()}).
+ * removed the versions below the Kafka 2.1 baseline of nineteen apis of the client listener, eighteen rows start at
+ * 1, 2 or 4 now (Produce is the nineteenth, whose row still starts at 0) and the four share-group rows at 1 - every
+ * frame below a minimum closes the connection
+ * ({@see self::testTheBrokerClosesTheConnectionForAVersionKafka4Removed()}).
  *
  * The container is not the ZooKeeper-backed broker of the 2.x line any more but a **KRaft node in combined mode**
  * (`process.roles=broker,controller`): the same process answers on the client listeners 9092 to 9095 as a `broker`
@@ -62,12 +64,13 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *   own timeout ({@see RawApiProbe::SILENT}).
  * * A 3.9.2 node and a 4.3.1 node **close the connection** ({@see RawApiProbe::CLOSED}). On 4.3.1 a version
  *   below or above the table ends in `UnsupportedVersionException: Received request for api with key 0 (Produce)
- *   and unsupported version 2`, a key of another listener or of the removed ZooKeeper apis in
- *   `InvalidRequestException: Unsupported api with key 7 (ControlledShutdown) and version 0`, a key no `ApiKeys`
- *   entry knows in `Error parsing request header. Our best guess of the apiKeyId is: 93`, and a body the generated
- *   message class cannot read still in `Error getting request for apiKey: JOIN_GROUP, apiVersion: 0`. The
- *   processor catches all of them and closes the channel; `docker logs kafka-4-3-1` shows `ERROR Closing socket for
- *   ... because of error` with the reason.
+ *   and unsupported version 2`, a version of a controller api that the release knows in `InvalidRequestException:
+ *   Received request for disabled api with key 63 (BrokerHeartbeat) and version 2`, a key of the removed
+ *   ZooKeeper apis in `InvalidRequestException: Unsupported api with key 7 (ControlledShutdown) and version 0`, a
+ *   key no `ApiKeys` entry knows in `Error parsing request header. Our best guess of the apiKeyId is: 93`, and a
+ *   body the generated message class cannot read still in `Error getting request for apiKey: JOIN_GROUP,
+ *   apiVersion: 0`. The processor catches all of them and closes the channel; `docker logs kafka-4-3-1` shows
+ *   `ERROR Closing socket for ... because of error` with the reason.
  *
  * **Exactly one api is an exception to that rule**: ApiVersions itself, which answers an unknown version with the
  * error code 35 on a connection that stays open - `ApiKeys.isVersionEnabled` returns `true` for key 18
@@ -138,7 +141,8 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * the minimum 0** although its specification starts at 3, because `ApiKeys.PRODUCE_API_VERSIONS_RESPONSE_MIN_VERSION`
      * keeps the row of a librdkafka that reads it (KAFKA-18659); every frame of Produce v0 to v2 is refused like any
      * other removed version. The other minimums above 0 are the removals of KIP-896 (Kafka 4.0), and the share-group
-     * apis 76 to 79 start at 1 because their early-access version 0 of Kafka 3.9 was dropped when 4.1 stabilized them.
+     * apis 76 to 79 start at 1 because their version 0 - unstable in Kafka 3.9, "used for early access of KIP-932 in
+     * Apache Kafka 4.0" as the JSON @ 4.2.0 puts it - was removed when 4.1 made the version 1 the stable one.
      *
      * The set is the one of the **listener** the request arrived on: the `broker` apis of `ApiKeys.java` @ 4.3.1,
      * minus the telemetry apis 71 and 72 while no client-metrics receiver plugin is configured
@@ -331,30 +335,38 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     ];
 
     /**
-     * The api keys of `ApiKeys.java` @ 4.3.1 that only the CONTROLLER listener serves
+     * The api keys of `ApiKeys.java` @ 4.3.1 that only the CONTROLLER listener serves, as `api key => [minimum,
+     * maximum]` of their JSON message specifications @ 4.3.1
      *
      * The raft apis of KIP-595 (52 to 54), `AlterPartition` (56, the `AlterIsr` of 2.8, KIP-704), `FetchSnapshot`
      * (59), the broker registration and heartbeat of KIP-631 (62, 63), `ControllerRegistration` (70, KIP-919),
      * `AssignReplicasToDirs` (73, KIP-858) and `UpdateRaftVoter` (82, KIP-853) list `["controller"]` alone since
      * Kafka 4.0 removed the `zkBroker` listener, and so do the `Envelope` of KIP-590 (58) and
-     * `AllocateProducerIds` (67, KIP-730). The container serves all of them on 9096 and none on 9092: `Unsupported
-     * api with key 52 (Vote) and version 0`. DescribeQuorum (55), UnregisterBroker (64), AddRaftVoter (80) and
-     * RemoveRaftVoter (81) are the four controller apis whose `listeners` include `broker` as well, and they are in
-     * the table, forwarded by the broker to the controller.
+     * `AllocateProducerIds` (67, KIP-730). The container serves all of them on 9096 and none on 9092. DescribeQuorum
+     * (55), UnregisterBroker (64), AddRaftVoter (80) and RemoveRaftVoter (81) are the four controller apis whose
+     * `listeners` include `broker` as well, and they are in the table, forwarded by the broker to the controller.
+     *
+     * Two of these apis grew in the 4.x line: **Vote v2** (Kafka 4.0, the `PreVote` field) and **BrokerHeartbeat v2**
+     * (Kafka 4.3, the tagged `CordonedLogDirs`), and KIP-896 raised the minimum of AlterPartition to 2. The node
+     * refuses a version the release knows before it reads the body, because the api is not enabled on the listener
+     * (`InvalidRequestException: Received request for disabled api with key 63 (BrokerHeartbeat) and version 2`),
+     * and a version above the specification one step earlier, like any other
+     * (`UnsupportedVersionException: Received request for api with key 63 (BrokerHeartbeat) and unsupported version
+     * 3`): the connection is closed either way, and only the log tells the two apart.
      */
     private const array CONTROLLER_LISTENER_KEYS = [
-        ApiKeys::VOTE,
-        ApiKeys::BEGIN_QUORUM_EPOCH,
-        ApiKeys::END_QUORUM_EPOCH,
-        ApiKeys::ALTER_ISR,
-        ApiKeys::ENVELOPE,
-        ApiKeys::FETCH_SNAPSHOT,
-        ApiKeys::BROKER_REGISTRATION,
-        ApiKeys::BROKER_HEARTBEAT,
-        ApiKeys::ALLOCATE_PRODUCER_IDS,
-        ApiKeys::CONTROLLER_REGISTRATION,
-        ApiKeys::ASSIGN_REPLICAS_TO_DIRS,
-        ApiKeys::UPDATE_RAFT_VOTER,
+        ApiKeys::VOTE                    => [0, 2],
+        ApiKeys::BEGIN_QUORUM_EPOCH      => [0, 1],
+        ApiKeys::END_QUORUM_EPOCH        => [0, 1],
+        ApiKeys::ALTER_ISR               => [2, 3],
+        ApiKeys::ENVELOPE                => [0, 0],
+        ApiKeys::FETCH_SNAPSHOT          => [0, 1],
+        ApiKeys::BROKER_REGISTRATION     => [0, 4],
+        ApiKeys::BROKER_HEARTBEAT        => [0, 2],
+        ApiKeys::ALLOCATE_PRODUCER_IDS   => [0, 0],
+        ApiKeys::CONTROLLER_REGISTRATION => [0, 0],
+        ApiKeys::ASSIGN_REPLICAS_TO_DIRS => [0, 0],
+        ApiKeys::UPDATE_RAFT_VOTER       => [0, 0],
     ];
 
     /**
@@ -675,7 +687,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         foreach (self::REMOVED_ZOOKEEPER_KEYS as $apiKey) {
             $cases["key {$apiKey} (removed with ZooKeeper)"] = [$apiKey];
         }
-        foreach (self::CONTROLLER_LISTENER_KEYS as $apiKey) {
+        foreach (array_keys(self::CONTROLLER_LISTENER_KEYS) as $apiKey) {
             $cases["key {$apiKey} (controller)"] = [$apiKey];
         }
 
@@ -695,6 +707,77 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             "The broker did not close the connection for the api key {$apiKey}, which the client listener does "
             . 'not serve'
         );
+    }
+
+    /**
+     * Every version of every controller api @ 4.3.1, and the first version above it
+     *
+     * The versions of the specification are refused as a disabled api, the one above as an unsupported version;
+     * the frame carries the header its version prescribes (BeginQuorumEpoch and EndQuorumEpoch are flexible from
+     * v1, every other controller api from v0) and no body, because both checks run before the body is read.
+     *
+     * @return array<string, array{int, int}>
+     */
+    public static function controllerApiVersionProvider(): array
+    {
+        $cases = [];
+        foreach (self::CONTROLLER_LISTENER_KEYS as $apiKey => [, $maxVersion]) {
+            for ($version = 0; $version <= $maxVersion + 1; $version++) {
+                $what                                  = $version > $maxVersion ? 'above 4.3.1' : 'disabled';
+                $cases["key {$apiKey} v{$version} ({$what})"] = [$apiKey, $version];
+            }
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('controllerApiVersionProvider')]
+    public function testTheClientListenerRefusesEveryVersionOfAControllerApi(int $apiKey, int $apiVersion): void
+    {
+        $flexibleFrom = in_array($apiKey, [ApiKeys::BEGIN_QUORUM_EPOCH, ApiKeys::END_QUORUM_EPOCH], true) ? 1 : 0;
+        $header       = $apiVersion >= $flexibleFrom ? RawApiProbe::HEADER_V2 : RawApiProbe::HEADER_V1;
+
+        $probe  = new RawApiProbe(self::firstBootstrapServer());
+        $result = $probe->send($apiKey, $apiVersion, '', 5100 + $apiKey * 10 + $apiVersion, $header);
+        $probe->close();
+
+        self::assertSame(
+            RawApiProbe::CLOSED,
+            $result['status'],
+            "The client listener answered the controller api {$apiKey} at the version {$apiVersion}"
+        );
+        self::assertNull($result['correlationId']);
+    }
+
+    /**
+     * BrokerHeartbeat **v2** (Kafka 4.3) is refused on the client listener, with the body of its version
+     *
+     * `BrokerHeartbeatRequest.json` @ 4.3.0 added the version 2 and with it the tagged field `CordonedLogDirs`
+     * (tag 1, a nullable `[]uuid`, "List of log directories that are cordoned") that a broker reports to the
+     * controller; it is the one version Kafka 4.3 added to an api this client does not send, next to the
+     * DescribeLogDirs v5 whose answer reports the same cordoned directories to a client. The frame below is a
+     * well-formed v2 heartbeat of a broker that does not exist - the broker id 4242, the epoch -1, the metadata
+     * offset 0, `want_fence` true, `want_shut_down` false and the tag 1 with the empty compact array - and the node
+     * closes the connection before it reads a byte of it: `InvalidRequestException: Received request for disabled
+     * api with key 63 (BrokerHeartbeat) and version 2`. The heartbeat of a broker reaches the controller on 9096
+     * only; the probe never sends one there.
+     */
+    public function testBrokerHeartbeatVersionTwoOfKafka43IsAControllerApi(): void
+    {
+        $body = RawApiProbe::int32(self::UNKNOWN_BROKER_ID)
+            . RawApiProbe::int64(-1)
+            . RawApiProbe::int64(0)
+            . "\x01\x00"
+            // One tagged field: the tag 1 (CordonedLogDirs), one byte of data, the empty compact array
+            . "\x01" . "\x01" . "\x01" . RawApiProbe::compactArray(0);
+
+        $probe  = new RawApiProbe(self::firstBootstrapServer());
+        $result = $probe->send(ApiKeys::BROKER_HEARTBEAT, 2, $body, 6302, RawApiProbe::HEADER_V2);
+        $probe->close();
+
+        self::assertSame([0, 2], self::CONTROLLER_LISTENER_KEYS[ApiKeys::BROKER_HEARTBEAT], 'the 0-2 of 4.3.0');
+        self::assertSame(RawApiProbe::CLOSED, $result['status'], 'BrokerHeartbeat is a controller api');
+        self::assertNull($result['correlationId']);
     }
 
     /**
@@ -1025,10 +1108,12 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * @ 3.9.2), v1 and v2 use the common header, and **v3** - Kafka 2.4 - is flexible and uses the header v2. The
      * 2.x line verified that a ZooKeeper broker answers every one of them with the error 7 for a broker id it does
      * not know. The specification @ 3.9.2 lists the api for `["zkBroker", "controller"]`: a KRaft broker sends it
-     * to the controller listener when it shuts down and never receives it, so on 9092 all four versions end in
-     * `Received request api key CONTROLLED_SHUTDOWN with version 0 which is not enabled` and a closed connection -
-     * the v0 frame with its header v0 included, because `RequestHeader.parse` still reads it correctly and it is
-     * the listener check behind the parser that refuses it. Kafka 4.0.0 drops the specification altogether.
+     * to the controller listener when it shuts down and never receives it, so on the 9092 of a 3.9.2 node all four
+     * versions ended in `Received request api key CONTROLLED_SHUTDOWN with version 0 which is not enabled`. Kafka
+     * 4.0.0 drops the specification altogether (`"validVersions": "none"`), and the 4.3.1 node refuses all four -
+     * the v0 frame with its header v0 included, because `RequestHeader.parse` still reads it correctly - with
+     * `InvalidRequestException: Unsupported api with key 7 (ControlledShutdown) and version 0` (1, 2, 3) and a
+     * closed connection.
      *
      * @return array<string, array{int, int}>
      */
