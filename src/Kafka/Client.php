@@ -2932,7 +2932,8 @@ class Client
     public function alterPartitionReassignments(
         Node $controller,
         array $reassignments,
-        int $timeoutMs = AlterPartitionReassignmentsRequest::DEFAULT_TIMEOUT_MS
+        int $timeoutMs = AlterPartitionReassignmentsRequest::DEFAULT_TIMEOUT_MS,
+        bool $allowReplicationFactorChange = true
     ): array {
         $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
 
@@ -2942,7 +2943,8 @@ class Client
                 $reassignments,
                 $timeoutMs,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $allowReplicationFactorChange
             ),
             AlterPartitionReassignmentsResponse::class,
             static function (AlterPartitionReassignmentsResponse $response) use ($reassignments): array {
