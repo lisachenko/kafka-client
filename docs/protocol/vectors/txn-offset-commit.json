@@ -1,8 +1,8 @@
 {
     "api": "txn-offset-commit",
     "apiKey": 28,
-    "section": "TxnOffsetCommit API (key 28, v0 to v4)",
-    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v4), replayed by tests/Compliance.",
+    "section": "TxnOffsetCommit API (key 28, v0 to v5)",
+    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "txnoffsetcommit.request.v0",
@@ -294,7 +294,7 @@
         {
             "id": "txnoffsetcommit.request.v4",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV4",
             "version": 4,
             "source": "broker",
             "description": "TxnOffsetCommit request v4 (Kafka 3.8, KIP-890): the version 3 frame of KIP-447 field for field - the generation -1 and the empty member id of a producer that is not a member of the group, a null `group_instance_id`, and the offset 42 of `t4-38-vectors-0` with the leader epoch -1 and a null metadata. \"Version 4 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\" is all the version says (`TxnOffsetCommitRequest.json` @ 3.8.1). This frame goes to the **group** coordinator, not to the transaction coordinator.",
@@ -331,7 +331,7 @@
         {
             "id": "txnoffsetcommit.response.v4",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV4",
             "version": 4,
             "source": "broker",
             "description": "TxnOffsetCommit answer v4: the per-partition code 0 of the group coordinator, which wrote the offset as a transactional record that stays invisible until the COMMIT marker.",
@@ -357,7 +357,7 @@
         {
             "id": "txnoffsetcommit.request.v4.unknown-member",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV4",
             "version": 4,
             "source": "broker",
             "description": "The same version 4 with the membership of KIP-447 filled in: the generation 99 and the member id `t4-38-no-such-member` of a group that has no member at all.",
@@ -394,7 +394,7 @@
         {
             "id": "txnoffsetcommit.response.v4.unknown-member",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The refusal: **25** `UnknownMemberId` per partition, one of the three codes the version 3 added, at the version 4 unchanged - the member id is checked before the generation, so the 22 of an illegal generation needs a member the group really holds.",
@@ -420,7 +420,7 @@
         {
             "id": "txnoffsetcommit.request.v4.not-in-transaction",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV4",
             "version": 4,
             "source": "broker",
             "description": "TxnOffsetCommit request v4 of a transaction that holds a partition of `t4-38-vectors` but **not** the `__consumer_offsets` partition of `t4-38-vectors-group`, because no AddOffsetsToTxn preceded it. The group coordinator verifies that partition against the transaction coordinator before it writes the offset - the partition verification of KIP-890 part 1, `transaction.partition.verification.enable` - and this is the one client-facing frame of the wave whose refusal the version really changes.",
@@ -457,7 +457,7 @@
         {
             "id": "txnoffsetcommit.response.v4.not-in-transaction",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The **120** `TransactionAbortable` per partition, the code Kafka 3.8 declared, answered to a client because its version says it understands it: `GroupCoordinator.handleTxnCommitOffsets` @ 3.9.2 chooses `transactionSupportedOperation = if (apiVersion >= 4) genericError else defaultError`, and `AddPartitionsToTxnManager` passes the code through instead of folding it into the 48.",
@@ -537,6 +537,132 @@
                             {
                                 "partition": 0,
                                 "errorCode": 48
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v4.not-enrolled",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV4",
+            "version": 4,
+            "source": "broker",
+            "description": "TxnOffsetCommit request v4 on the 4.3.1 node, which finalizes `transaction.version` 2: the producer `t4-40-vectors-tx` has just been initialized and commits the offset 7 of `t4-40-vectors-0` for `t4-40-vectors-group` without an AddOffsetsToTxn in front of it - a transaction of the protocol v2 that sends the version of the protocol v1. The group coordinator only verifies the `__consumer_offsets` partition of the group at this version (the partition verification of KIP-890 part 1).",
+            "hex": "00000076001c000400000fa000126b61666b612d636c69656e742d74342d3430001174342d34302d766563746f72732d74781474342d34302d766563746f72732d67726f757000000000000001130000ffffffff0100020e74342d34302d766563746f727302000000000000000000000007ffffffff00000000",
+            "fields": {
+                "messageSize": 118,
+                "apiKey": 28,
+                "apiVersion": 4,
+                "correlationId": 4000,
+                "clientId": "kafka-client-t4-40",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-40-vectors-tx",
+                "groupId": "t4-40-vectors-group",
+                "producerId": 275,
+                "producerEpoch": 0,
+                "generationId": -1,
+                "memberId": "",
+                "groupInstanceId": null,
+                "topics": {
+                    "t4-40-vectors": {
+                        "topic": "t4-40-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 7,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v4.not-enrolled",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The **120** `TransactionAbortable` per partition: the verification of KIP-890 part 1 reporting a partition the transaction does not hold, on a node that has the feature exactly as on the 3.9.2 node that did not. `txnOffsetCommitRequestVersionToTransactionSupportedOperation` @ 4.0.0 maps the version 4 to `genericErrorSupported`, which verifies and does not enrol.",
+            "hex": "0000002200000fa00000000000020e74342d34302d766563746f727302000000000078000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 4000,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-40-vectors": {
+                        "topic": "t4-40-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 120
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "TxnOffsetCommit request v5 (Kafka 4.0, KIP-890 part 2): the very same commit a moment later, byte for byte the frame above but for the version field and the correlation id. \"Version 5 is the same as version 4\" (`TxnOffsetCommitRequest.json` @ 4.0.0) - and it is the switch of the protocol v2: a version above 4 is `addPartition`, the group coordinator enrols the offsets partition into the transaction itself.",
+            "hex": "00000076001c000500000fa100126b61666b612d636c69656e742d74342d3430001174342d34302d766563746f72732d74781474342d34302d766563746f72732d67726f757000000000000001130000ffffffff0100020e74342d34302d766563746f727302000000000000000000000007ffffffff00000000",
+            "fields": {
+                "messageSize": 118,
+                "apiKey": 28,
+                "apiVersion": 5,
+                "correlationId": 4001,
+                "clientId": "kafka-client-t4-40",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-40-vectors-tx",
+                "groupId": "t4-40-vectors-group",
+                "producerId": 275,
+                "producerEpoch": 0,
+                "generationId": -1,
+                "memberId": "",
+                "groupInstanceId": null,
+                "topics": {
+                    "t4-40-vectors": {
+                        "topic": "t4-40-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 7,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "TxnOffsetCommit answer v5: the code **0** for the commit the version 4 was refused the 120 for. The offsets partition is now part of the transaction, which this request has started - no AddOffsetsToTxn and no AddPartitionsToTxn went to the transaction coordinator at all.",
+            "hex": "0000002200000fa10000000000020e74342d34302d766563746f727302000000000000000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 4001,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-40-vectors": {
+                        "topic": "t4-40-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
                             }
                         ]
                     }

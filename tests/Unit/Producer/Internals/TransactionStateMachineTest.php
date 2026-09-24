@@ -239,10 +239,11 @@ final class TransactionStateMachineTest extends TestCase
         $manager = $this->manager($client);
         $manager->initTransactions();
         $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([self::TOPIC => [0 => []]]);
 
         $manager->abortTransaction();
 
-        self::assertSame([['endTxn', self::TRANSACTIONAL_ID, false]], $client->transactionCalls);
+        self::assertSame(['endTxn', self::TRANSACTIONAL_ID, false], $client->transactionCalls[1]);
         self::assertSame(TransactionState::READY, $manager->currentState());
     }
 
@@ -357,6 +358,7 @@ final class TransactionStateMachineTest extends TestCase
         ]);
         $manager->initTransactions();
         $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([self::TOPIC => [0 => []]]);
 
         try {
             $manager->commitTransaction();

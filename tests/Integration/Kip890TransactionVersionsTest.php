@@ -39,18 +39,21 @@ use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV4;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV3;
-use Protocol\Kafka\Protocol\Request\EndTxnResponse;
+use Protocol\Kafka\Protocol\Request\EndTxnRequestV4;
+use Protocol\Kafka\Protocol\Request\EndTxnResponseV4;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV4;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV3;
-use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
 
 /**
- * Measures the five version bumps of KIP-890 part 2 (Kafka 3.8) against the 3.9.2 KRaft node.
+ * Measures the five version bumps of KIP-890 part 2 (Kafka 3.8), first measured on the 3.9.2 KRaft node of the 3.x
+ * line and re-measured on the 4.3.1 node.
  *
  * `InitProducerIdRequest.json`, `AddPartitionsToTxnRequest.json`, `AddOffsetsToTxnRequest.json`,
  * `EndTxnRequest.json` and `TxnOffsetCommitRequest.json` @ 3.8.1 all declare the new version with the same
@@ -63,13 +66,17 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
  *   authorizes `if (version >= 4)` as `CLUSTER_ACTION` - so the SASL user `acltest` is refused the top-level 31
  *   there as it is at the version 4, and `Client::addPartitionsToTxn()` keeps the version 3;
  * * the **120** is reachable in the `verify_only` path of that very api and nowhere else on this node;
- * * and the node finalizes no `transaction.version` at all, so the behaviour half of KIP-890 part 2 - the epoch
- *   bump per transaction, the implicit enrolment of a partition by a Produce - cannot be reached from here.
+ * * the 3.9.2 node finalized no `transaction.version` at all, so the behaviour half of KIP-890 part 2 - the epoch
+ *   bump per transaction, the implicit enrolment of a partition by a Produce - could not be reached there. The
+ *   4.3.1 node of the 4.x line finalizes the level 2, and every measurement of this class is a transaction of the
+ *   protocol v1 on it: an AddPartitionsToTxn v3 opens it and the versions 4 of Kafka 3.8 end it
+ *   (`EndTxnRequestV4`, `TxnOffsetCommitRequestV4`), which a 4.x coordinator answers exactly as the 3.9.2 one did.
+ *   The protocol v2 of Kafka 4.0 is `TransactionProtocolV2Test`.
  *
  * Every transaction of this class is opened with the version 3 the client sends and ended in the teardown, and
  * every topic it creates is deleted again.
  *
- * @see docs/protocol/4.3.md, sections "The transaction protocol v2 of KIP-890 (Kafka 3.8), and what a client reaches on this node", "InitProducerId API (key 22, v0 to v5)", "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)", "EndTxn API (key 26, v0 to v4)" and "TxnOffsetCommit API (key 28, v0 to v4)"
+ * @see docs/protocol/4.3.md, sections "The transaction protocol v2 of KIP-890 (Kafka 3.8), and what a client reaches on this node", "InitProducerId API (key 22, v0 to v5)", "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)", "EndTxn API (key 26, v0 to v5)" and "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
 #[CoversClass(InitProducerIdRequestV4::class)]
@@ -79,10 +86,12 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
 #[CoversClass(AddOffsetsToTxnResponse::class)]
 #[CoversClass(EndTxnRequest::class)]
 #[CoversClass(EndTxnRequestV3::class)]
-#[CoversClass(EndTxnResponse::class)]
+#[CoversClass(EndTxnRequestV4::class)]
+#[CoversClass(EndTxnResponseV4::class)]
 #[CoversClass(TxnOffsetCommitRequest::class)]
 #[CoversClass(TxnOffsetCommitRequestV3::class)]
-#[CoversClass(TxnOffsetCommitResponse::class)]
+#[CoversClass(TxnOffsetCommitRequestV4::class)]
+#[CoversClass(TxnOffsetCommitResponseV4::class)]
 #[CoversClass(TxnOffsetCommitResponseV3::class)]
 #[CoversClass(AddPartitionsToTxnRequest::class)]
 #[CoversClass(AddPartitionsToTxnRequestV4::class)]
@@ -160,14 +169,16 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
     }
 
     /**
-     * The four versions the client sends are the versions this branch is at
+     * The versions of the five apis Kafka 3.8 added, two of which Kafka 4.0 raised again
      */
     public function testTheClientSendsTheVersionsKafka38Added(): void
     {
         self::assertSame(5, InitProducerIdRequest::VERSION);
         self::assertSame(4, AddOffsetsToTxnRequest::VERSION);
-        self::assertSame(4, EndTxnRequest::VERSION);
-        self::assertSame(4, TxnOffsetCommitRequest::VERSION);
+        self::assertSame(4, EndTxnRequestV4::VERSION, 'the EndTxn of the protocol v1, Client::endTxn()');
+        self::assertSame(4, TxnOffsetCommitRequestV4::VERSION, 'the TxnOffsetCommit of the protocol v1');
+        self::assertSame(5, EndTxnRequest::VERSION, 'the version 5 of Kafka 4.0, TransactionProtocolV2Test');
+        self::assertSame(5, TxnOffsetCommitRequest::VERSION, 'the version 5 of Kafka 4.0');
         self::assertSame(5, AddPartitionsToTxnRequest::VERSION, 'built, but never sent');
         self::assertSame(3, AddPartitionsToTxnRequestV3::VERSION, 'the version Client::addPartitionsToTxn() sends');
     }
@@ -315,7 +326,7 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
         );
 
         $committed = $this->exchange(
-            new TxnOffsetCommitRequest(
+            new TxnOffsetCommitRequestV4(
                 $transactionalId,
                 $group,
                 $idAndEpoch->producerId,
@@ -325,7 +336,7 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
                 self::CLIENT_ID,
                 3842
             ),
-            TxnOffsetCommitResponse::class
+            TxnOffsetCommitResponseV4::class
         );
 
         self::assertSame(
@@ -335,7 +346,7 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
         );
 
         $refused = $this->exchange(
-            new TxnOffsetCommitRequest(
+            new TxnOffsetCommitRequestV4(
                 $transactionalId,
                 $group,
                 $idAndEpoch->producerId,
@@ -345,7 +356,7 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
                 self::CLIENT_ID,
                 3843
             ),
-            TxnOffsetCommitResponse::class
+            TxnOffsetCommitResponseV4::class
         );
 
         self::assertSame(
@@ -371,10 +382,10 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
         $group = self::uniqueTopicName('t4-38-abortable') . '-group';
 
         $atVersionFour = $this->exchange(
-            new TxnOffsetCommitRequest(
+            new TxnOffsetCommitRequestV4(
                 ...$this->commitOfATransactionWithoutItsOffsetsPartition('v4', $topic, $group, 3870)
             ),
-            TxnOffsetCommitResponse::class
+            TxnOffsetCommitResponseV4::class
         );
 
         self::assertSame(
@@ -434,7 +445,7 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
         $idAndEpoch      = $this->openTransaction($transactionalId, [$topic => [0]]);
 
         $committed = $this->exchange(
-            new EndTxnRequest(
+            new EndTxnRequestV4(
                 $transactionalId,
                 $idAndEpoch->producerId,
                 $idAndEpoch->epoch,
@@ -442,14 +453,14 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
                 self::CLIENT_ID,
                 3850
             ),
-            EndTxnResponse::class
+            EndTxnResponseV4::class
         );
 
         self::assertSame(KafkaException::NO_ERROR, $committed->errorCode);
         unset($this->openTransactions[$transactionalId]);
 
         $illegal = $this->exchangeUntil(
-            fn(int $correlationId): EndTxnRequest => new EndTxnRequest(
+            fn(int $correlationId): EndTxnRequestV4 => new EndTxnRequestV4(
                 $transactionalId,
                 $idAndEpoch->producerId,
                 $idAndEpoch->epoch,
@@ -457,9 +468,9 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
                 self::CLIENT_ID,
                 $correlationId
             ),
-            EndTxnResponse::class,
+            EndTxnResponseV4::class,
             3851,
-            static fn(EndTxnResponse $answer): bool
+            static fn(EndTxnResponseV4 $answer): bool
                 => $answer->errorCode !== KafkaException::CONCURRENT_TRANSACTIONS
         );
 
@@ -526,24 +537,22 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
     }
 
     /**
-     * The node finalizes no `transaction.version`, so the behaviour half of KIP-890 part 2 is out of reach
+     * The 4.3.1 node finalizes `transaction.version` 2, which the 3.9.2 node of the 3.x line did not know at all
+     *
+     * TransactionVersion TV_1 and TV_2 both need the metadata version of Kafka 4.0 (IBP_4_0_IV0), which is why the
+     * 3.9.2 node left the feature out of its answer altogether; a 4.x node formatted with the defaults of its
+     * release finalizes the level 2 - the transaction protocol v2 of KIP-890 part 2, measured in
+     * `TransactionProtocolV2Test`. The versions of this class keep measuring the protocol v1 on that node.
      */
-    public function testTheNodeFinalizesNoTransactionVersion(): void
+    public function testTheNodeFinalizesTheTransactionVersionTwo(): void
     {
         $features = $this->admin->describeFeatures();
 
         self::assertArrayHasKey('metadata.version', $features->finalizedFeatures);
-        self::assertArrayNotHasKey(
-            'transaction.version',
-            $features->finalizedFeatures,
-            'TransactionVersion TV_1 and TV_2 both need the metadata version of Kafka 4.0 (IBP_4_0_IV0)'
-        );
-        self::assertArrayNotHasKey(
-            'transaction.version',
-            $features->supportedFeatures,
-            '`BrokerFeatures.defaultSupportedFeatures` @ 3.9.2 leaves a production feature whose latest production'
-            . ' level is 0 out of the map altogether'
-        );
+        self::assertArrayHasKey('transaction.version', $features->finalizedFeatures);
+        self::assertSame(2, $features->finalizedFeatures['transaction.version']->maxVersionLevel);
+        self::assertSame(0, $features->supportedFeatures['transaction.version']->minVersion);
+        self::assertSame(2, $features->supportedFeatures['transaction.version']->maxVersion);
     }
 
     /**

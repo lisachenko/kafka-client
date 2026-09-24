@@ -973,7 +973,11 @@ final class KafkaProducerTest extends TestCase
         $producer->abortTransaction();
 
         self::assertSame([], $client->produceCalls, 'nothing of an aborted transaction is sent');
-        self::assertSame([['endTxn', 'tx-1', false]], $client->transactionCalls);
+        self::assertSame(
+            [],
+            $client->transactionCalls,
+            'and a transaction that enrolled nothing is not ended at the coordinator, which would answer it the 48'
+        );
         self::assertInstanceOf(\RuntimeException::class, $rejected);
         self::assertStringContainsString('The transaction was aborted', $rejected->getMessage());
     }
