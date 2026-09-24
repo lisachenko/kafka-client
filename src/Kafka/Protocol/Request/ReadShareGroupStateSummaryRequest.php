@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ReadShareGroupStateRequestTopic;
 
 /**
- * ReadShareGroupStateSummary, version 0: reads the summary of the state of share partitions (ApiKey 87, Kafka 4.1, KIP-932)
+ * ReadShareGroupStateSummary, version 1: reads the summary of the state of share partitions (ApiKey 87, Kafka 4.1, KIP-932)
  *
  * <pre>
- *   ReadShareGroupStateSummary Request (Version: 0) => group_id [topics]
+ *   ReadShareGroupStateSummary Request (Version: 0 to 1) => group_id [topics]
  *     group_id => COMPACT_STRING
  *     [topics] => topic_id [partitions]
  *       partition    => INT32
@@ -38,7 +38,12 @@ use Protocol\Kafka\Protocol\Data\ReadShareGroupStateRequestTopic;
  * not a broker has no business sending it; the frames were captured for the grammar and never touch the state of a
  * share group another component owns.
  *
- * @see docs/protocol/4.3.md, section "ReadShareGroupStateSummary API (key 87, v0)"
+ * **Version 1 (Kafka 4.2, KIP-1226) is the frame of version 0**: "Version 1 introduces DeliveryCompleteCount in the
+ * response (KIP-1226)" is the comment above the `validVersions` of `ReadShareGroupStateSummaryRequest.json` @ 4.2.0.
+ * The version asks for the answer of {@see ReadShareGroupStateSummaryResponse}, whose partitions carry the count;
+ * {@see ReadShareGroupStateSummaryRequestV0} is the request of the answer without it.
+ *
+ * @see docs/protocol/4.3.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
  */
 class ReadShareGroupStateSummaryRequest extends AbstractRequest
 {
@@ -50,7 +55,7 @@ class ReadShareGroupStateSummaryRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc

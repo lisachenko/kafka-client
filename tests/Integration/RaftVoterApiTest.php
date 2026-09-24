@@ -28,12 +28,15 @@ use Protocol\Kafka\Common\Errors\VoterNotFoundException;
 use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Protocol\Data\AddRaftVoterRequestListener;
 use Protocol\Kafka\Protocol\Request\AddRaftVoterRequest;
+use Protocol\Kafka\Protocol\Request\AddRaftVoterRequestV0;
 use Protocol\Kafka\Protocol\Request\AddRaftVoterResponse;
+use Protocol\Kafka\Protocol\Request\AddRaftVoterResponseV0;
 use Protocol\Kafka\Protocol\Request\RemoveRaftVoterRequest;
 use Protocol\Kafka\Protocol\Request\RemoveRaftVoterResponse;
 
 /**
- * Exercises AddRaftVoter (key 80) and RemoveRaftVoter (key 81) v0 of KIP-853 against the 4.3.1 KRaft node.
+ * Exercises AddRaftVoter (key 80, v0 and the v1 of Kafka 4.2) and RemoveRaftVoter (key 81, v0) of KIP-853 against the
+ * 4.3.1 KRaft node.
  *
  * The node runs the **dynamic** quorum of KIP-853 - formatted `--standalone`, `kraft.version` finalized at 1 - with
  * one voter, the node 1 itself. A test of this class may therefore change nothing: it never removes the voter 1
@@ -42,11 +45,13 @@ use Protocol\Kafka\Protocol\Request\RemoveRaftVoterResponse;
  * not hold, and a new voter whose CONTROLLER endpoint is a closed port. Every test reads the quorum back and
  * demands the one voter it found.
  *
- * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0)" and "RemoveRaftVoter API (key 81, v0)"
+ * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "RemoveRaftVoter API (key 81, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(AddRaftVoterRequest::class)]
 #[CoversClass(AddRaftVoterResponse::class)]
+#[CoversClass(AddRaftVoterRequestV0::class)]
+#[CoversClass(AddRaftVoterResponseV0::class)]
 #[CoversClass(AddRaftVoterRequestListener::class)]
 #[CoversClass(RemoveRaftVoterRequest::class)]
 #[CoversClass(RemoveRaftVoterResponse::class)]
@@ -63,6 +68,16 @@ final class RaftVoterApiTest extends IntegrationTestCase
      * The message of an operation that met another one in flight, which this class waits out
      */
     private const string OPERATION_PENDING = 'Request timed out waiting for leader to handle previous voter change';
+
+    /**
+     * The end of the message of an add whose new voter id the raft client of the leader still backs off
+     *
+     * `DefaultRequestSender` @ 4.3.1 refuses to send to a replica id whose last request failed for
+     * `controller.quorum.retry.backoff.ms` (20 ms by default), and `AddVoterHandler` answers that refusal with the 7
+     * `New voter ReplicaKey(...) is not ready to receive requests`: two adds of the same unreachable voter in a row
+     * meet it. This class waits it out, like an operation in flight.
+     */
+    private const string VOTER_BACKING_OFF = 'is not ready to receive requests';
 
     private AdminClient $admin;
 
@@ -243,6 +258,68 @@ final class RaftVoterApiTest extends IntegrationTestCase
     }
 
     /**
+     * The `ack_when_committed` of AddRaftVoter v1 (Kafka 4.2) changes no refusal: the 126 and the aborted 7 alike
+     *
+     * `AddVoterHandler` @ 4.2.0 reads the flag only once the new voter answered its ApiVersions and the leader
+     * appended the new voter set - false answers right there, true once the set is committed. Every check before
+     * that is the same with either value, so the voter id the quorum has is the 126 and an unreachable voter the
+     * aborted operation, and nothing is added (`tearDown`).
+     */
+    public function testTheAcknowledgementModeOfVersionOneChangesNoRefusal(): void
+    {
+        foreach ([true, false] as $ackWhenCommitted) {
+            $duplicate = $this->refusal(fn() => $this->admin->addRaftVoter(
+                1,
+                $this->voterDirectoryId,
+                $this->closedEndpoint(),
+                null,
+                30000,
+                $ackWhenCommitted
+            ));
+
+            self::assertInstanceOf(DuplicateVoterException::class, $duplicate);
+
+            $unreachable = $this->refusal(fn() => $this->admin->addRaftVoter(
+                self::ABSENT_VOTER_ID,
+                random_bytes(Uuid::SIZE),
+                $this->closedEndpoint(),
+                null,
+                30000,
+                $ackWhenCommitted
+            ));
+
+            self::assertInstanceOf(RequestTimedOutException::class, $unreachable);
+            self::assertSame(
+                'Aborted add voter operation for since API_VERSIONS returned an error BROKER_NOT_AVAILABLE',
+                $unreachable->getContext()['error']
+            );
+        }
+    }
+
+    /**
+     * The keep-behind v0 frame is still served: the node answers it the 126 in the frame of v1
+     */
+    public function testTheVersionZeroFrameIsStillAnswered(): void
+    {
+        $stream = $this->connect();
+        new AddRaftVoterRequestV0(
+            null,
+            30000,
+            1,
+            $this->voterDirectoryId,
+            [new AddRaftVoterRequestListener('CONTROLLER', '127.0.0.1', 1)],
+            self::CLIENT_ID,
+            4220
+        )->writeTo($stream);
+        $answer = AddRaftVoterResponseV0::unpack($stream);
+
+        self::assertSame(4220, $answer->getCorrelationId());
+        self::assertSame(KafkaException::DUPLICATE_VOTER, $answer->errorCode);
+        self::assertStringEndsWith('is already part of the set of voters [ReplicaKey(id=1, directoryId='
+            . Uuid::toString($this->voterDirectoryId) . ')].', (string) $answer->errorMessage);
+    }
+
+    /**
      * A directory id is 16 bytes, and the admin api refuses anything else before it sends a frame
      */
     public function testADirectoryIdThatIsNotAUuidIsRefusedBeforeTheRequest(): void
@@ -256,7 +333,8 @@ final class RaftVoterApiTest extends IntegrationTestCase
      * Runs a call the controller has to refuse, and returns the exception it was refused with
      *
      * A refusal of "another voter change is in flight" is waited out: the add of an unreachable voter keeps the
-     * one operation slot of the leader for the few milliseconds its ApiVersions takes to fail.
+     * one operation slot of the leader for the few milliseconds its ApiVersions takes to fail. So is the backoff of
+     * a voter id whose last ApiVersions failed ({@see self::VOTER_BACKING_OFF}).
      */
     private function refusal(Closure $call): KafkaException
     {
@@ -264,8 +342,9 @@ final class RaftVoterApiTest extends IntegrationTestCase
             try {
                 $call();
             } catch (KafkaException $exception) {
+                $message = (string) ($exception->getContext()['error'] ?? '');
                 $pending = $exception instanceof RequestTimedOutException
-                    && str_starts_with((string) ($exception->getContext()['error'] ?? ''), self::OPERATION_PENDING);
+                    && (str_starts_with($message, self::OPERATION_PENDING) || str_ends_with($message, self::VOTER_BACKING_OFF));
                 if (!$pending || $attempt >= 20) {
                     return $exception;
                 }
