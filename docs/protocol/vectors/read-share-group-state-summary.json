@@ -1,0 +1,116 @@
+{
+    "api": "read-share-group-state-summary",
+    "apiKey": 87,
+    "section": "ReadShareGroupStateSummary API (key 87, v0)",
+    "description": "Wire vectors of the ReadShareGroupStateSummary API (key 87, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "readsharegroupstatesummary.request.v0.uninitialized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ReadShareGroupStateSummary **v0** (key 87): the frame of the ReadShareGroupState above with the key 87 in the header.",
+            "hex": "00000054005700000000126200126b61666b612d636c69656e742d74312d3431001a74312d34312d6e6f2d737563682d73686172652d67726f7570021d5d10c01ac6490d8b5b1faa8c75c66c0200000000ffffffff000000",
+            "fields": {
+                "messageSize": 84,
+                "apiKey": 87,
+                "apiVersion": 0,
+                "correlationId": 4706,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "groupId": "t1-41-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstatesummary.response.v0.uninitialized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Not an error: the summary of a partition the share coordinator has never seen is its initial state - the code 0, the state epoch 0, the leader epoch 0 and the start offset **-1** (`PartitionFactory.UNINITIALIZED_START_OFFSET` in `ShareCoordinatorShard.readStateSummary` @ 4.3.1), where the full read is the 42.",
+            "hex": "000000310000126200021d5d10c01ac6490d8b5b1faa8c75c66c02000000000000000000000000000000ffffffffffffffff000000",
+            "fields": {
+                "messageSize": 49,
+                "correlationId": 4706,
+                "headerTaggedFields": [],
+                "results": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "stateEpoch": 0,
+                                "leaderEpoch": 0,
+                                "startOffset": -1
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstatesummary.request.v0.empty-group-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same summary with the **empty** group id.",
+            "hex": "0000003b005700000000126300126b61666b612d636c69656e742d74312d34310001021d5d10c01ac6490d8b5b1faa8c75c66c0200000000ffffffff000000",
+            "fields": {
+                "messageSize": 59,
+                "apiKey": 87,
+                "apiVersion": 0,
+                "correlationId": 4707,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "groupId": "",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstatesummary.response.v0.empty-group-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The empty result array: `ShareCoordinatorService` @ 4.3.1 answers a request without a group id with nothing at all rather than with an error.",
+            "hex": "0000000700001263000100",
+            "fields": {
+                "messageSize": 7,
+                "correlationId": 4707,
+                "headerTaggedFields": [],
+                "results": []
+            }
+        }
+    ]
+}

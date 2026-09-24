@@ -1,6 +1,6 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 4.x line has captured **108** vectors of its own so far, on the `kafka-4-3-1` node — the 44 frames of the admin
+The 4.x line has captured **140** vectors of its own so far, on the `kafka-4-3-1` node — the 44 frames of the admin
 half of Kafka 4.0: the 20 of UpdateFeatures v2 and of the version 1 a 4.x controller answers in `update-features.json`,
 the 6 of DescribeCluster v2 (KIP-1073) in `describe-cluster.json`, the 2 of DescribeQuorum v2 re-measured on the
 dynamic quorum in `describe-quorum.json`, and the 16 of the two raft-voter apis of KIP-853 in the two new files
@@ -12,7 +12,12 @@ the 14 frames of the transaction protocol v2 of Kafka 4.0 (KIP-890 part 2) in `t
 `end-txn.json`. And the 14 frames of the record half of Kafka 4.0: the 6 of Produce v12 in `produce.json` (a plain
 batch, the transactional batch of the transaction protocol v2 of KIP-890 part 2 whose partition the broker adds itself,
 and the version 11 pair of the same question refused with the 120), the 4 of Metadata v13 in `metadata.json` (the
-top-level error code of KIP-1102) and the 4 of ListOffsets v10 in `offsets.json` (the `timeout_ms` of KIP-1075).
+top-level error code of KIP-1102) and the 4 of ListOffsets v10 in `offsets.json` (the `timeout_ms` of KIP-1075). And the 32 frames of the admin half of
+Kafka 4.1: the 10 of ListTransactions v2 (the `transactional_id_pattern` of KIP-1152 and its 128) in
+`list-transactions.json`, the 8 of the key 74 at version 1 (ListConfigResources, KIP-1142) in
+`list-client-metrics-resources.json`, and the 14 of the five share-group state apis 83 to 87 of KIP-932, wire only,
+in the five new files `initialize-share-group-state.json`, `read-share-group-state.json`,
+`write-share-group-state.json`, `delete-share-group-state.json` and `read-share-group-state-summary.json`.
 And the 8 frames of the record half of Kafka 4.1: the 4 of Produce v13 in `produce.json` (the topic named by id of
 KIP-516, and the 100 of an id the node does not have) and the 4 of Fetch v18 in `fetch.json` (a consumer's frame and
 a follower's with the tagged high watermark of KIP-1166).
@@ -89,7 +94,7 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1243** of them in **62** files: **14** are the transaction protocol v2 of Kafka 4.0 (KIP-890 part
+hex dumps. There are **1275** of them in **67** files: **14** are the transaction protocol v2 of Kafka 4.0 (KIP-890 part
 2), captured on the `kafka-4-3-1` node of the 4.x line: the TxnOffsetCommit v4 and v5 pairs of one commit, the 120 and
 the 0, in `txn-offset-commit.json` and five EndTxn v5 pairs in `end-txn.json` - **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis

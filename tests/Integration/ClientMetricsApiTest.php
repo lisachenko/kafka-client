@@ -20,8 +20,8 @@ use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Protocol\Data\ClientMetricsResource;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsRequest;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsResponse;
-use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequest;
-use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponse;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequestV0;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponseV0;
 use Protocol\Kafka\Protocol\Request\PushTelemetryRequest;
 use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
 
@@ -50,8 +50,8 @@ use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
 #[CoversClass(GetTelemetrySubscriptionsResponse::class)]
 #[CoversClass(PushTelemetryRequest::class)]
 #[CoversClass(PushTelemetryResponse::class)]
-#[CoversClass(ListClientMetricsResourcesRequest::class)]
-#[CoversClass(ListClientMetricsResourcesResponse::class)]
+#[CoversClass(ListClientMetricsResourcesRequestV0::class)]
+#[CoversClass(ListClientMetricsResourcesResponseV0::class)]
 #[CoversClass(ClientMetricsResource::class)]
 final class ClientMetricsApiTest extends IntegrationTestCase
 {
@@ -273,8 +273,8 @@ final class ClientMetricsApiTest extends IntegrationTestCase
     public function testTheResourceListIsAnsweredAndHoldsNothingOfThisClass(): void
     {
         $stream = $this->connect();
-        new ListClientMetricsResourcesRequest(self::CLIENT_ID, 7118)->writeTo($stream);
-        $answer = ListClientMetricsResourcesResponse::unpack($stream);
+        new ListClientMetricsResourcesRequestV0(self::CLIENT_ID, 7118)->writeTo($stream);
+        $answer = ListClientMetricsResourcesResponseV0::unpack($stream);
 
         self::assertSame(KafkaException::NO_ERROR, $answer->errorCode);
 
