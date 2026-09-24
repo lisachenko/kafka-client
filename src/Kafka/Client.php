@@ -75,6 +75,8 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseCurrentLeader;
 use Protocol\Kafka\Protocol\Data\ProduceResponseNodeEndpoint;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponseRecordError;
+use Protocol\Kafka\Protocol\Data\ShareAcknowledgementBatch;
+use Protocol\Kafka\Protocol\Data\ShareFetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
@@ -154,6 +156,12 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV6;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV7;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV8;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
+use Protocol\Kafka\Protocol\Request\ShareAcknowledgeRequest;
+use Protocol\Kafka\Protocol\Request\ShareAcknowledgeResponse;
+use Protocol\Kafka\Protocol\Request\ShareFetchRequest;
+use Protocol\Kafka\Protocol\Request\ShareFetchResponse;
+use Protocol\Kafka\Protocol\Request\ShareGroupHeartbeatRequest;
+use Protocol\Kafka\Protocol\Request\ShareGroupHeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
@@ -3965,5 +3973,303 @@ class Client
                     : ProducerIdAndEpoch::none();
             }
         );
+    }
+
+    /**
+     * Joins - or re-joins - a share group (ApiKey 76, Kafka 4.1, KIP-932)
+     *
+     * The first heartbeat of a share member is its join, as in the KIP-848 protocol it is modelled on: the member
+     * epoch 0, a member id the client generated itself and the whole subscription. There is no rebalance timeout,
+     * no instance id, no assignor and no owned partitions in this api - a share member does not *own* partitions, it
+     * only reads from them next to the others, and the coordinator bumps its epoch without a reconciliation. The
+     * answer of the join names the epoch the member got and the heartbeat interval, and usually an **empty**
+     * assignment: the partitions follow on a later heartbeat, once the coordinator has initialised their share state.
+     *
+     * The 4.3.1 node refuses an empty member id with 42 and no message, and a join without topics with the 42
+     * "SubscribedTopicNames must be set in first request.".
+     *
+     * @param Node         $coordinatorNode Coordinator of the group
+     * @param string       $groupId         Name of the share group
+     * @param string       $memberId        Member id of this member, the uuid it generated for itself
+     * @param list<string> $topics          Subscription of the member, which a join has to carry
+     * @param string|null  $rackId          `client.rack` of the member, null for none
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     * @throws Common\Errors\GroupMaxSizeReachedException If the group is full (`group.share.max.size`)
+     * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a join
+     *
+     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     */
+    public function joinShareGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        array $topics,
+        ?string $rackId = null
+    ): ShareGroupHeartbeatResponse {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        return $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => ShareGroupHeartbeatRequest::forJoin(
+                $groupId,
+                $memberId,
+                $topics,
+                $rackId,
+                $clientId,
+                $correlationId
+            ),
+            ShareGroupHeartbeatResponse::class,
+            static fn(ShareGroupHeartbeatResponse $response): ShareGroupHeartbeatResponse
+                => self::checkedShareAnswer($response, ['groupId' => $groupId, 'memberId' => $memberId])
+        );
+    }
+
+    /**
+     * Keeps a member of a share group alive (ApiKey 76, Kafka 4.1, KIP-932)
+     *
+     * The steady state of a share member is the group id, its member id, its epoch and two nulls; a new
+     * subscription goes in `$topics`. The answer carries the assignment only when it changed, null otherwise.
+     *
+     * @param Node              $coordinatorNode Coordinator of the group
+     * @param string            $groupId         Name of the share group
+     * @param string            $memberId        Member id of this member
+     * @param int               $memberEpoch     Epoch of the last answer of the coordinator
+     * @param list<string>|null $topics          New subscription, null when it did not change
+     *
+     * @throws Common\Errors\FencedMemberEpochException If the epoch is neither the current nor the previous (110)
+     * @throws Common\Errors\UnknownMemberIdException If the group does not know this member (25)
+     * @throws Common\Errors\GroupIdNotFoundException If there is no share group of that name (69)
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     *
+     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     */
+    public function shareGroupHeartbeat(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $memberEpoch,
+        ?array $topics = null
+    ): ShareGroupHeartbeatResponse {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        return $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => ShareGroupHeartbeatRequest::forHeartbeat(
+                $groupId,
+                $memberId,
+                $memberEpoch,
+                $topics,
+                $clientId,
+                $correlationId
+            ),
+            ShareGroupHeartbeatResponse::class,
+            static fn(ShareGroupHeartbeatResponse $response): ShareGroupHeartbeatResponse => self::checkedShareAnswer(
+                $response,
+                ['groupId' => $groupId, 'memberId' => $memberId, 'memberEpoch' => $memberEpoch]
+            )
+        );
+    }
+
+    /**
+     * Takes a member out of its share group again (ApiKey 76, Kafka 4.1, KIP-932)
+     *
+     * The leave is the heartbeat of the epoch **-1**; there is no static membership in share groups and so no -2.
+     * The answer echoes the epoch -1 and the heartbeat interval 0. The leave goes to the coordinator, the share
+     * sessions of the member live on the leaders of its partitions: a member that leaves in order closes them first
+     * ({@see self::shareAcknowledge()} with the epoch -1), which releases the records it still holds there.
+     *
+     * @param Node   $coordinatorNode Coordinator of the group
+     * @param string $groupId         Name of the share group
+     * @param string $memberId        Member id of the member that leaves
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     *
+     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     */
+    public function leaveShareGroup(Node $coordinatorNode, string $groupId, string $memberId): ShareGroupHeartbeatResponse
+    {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        return $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => ShareGroupHeartbeatRequest::forLeave(
+                $groupId,
+                $memberId,
+                $clientId,
+                $correlationId
+            ),
+            ShareGroupHeartbeatResponse::class,
+            static fn(ShareGroupHeartbeatResponse $response): ShareGroupHeartbeatResponse
+                => self::checkedShareAnswer($response, ['groupId' => $groupId, 'memberId' => $memberId])
+        );
+    }
+
+    /**
+     * Acquires records of a share group from the leader of their partitions, and acknowledges delivered ones
+     * (ApiKey 78, Kafka 4.1, KIP-932)
+     *
+     * A ShareFetch works in a **share session** of the member on that leader, keyed by the group, the member and
+     * the connection: the epoch 0 opens it - and may carry no acknowledgement, the 42 of the node -, every later
+     * request carries the next epoch (1, 2, ...) and names only what changed, and the epoch -1 closes it. The session
+     * lives on the connection: a connection the leader sees closed takes the session with it, so a caller that lost
+     * the connection opens a new session with the epoch 0.
+     *
+     * The records of the answer are *acquired* for this member for `acquisitionLockTimeoutMs`
+     * (`share.record.lock.duration.ms`); `acquiredRecords` names the ranges and the delivery count of each. They are
+     * acknowledged with the next ShareFetch (`$acknowledgements`) or with {@see self::shareAcknowledge()}. Errors of a
+     * partition stay in the answer - `errorCode` for the fetch, `acknowledgeErrorCode` for the acknowledgements,
+     * among them 121 `InvalidRecordState` for an offset this member does not hold -, and only the top-level error
+     * code of the request is thrown.
+     *
+     * @param Node                                                       $leaderNode        Leader of the partitions
+     * @param string                                                     $groupId           Name of the share group
+     * @param string                                                     $memberId          Member id of this member
+     * @param int                                                        $shareSessionEpoch 0, the next epoch, or -1
+     * @param array<string, list<int>>                                   $partitions        Partitions to fetch, as
+     *        the raw 16 bytes of the topic id => its partitions
+     * @param array<string, array<int, list<ShareAcknowledgementBatch>>> $acknowledgements  Raw topic id =>
+     *        partition => the acknowledgement batches of that partition
+     * @param int                                                        $maxWaitMs         Longest wait for records
+     * @param int                                                        $minBytes          Bytes to wait for
+     * @param int                                                        $maxRecords        Records to acquire at most
+     * @param int                                                        $batchSize         Optimal size of a batch
+     * @param array<string, list<int>>                                   $forgottenPartitions Partitions that leave
+     *        the session, as the raw topic id => its partitions
+     *
+     * @throws Common\Errors\InvalidShareSessionEpochException If the epoch is not the next of the session (123)
+     * @throws Common\Errors\ShareSessionNotFoundException If the leader has no session of this member (122)
+     * @throws Common\Errors\ShareSessionLimitReachedException If the leader holds its most sessions already (133)
+     * @throws Common\Errors\InvalidRequestException If the frame breaks a rule of the api (42)
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     *
+     * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+     */
+    public function shareFetch(
+        Node $leaderNode,
+        string $groupId,
+        string $memberId,
+        int $shareSessionEpoch,
+        array $partitions,
+        array $acknowledgements = [],
+        int $maxWaitMs = 500,
+        int $minBytes = 1,
+        int $maxRecords = ShareFetchRequest::DEFAULT_MAX_RECORDS,
+        int $batchSize = ShareFetchRequest::DEFAULT_MAX_RECORDS,
+        array $forgottenPartitions = []
+    ): ShareFetchResponse {
+        $clientId  = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+        $topics    = ShareFetchRequest::topicsOf($partitions, $acknowledgements);
+        $forgotten = [];
+        foreach ($forgottenPartitions as $topicId => $partitionIds) {
+            $forgotten[] = new ShareFetchRequestForgottenTopic((string) $topicId, array_values($partitionIds));
+        }
+
+        return $this->coordinatorRequest(
+            $leaderNode,
+            fn(int $correlationId): AbstractRequest => new ShareFetchRequest(
+                $groupId,
+                $memberId,
+                $shareSessionEpoch,
+                $topics,
+                $maxWaitMs,
+                $minBytes,
+                ShareFetchRequest::DEFAULT_MAX_BYTES,
+                $maxRecords,
+                $batchSize,
+                $forgotten,
+                $clientId,
+                $correlationId
+            ),
+            ShareFetchResponse::class,
+            static fn(ShareFetchResponse $response): ShareFetchResponse => self::checkedShareAnswer(
+                $response,
+                ['groupId' => $groupId, 'memberId' => $memberId, 'shareSessionEpoch' => $shareSessionEpoch]
+            )
+        );
+    }
+
+    /**
+     * Acknowledges records of a share group without fetching more of them (ApiKey 79, Kafka 4.1, KIP-932)
+     *
+     * The request of a member that has nothing more to fetch - and the one that **closes** its share session on
+     * that leader: the epoch -1 releases what the member still holds there and ends the session. It needs an open
+     * session (the epoch 0 is refused with 123), so a member acknowledges within the session its ShareFetch
+     * opened, with that session's next epoch. Errors of a partition, 121 `InvalidRecordState` for an offset this
+     * member does not hold among them, stay in the answer; the top-level error code is thrown.
+     *
+     * @param Node                                                       $leaderNode        Leader of the partitions
+     * @param string                                                     $groupId           Name of the share group
+     * @param string                                                     $memberId          Member id of this member
+     * @param int                                                        $shareSessionEpoch The next epoch, or -1
+     * @param array<string, array<int, list<ShareAcknowledgementBatch>>> $acknowledgements  Raw topic id =>
+     *        partition => the acknowledgement batches of that partition
+     *
+     * @throws Common\Errors\InvalidShareSessionEpochException If the epoch is not the next of the session (123)
+     * @throws Common\Errors\ShareSessionNotFoundException If the leader has no session of this member (122)
+     * @throws Common\Errors\InvalidRequestException If the frame breaks a rule of the api (42)
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     *
+     * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+     */
+    public function shareAcknowledge(
+        Node $leaderNode,
+        string $groupId,
+        string $memberId,
+        int $shareSessionEpoch,
+        array $acknowledgements = []
+    ): ShareAcknowledgeResponse {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+        $topics   = ShareAcknowledgeRequest::topicsOf($acknowledgements);
+
+        return $this->coordinatorRequest(
+            $leaderNode,
+            fn(int $correlationId): AbstractRequest => new ShareAcknowledgeRequest(
+                $groupId,
+                $memberId,
+                $shareSessionEpoch,
+                $topics,
+                $clientId,
+                $correlationId
+            ),
+            ShareAcknowledgeResponse::class,
+            static fn(ShareAcknowledgeResponse $response): ShareAcknowledgeResponse => self::checkedShareAnswer(
+                $response,
+                ['groupId' => $groupId, 'memberId' => $memberId, 'shareSessionEpoch' => $shareSessionEpoch]
+            )
+        );
+    }
+
+    /**
+     * Turns the top-level error code of a share-group answer into the exception of this client
+     *
+     * The four apis of KIP-932 carry an `error_message` next to their top-level error code, which travels into the
+     * context of the exception as `error` when the node filled it in.
+     *
+     * @template T of ShareGroupHeartbeatResponse|ShareFetchResponse|ShareAcknowledgeResponse
+     *
+     * @param T                    $response Answer of the node
+     * @param array<string, mixed> $context  What names the request in the exception
+     *
+     * @return T
+     */
+    private static function checkedShareAnswer(
+        ShareGroupHeartbeatResponse|ShareFetchResponse|ShareAcknowledgeResponse $response,
+        array $context
+    ): ShareGroupHeartbeatResponse|ShareFetchResponse|ShareAcknowledgeResponse {
+        if ($response->errorCode === KafkaException::NO_ERROR) {
+            return $response;
+        }
+        if ($response->errorMessage !== null) {
+            $context['error'] = $response->errorMessage;
+        }
+
+        throw KafkaException::fromCode($response->errorCode, $context);
     }
 }
