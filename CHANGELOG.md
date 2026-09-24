@@ -5,7 +5,7 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
 own: `main` is the **4.x line**, built towards the **Kafka 4.x wire protocol** one Kafka minor at a time on top
-of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client speaks **Kafka 4.0**
+of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client speaks **Kafka 4.1**
 (the milestone of the line reached so far) and the KIP-848 consumer protocol. The lines
 below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
@@ -16,8 +16,8 @@ Unreleased — the 4.x line (towards Kafka 4.3.1)
 
 The 4.x line, built on `main` on top of the finished 3.x line (branched off as `3.x`), on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213)). The plan
-of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **Kafka 4.0**. Three milestones
-follow, one per Kafka minor (4.1, 4.2, 4.3), and the KIP-932 share consumer as the last wave.
+of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **Kafka 4.1**. Two milestones
+follow, one per Kafka minor (4.2, 4.3), and the KIP-932 share consumer as the last wave.
 
 ### Added
 
@@ -65,6 +65,50 @@ brought every one of them to what the node answers (see "Kafka 4.0 — Changed" 
   [docs/handoff/3.x.md](docs/handoff/3.x.md) and the plan of the 4.x line took its place as
   `docs/handoff/main.md`; the tables of tag points and milestone commits left the handoff records — the tags of
   the repository are the record.
+
+### Kafka 4.1 — Added
+
+Milestone `chore(4.x): Kafka 4.1 complete`, PRs #224 (T1), #225 (T2), #226 (T4) and #227 (T3).
+
+- **Produce v13** (KIP-516 on the produce path): every topic named by its **topic id**, resolved through
+  `Cluster::topicIdsOf()` and answered by id; the **100** `UnknownTopicId` of a stale id is retried by
+  `Network\RetryPolicy`, and `produce()` reloads the metadata on it even without retries left. A transaction of the
+  protocol v1 stays capped at `ProduceRequestV11`; `ProduceRequestV12`/`ProduceResponseV12` keep the v12 frame.
+- **Fetch v18** (KIP-1166): the tagged `high_watermark` of a follower (tag 1 of every partition entry,
+  `FetchRequestTopicPartition::$highWatermark`, default `Long.MAX_VALUE` and left off the wire by a consumer, whose
+  frame is the v17 frame); `FetchRequestV17`/`FetchResponseV17` keep the version below.
+- **AlterPartitionReassignments v1**: `allow_replication_factor_change`, the trailing
+  `$allowReplicationFactorChange` of `Client::alterPartitionReassignments()` and
+  `AdminClient::alterPartitionReassignments()`; `AlterPartitionReassignmentsRequestV0`/`ResponseV0` keep the version
+  below.
+- **ListTransactions v2** (KIP-1152): the `$transactionalIdPattern` of `AdminClient::listTransactions()`, a RE2/J
+  match of the whole id, and the **128** `InvalidRegularExpressionException` of a pattern the node cannot compile;
+  `ListTransactionsRequestV1`/`ResponseV1` keep the version below.
+- **`AdminClient::listConfigResources()`** over ListConfigResources (key 74) **v1** (KIP-1142: the
+  ListClientMetricsResources of 3.7 became a typed list of config resources — topics, brokers, broker loggers,
+  client-metrics subscriptions and groups); the 35 of a type the node does not list;
+  `ListClientMetricsResourcesRequestV0`/`ResponseV0` keep the version below.
+- **The share-group wire of KIP-932 at v1** (keys 76–79): `Client::joinShareGroup()`, `shareGroupHeartbeat()`,
+  `leaveShareGroup()`, `shareFetch()` (the share session of a connection and the acquired records with their delivery
+  count) and `shareAcknowledge()` (the close of the share session with the epoch -1, which releases what it still
+  holds), and `AdminClient::describeShareGroups()` / `describeShareGroup()` over ShareGroupDescribe v1; the codes 121
+  to 123 observed on the node, 124 and 133 documented.
+- **The share-group state apis 83–87 at v0, wire only** (the share coordinator's own apis): classes and vectors, no
+  client method; the 42 of a partition never initialized (84), its initial state (87), the 31 of the SASL user
+  `acltest`.
+- **The share-group offset apis 90–92 at v0** (DescribeShareGroupOffsets, AlterShareGroupOffsets,
+  DeleteShareGroupOffsets): the wire classes; their admin methods come with the share consumer. An AlterShareGroupOffsets
+  creates the share group, the 69 of a classic group, the 68 of a group with members.
+- **Wire vectors** captured on the `kafka-4-3-1` node: **102** more (**202** on the 4.x line, **1337** in **74**
+  files).
+
+### Kafka 4.1 — Changed
+
+- **`Network\RetryPolicy` retries the 100 `UnknownTopicId`** (Produce v13 and a Fetch from v13).
+- `VectorFile::names()` sorts the vector files by their basename.
+- The integration suite waits for a serving leader of a fresh topic (`TopicMetadataProbe`) where a first request
+  raced the 6 `NotLeaderForPartition`, and writes a group configuration before it lists one
+  (`ConfigResourcesApiTest`).
 
 ### Kafka 4.0 — Added
 
