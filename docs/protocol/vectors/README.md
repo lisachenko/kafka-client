@@ -1,7 +1,9 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 4.x line has captured **220** vectors of its own so far, on the `kafka-4-3-1` node — the 18 frames of the
-raft-voter and share-state half of Kafka 4.2: the 10 of AddRaftVoter v1 (`ack_when_committed`) in
+The 4.x line has captured **230** vectors of its own so far, on the `kafka-4-3-1` node — the 10 frames of the
+admin and transaction half of Kafka 4.2: the 4 of DescribeShareGroupOffsets v1 (the lag of KIP-1226) in
+`describe-share-group-offsets.json` and the 6 of WriteTxnMarkers v2 (KIP-1228) in `write-txn-markers.json`. And the 18
+frames of the raft-voter and share-state half of Kafka 4.2: the 10 of AddRaftVoter v1 (`ack_when_committed`) in
 `add-raft-voter.json`, and the 4 each of WriteShareGroupState v1 and ReadShareGroupStateSummary v1 (the
 `DeliveryCompleteCount` of KIP-1226) in `write-share-group-state.json` and `read-share-group-state-summary.json`. And
 the 40 frames of the
@@ -104,8 +106,11 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1355** of them in **74** files: **18** are the raft-voter and share-state apis of Kafka 4.2,
-captured on the `kafka-4-3-1` node - **40** are the share-group apis of Kafka 4.1 (KIP-932), captured on the
+hex dumps. There are **1365** of them in **74** files: **18** are the raft-voter and share-state apis of Kafka 4.2,
+captured on the `kafka-4-3-1` node - **10** are the two versions Kafka 4.2 added to the admin and transaction apis,
+captured on the same node - the DescribeShareGroupOffsets v1 pairs of the share-partition lag of KIP-1226 in
+`describe-share-group-offsets.json`, measured with real share traffic, and the three WriteTxnMarkers v2 pairs of the
+transaction version of KIP-1228 in `write-txn-markers.json` - **40** are the share-group apis of Kafka 4.1 (KIP-932), captured on the
 `kafka-4-3-1` node in four new files - **22** are the admin apis of Kafka 4.1 on the `kafka-4-3-1` node (the
 AlterPartitionReassignments v1 pairs of `allow_replication_factor_change` and the share-group offset apis 90 to 92 of
 KIP-932 in three new files), **14** are the transaction protocol v2 of Kafka 4.0 (KIP-890 part
