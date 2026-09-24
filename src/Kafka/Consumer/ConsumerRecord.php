@@ -35,6 +35,11 @@ use Protocol\Kafka\Common\Record\TimestampType;
  * The `$headers` (KIP-82) come from the message format v2 alone. A broker converts its log down to the message
  * format v1 for every Fetch request below version 4 and has nowhere to put them there, so a consumer that talks to
  * a 0.11 broker sees them and one that reads an older log, or reads with an older api version, gets an empty list.
+ *
+ * The `$deliveryCount` (KIP-932) is the one field a record of a **share group** adds: how many times the record has
+ * been delivered to a member of the group, this delivery included - the `delivery_count` of the acquired range of a
+ * ShareFetch answer, `ConsumerRecord.deliveryCount()` of the Java client @ 4.3.1. It is null for every record of
+ * {@see KafkaConsumer}, which reads without a share group.
  */
 class ConsumerRecord extends Record
 {
@@ -50,6 +55,7 @@ class ConsumerRecord extends Record
      * @param int|null    $timestamp         Timestamp of the record, null for a record of message format v0
      * @param int         $timestampType     One of the {@see TimestampType} constants
      * @param list<Header> $headers          Headers of the record, only ever filled in the message format v2
+     * @param int|null    $deliveryCount     Delivery count of a record of a share group, null otherwise (KIP-932)
      */
     public function __construct(
         public readonly string $topic,
@@ -63,19 +69,23 @@ class ConsumerRecord extends Record
         ?int $timestamp = null,
         int $timestampType = TimestampType::NO_TIMESTAMP_TYPE,
         array $headers = [],
+        public readonly ?int $deliveryCount = null,
     ) {
         parent::__construct($value, $key, $attributes, $offset, $timestamp, $timestampType, $headers);
     }
 
     /**
      * Builds a consumer record from the record that the fetch returned and the deserialized key and value
+     *
+     * @param int|null $deliveryCount Delivery count of a record of a share group, null otherwise (KIP-932)
      */
     public static function fromRecord(
         Record $record,
         string $topic,
         int $partition,
         mixed $deserializedKey,
-        mixed $deserializedValue
+        mixed $deserializedValue,
+        ?int $deliveryCount = null
     ): self {
         return new self(
             $topic,
@@ -88,7 +98,8 @@ class ConsumerRecord extends Record
             $deserializedValue,
             $record->timestamp,
             $record->timestampType,
-            $record->headers
+            $record->headers,
+            $deliveryCount
         );
     }
 }
