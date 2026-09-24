@@ -14,15 +14,18 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroup;
 use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroupV8;
+use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroupV9;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * OffsetFetch, version 9: the offsets that consumer groups committed, read from `__consumer_offsets`
+ * OffsetFetch, version 10: the offsets that consumer groups committed, read from `__consumer_offsets`
  *
  * This API reads back the offsets that were committed for a consumer group with the OffsetCommit API, so it has to
  * be sent to the coordinator of that group.
@@ -42,6 +45,10 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  *
  *   OffsetFetch Request (Version: 9)      => [groups] require_stable
  *     groups         => group_id member_id member_epoch [topics]   -- the two member fields since version 9
+ *
+ *   OffsetFetch Request (Version: 10)     => [groups] require_stable
+ *     groups         => group_id member_id member_epoch [topics]
+ *       topics => topic_id [partitions]    -- the topic id of KIP-848 in place of the name
  * </pre>
  *
  * Version 2 (KIP-88, Kafka 0.10.2) made the topic array **nullable**, and that is the only change of the request:
@@ -90,11 +97,21 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * `OffsetFetchRequest.json` @ 3.7.2 - *"Version 9 is the first version that can be used with the new consumer
  * group protocol (KIP-848). It adds the MemberId and MemberEpoch fields. Those are filled in and validated when
  * the new consumer protocol is used."* - puts a nullable `MemberId` (default `null`) and a `MemberEpoch` (int32,
- * default `-1`) behind the group id of every {@see OffsetFetchRequestGroup}, before its topic array. This client
- * sends the version 9 for every fetch and leaves the two fields at their defaults, which is what a classic member
- * and every administrative reader do; {@see self::forMember()} fills them for a member of a KIP-848 group, which
- * is answered the 25 `UnknownMemberId` or the 113 `StaleMemberEpoch` when they do not match the coordinator.
- * {@see OffsetFetchRequestV8} is the same batch without the two fields.
+ * default `-1`) behind the group id of every {@see OffsetFetchRequestGroup}, before its topic array. A classic
+ * member and every administrative reader leave the two fields at their defaults; {@see self::forMember()} fills
+ * them for a member of a KIP-848 group, which is answered the 25 `UnknownMemberId` or the 113 `StaleMemberEpoch`
+ * when they do not match the coordinator. {@see OffsetFetchRequestV8} is the same batch without the two fields.
+ *
+ * **Version 10 (Kafka 4.2, KIP-848) names every topic of a group entry by its id**, and this class is version 10:
+ * `OffsetFetchRequest.json` @ 4.2.0, "Version 10 adds support for topic ids and removes support for topic names
+ * (KIP-848)" - the `Name` of a topic entry is `"versions": "8-9"`, the new `TopicId` `"10+"`; Kafka 4.1 declared
+ * the version as `latestVersionUnstable`, Kafka 4.2 made it stable. The `$topicIds` of the constructor and of
+ * {@see self::forGroups()} and {@see self::forMember()} are where a caller states the ids
+ * ({@see \Protocol\Kafka\Common\Cluster::topicIdsOf()} is where it learns them), and a version 10 request that
+ * names a topic without its id is refused before it is built, with {@see UnknownTopicIdException}. A group entry
+ * that asks for **every** topic (`null`) needs no id at all, and its answer names every topic by id. The node
+ * answers an id it does not know with the partition-level **100** `UNKNOWN_TOPIC_ID` and the committed offset -1.
+ * {@see OffsetFetchRequestV9} keeps the version that names the topics.
  *
  * Versions 0 and 1 have no nullable array ({@see OffsetFetchRequestV1}, {@see OffsetFetchRequestV0}) and are
  * identical to each other on the wire: they only differ in where the broker reads the offsets from - ZooKeeper for
@@ -102,9 +119,10 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * topics is refused here with an {@see UnsupportedVersionException}, exactly as `OffsetFetchRequest.Builder.build()`
  * @ 0.11.0.3 does; sending a `-1` topic array with version 1 makes the broker close the connection.
  *
- * @see docs/protocol/4.3.md, sections "OffsetFetch API (key 9, v0 to v9)" and "Stable offsets and the 88 of
+ * @see docs/protocol/4.3.md, sections "OffsetFetch API (key 9, v0 to v10)" and "Stable offsets and the 88 of
  *      KIP-447 (Kafka 2.5)"
  * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 class OffsetFetchRequest extends AbstractRequest
 {
@@ -116,7 +134,7 @@ class OffsetFetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 9;
+    public const int VERSION = 10;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -133,6 +151,11 @@ class OffsetFetchRequest extends AbstractRequest
      * The first version whose group entry names the member id and the member epoch of KIP-848 (Kafka 3.7)
      */
     public const int MIN_MEMBER_VERSION = 9;
+
+    /**
+     * The first version whose group entry names a topic by its id, and by nothing else (Kafka 4.2, KIP-848)
+     */
+    public const int MIN_TOPIC_ID_VERSION = 10;
 
     /**
      * Partitions whose offsets are requested, indexed by the topic they belong to, or null for every topic
@@ -160,6 +183,10 @@ class OffsetFetchRequest extends AbstractRequest
      * @param int    $correlationId   Correlated request id
      * @param array<string, OffsetFetchRequestGroup>|null $groups The batch of version 8; null - the default -
      *        asks for `$consumerGroup` alone, see {@see self::forGroups()}
+     * @param array<string, string> $topicIds Id of every topic named, as name => the 16 raw bytes of its uuid;
+     *        **version 10 needs one per named topic** (KIP-848), every lower version ignores the map
+     *
+     * @throws UnknownTopicIdException If a version 10 request names a topic whose id the caller did not state
      */
     public function __construct(
         protected readonly string $consumerGroup,
@@ -177,7 +204,8 @@ class OffsetFetchRequest extends AbstractRequest
          * @since Version 7 of protocol
          */
         protected readonly bool $requireStable = false,
-        ?array $groups = null
+        ?array $groups = null,
+        array $topicIds = []
     ) {
         if ($topicPartitions === null) {
             if (static::VERSION < 2) {
@@ -205,11 +233,14 @@ class OffsetFetchRequest extends AbstractRequest
 
         $packedGroups = [];
         foreach ($groups ?? [] as $groupId => $group) {
-            $packedGroups[(string) $groupId] = static::packGroup((string) $groupId, $group);
+            $packedGroups[(string) $groupId] = static::packGroup((string) $groupId, $group, $topicIds);
         }
         $this->groups = $groups === null
-            ? [$consumerGroup => static::packGroup($consumerGroup, $this->topicPartitions)]
+            ? [$consumerGroup => static::packGroup($consumerGroup, $this->topicPartitions, $topicIds)]
             : $packedGroups;
+        if (static::VERSION >= self::MIN_TOPIC_ID_VERSION) {
+            self::assertTopicIds($this->groups);
+        }
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -248,15 +279,19 @@ class OffsetFetchRequest extends AbstractRequest
      * @param int    $correlationId Correlated request id
      * @param bool   $requireStable Whether the coordinator has to hold back the offsets of an open transaction,
      *        for every group of the batch (KIP-447)
+     * @param array<string, string> $topicIds Id of every topic named, as name => the 16 raw bytes of its uuid, for
+     *        version 10 (KIP-848)
      *
      * @throws InvalidRequestException If the batch is empty
      * @throws UnsupportedVersionException If a version below 8 is asked for more than one group
+     * @throws UnknownTopicIdException If a version 10 request names a topic whose id the caller did not state
      */
     public static function forGroups(
         array $groupTopicPartitions,
         string $clientId = '',
         int $correlationId = 0,
-        bool $requireStable = false
+        bool $requireStable = false,
+        array $topicIds = []
     ): static {
         if ($groupTopicPartitions === []) {
             throw new InvalidRequestException(
@@ -282,7 +317,7 @@ class OffsetFetchRequest extends AbstractRequest
 
         $groups = [];
         foreach ($groupTopicPartitions as $groupId => $topicPartitions) {
-            $groups[(string) $groupId] = static::packGroup((string) $groupId, $topicPartitions);
+            $groups[(string) $groupId] = static::packGroup((string) $groupId, $topicPartitions, $topicIds);
         }
         $firstGroup = array_key_first($groups);
 
@@ -292,7 +327,8 @@ class OffsetFetchRequest extends AbstractRequest
             $clientId,
             $correlationId,
             $requireStable,
-            $groups
+            $groups,
+            $topicIds
         );
     }
 
@@ -314,8 +350,11 @@ class OffsetFetchRequest extends AbstractRequest
      * @param string $clientId      Unique client identifier
      * @param int    $correlationId Correlated request id
      * @param bool   $requireStable Whether the coordinator has to hold back the offsets of an open transaction
+     * @param array<string, string> $topicIds Id of every topic named, as name => the 16 raw bytes of its uuid, for
+     *        version 10 (KIP-848)
      *
      * @throws UnsupportedVersionException If the version of this class has no group array at all
+     * @throws UnknownTopicIdException If a version 10 request names a topic whose id the caller did not state
      */
     public static function forMember(
         string $groupId,
@@ -324,7 +363,8 @@ class OffsetFetchRequest extends AbstractRequest
         int $memberEpoch,
         string $clientId = '',
         int $correlationId = 0,
-        bool $requireStable = false
+        bool $requireStable = false,
+        array $topicIds = []
     ): static {
         if (static::VERSION < self::MIN_MEMBER_VERSION) {
             throw new UnsupportedVersionException(
@@ -344,7 +384,8 @@ class OffsetFetchRequest extends AbstractRequest
             [$groupId => new OffsetFetchRequestGroup($groupId, $topicPartitions, $memberId, $memberEpoch)],
             $clientId,
             $correlationId,
-            $requireStable
+            $requireStable,
+            $topicIds
         );
     }
 
@@ -379,25 +420,71 @@ class OffsetFetchRequest extends AbstractRequest
      * Builds the entry of one group in the class the version of this request declares
      *
      * A ready-made entry is rebuilt in that class, so that a batch whose entries name a member of KIP-848 can be
-     * sent at a version that has no member fields: the two fields are simply not written then.
+     * sent at a version that has no member fields: the two fields are simply not written then. The ids of the
+     * request complete the ids a ready-made entry states itself (version 10).
      *
      * @param array<string, list<int>|PartitionsForTopic>|null|OffsetFetchRequestGroup $topicPartitions
+     * @param array<string, string>                                                   $topicIds
      */
     private static function packGroup(
         string $groupId,
-        array|null|OffsetFetchRequestGroup $topicPartitions
+        array|null|OffsetFetchRequestGroup $topicPartitions,
+        array $topicIds
     ): OffsetFetchRequestGroup {
         $groupClass = static::groupClass();
         if ($topicPartitions instanceof OffsetFetchRequestGroup) {
-            return $topicPartitions::class === $groupClass ? $topicPartitions : new $groupClass(
+            $sameIds = $topicIds === [] || $topicIds + $topicPartitions->topicIds === $topicPartitions->topicIds;
+
+            return $topicPartitions::class === $groupClass && $sameIds ? $topicPartitions : new $groupClass(
                 $groupId,
                 $topicPartitions->topicPartitions,
                 $topicPartitions->memberId,
-                $topicPartitions->memberEpoch
+                $topicPartitions->memberEpoch,
+                $topicPartitions->topicIds + $topicIds
             );
         }
 
-        return new $groupClass($groupId, $topicPartitions);
+        return new $groupClass($groupId, $topicPartitions, topicIds: $topicIds);
+    }
+
+    /**
+     * Refuses a version 10 batch that names a topic without its id
+     *
+     * @param array<string, OffsetFetchRequestGroup> $groups
+     *
+     * @throws UnknownTopicIdException If a topic of an entry has no id
+     */
+    private static function assertTopicIds(array $groups): void
+    {
+        foreach ($groups as $groupId => $group) {
+            foreach ($group->getTopics() ?? [] as $topic) {
+                if (Uuid::isZero($topic->topicId)) {
+                    throw new UnknownTopicIdException(
+                        [
+                            'error'   => 'An OffsetFetch request of version 10 names its topics by id (KIP-848),'
+                                . ' and this client does not know the id of this one',
+                            'groupId' => $groupId,
+                            'topic'   => $topic->topic,
+                        ]
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns the id of every topic this request names, as topic name => the 16 raw bytes of its uuid
+     *
+     * @return array<string, string>
+     */
+    public function getTopicIds(): array
+    {
+        $topicIds = [];
+        foreach ($this->groups as $group) {
+            $topicIds += $group->topicIds;
+        }
+
+        return $topicIds;
     }
 
     /**
@@ -407,8 +494,10 @@ class OffsetFetchRequest extends AbstractRequest
      */
     protected static function groupClass(): string
     {
-        return static::VERSION >= self::MIN_MEMBER_VERSION
-            ? OffsetFetchRequestGroup::class
-            : OffsetFetchRequestGroupV8::class;
+        return match (true) {
+            static::VERSION >= self::MIN_TOPIC_ID_VERSION => OffsetFetchRequestGroup::class,
+            static::VERSION >= self::MIN_MEMBER_VERSION   => OffsetFetchRequestGroupV9::class,
+            default                                       => OffsetFetchRequestGroupV8::class,
+        };
     }
 }

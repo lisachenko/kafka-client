@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * count is 1 on the first delivery and grows with every redelivery - a record that is released, or whose lock
  * expired - until `share.delivery.count.limit` (5 by default) archives it.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareAcquiredRecords implements BinarySchemaInterface
 {

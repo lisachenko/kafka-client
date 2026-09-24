@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the endpoint of the new leader in `node_endpoints` (`KafkaApis.processShareFetchResponse` and
  * `processShareAcknowledgeResponse` @ 4.3.1). `-1` is "unknown" there.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareLeaderIdAndEpoch implements BinarySchemaInterface
 {

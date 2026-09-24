@@ -16,12 +16,14 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroup;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroupV8;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV5;
 use UnexpectedValueException;
 
 /**
- * OffsetFetch response object, version 9
+ * OffsetFetch response object, version 10
  *
  * <pre>
  *   OffsetFetch Response (Version: 5 to 7) => throttle_time_ms [responses] error_code
@@ -38,6 +40,10 @@ use UnexpectedValueException;
  *
  *   OffsetFetch Response (Version: 8, 9) => throttle_time_ms [groups]
  *     groups => group_id [responses] error_code   -- since version 8, one entry per group of the request
+ *
+ *   OffsetFetch Response (Version: 10) => throttle_time_ms [groups]
+ *     groups => group_id [responses] error_code
+ *       responses => topic_id [partition_responses]   -- the topic id of KIP-848 in place of the name
  * </pre>
  *
  * Version 2 appended a **group-level** `error_code` **after** the topics array. It reports what is wrong with the
@@ -80,16 +86,24 @@ use UnexpectedValueException;
  * The topics of such an entry are empty, exactly as they are for every other group-level error of this api.
  * {@see OffsetFetchResponseV8} decodes the same bytes one api version lower.
  *
- * @see docs/protocol/4.3.md, sections "OffsetFetch API (key 9, v0 to v9)", "Stable offsets and the 88 of KIP-447
+ * **Version 10 (Kafka 4.2, KIP-848) names every topic of a group entry by its id**: `OffsetFetchResponse.json` @
+ * 4.2.0 gives the `Name` of a topic the versions `8-9` and the new `TopicId` `10+`, and the comment of 4.3.1 adds "It
+ * can return UNKNOWN_TOPIC_ID if topic IDs used and the topic is not found in metadata". The entries of
+ * {@see OffsetFetchResponseGroup} are then a list of topics named by id until
+ * {@see OffsetFetchResponseGroup::nameTopics()} names them; {@see OffsetFetchResponseV9} decodes the answer that
+ * names them itself.
+ *
+ * @see docs/protocol/4.3.md, sections "OffsetFetch API (key 9, v0 to v10)", "Stable offsets and the 88 of KIP-447
  *      (Kafka 2.5)" and "Quotas and throttle time"
  * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 class OffsetFetchResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetFetch API that this class decodes the answer of
      */
-    public const int VERSION = 9;
+    public const int VERSION = 10;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -163,7 +177,11 @@ class OffsetFetchResponse extends AbstractResponse
             $body['throttleTimeMs'] = BinarySchema::TYPE_INT32;
         }
         if (static::VERSION >= OffsetFetchRequest::MIN_BATCHED_VERSION) {
-            $body['groups'] = ['groupId' => OffsetFetchResponseGroup::class];
+            $body['groups'] = [
+                'groupId' => static::VERSION >= OffsetFetchRequest::MIN_TOPIC_ID_VERSION
+                    ? OffsetFetchResponseGroup::class
+                    : OffsetFetchResponseGroupV8::class,
+            ];
 
             return $header + $body;
         }
@@ -183,6 +201,6 @@ class OffsetFetchResponse extends AbstractResponse
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 5 ? OffsetFetchResponseTopic::class : OffsetFetchResponseTopicV0::class;
+        return static::VERSION >= 5 ? OffsetFetchResponseTopicV5::class : OffsetFetchResponseTopicV0::class;
     }
 }

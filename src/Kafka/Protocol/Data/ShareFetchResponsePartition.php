@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * record batches of the log - the broker never cuts a batch - and {@see self::$acquiredRecords} says which offsets of
  * them this member acquired; {@see self::acquiredRecords()} is that intersection.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareFetchResponsePartition implements BinarySchemaInterface
 {

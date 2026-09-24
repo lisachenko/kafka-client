@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
@@ -21,16 +23,21 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV6;
 
 /**
- * OffsetCommit, version 9: the offsets are stored in the `__consumer_offsets` topic of the cluster.
+ * OffsetCommit, version 10: the offsets are stored in the `__consumer_offsets` topic of the cluster.
  *
  * This api saves out the consumer's position in the stream for one or more partitions. In the scala API this happens
  * when the consumer calls commit() or in the background if "autocommit" is enabled. This is the position the consumer
  * will pick up from if it crashes before its next commit().
  *
  * <pre>
- *   OffsetCommit Request (Version: 7) => group_id generation_id member_id group_instance_id [topics]
+ *   OffsetCommit Request (Version: 10) => group_id generation_id member_id group_instance_id [topics]
+ *     topics => topic_id [partitions]      -- the topic id of KIP-848 in place of the name
+ *       topic_id => UUID
+ *
+ *   OffsetCommit Request (Version: 7 to 9) => group_id generation_id member_id group_instance_id [topics]
  *     group_id          => STRING
  *     generation_id     => INT32
  *     member_id         => STRING
@@ -89,8 +96,8 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
  *
  * **Version 9 (Kafka 3.6, KIP-848) is the version 8 frame with another number in its header** - "Version 9 is the
  * first version that can be used with the new consumer group protocol (KIP-848). The request is the same as
- * version 8" in `OffsetCommitRequest.json` @ 3.6.2 - and it is the version this client sends.
- * {@see OffsetCommitRequestV8} keeps the version below it. What the number buys is a promise about the *answer*:
+ * version 8" in `OffsetCommitRequest.json` @ 3.6.2 - and {@see OffsetCommitRequestV9} is that version, with
+ * {@see OffsetCommitRequestV8} below it. What the number buys is a promise about the *answer*:
  * a commit of a group the coordinator does not know is refused **69** `GroupIdNotFound` instead of the **22**
  * `IllegalGeneration` the versions below it are answered, and a member of a KIP-848 group may be told **113**
  * `StaleMemberEpoch` - the code the same release added - when the epoch it commits with is behind the one the
@@ -99,8 +106,20 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
  * epoch if using the consumer protocol": the same four bytes with a second meaning, so {@see self::$generationId}
  * keeps its published name and a classic member goes on writing its generation into it.
  *
+ * **Version 10 (Kafka 4.2, KIP-848) names every topic by its id**, and this class is version 10:
+ * `OffsetCommitRequest.json` @ 4.2.0, "Version 10 adds support for topic ids and removes support for topic names
+ * (KIP-848)" - the `Name` of a topic entry is `"versions": "0-9"`, the new `TopicId` `"10+"`; Kafka 4.1 declared the
+ * version as `latestVersionUnstable`, Kafka 4.2 made it stable. So a client can not commit for a topic whose id it
+ * does not know: the `$topicIds` of the constructor are where it states them
+ * ({@see \Protocol\Kafka\Common\Cluster::topicIdsOf()} is where it learns them), and a version 10 request without
+ * the id of one of its topics is refused before it is built, with {@see UnknownTopicIdException}. The node answers a
+ * topic id it does not know with the **100** `UNKNOWN_TOPIC_ID` on every partition of it. The group, the member and
+ * the partitions did not change, and a classic group accepts version 10 as well as a KIP-848 one.
+ * {@see OffsetCommitRequestV9} keeps the version that names the topics.
+ *
  * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {
@@ -132,7 +151,7 @@ class OffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 9;
+    public const int VERSION = 10;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -141,11 +160,26 @@ class OffsetCommitRequest extends AbstractRequest
     public const int FLEXIBLE_VERSION = 8;
 
     /**
-     * Offsets to commit, indexed by the topic they belong to.
+     * The first version that names a topic by its id, and by nothing else (Kafka 4.2, KIP-848)
+     */
+    public const int MIN_TOPIC_ID_VERSION = 10;
+
+    /**
+     * Offsets to commit, indexed by the topic they belong to - a list from version 10 on, whose entries carry no
+     * name on the wire
      *
-     * @var array<string, OffsetCommitRequestTopic>
+     * @var array<array-key, OffsetCommitRequestTopic>
      */
     protected readonly array $topicPartitions;
+
+    /**
+     * Id of every topic this request names, as topic name => the 16 raw bytes of its uuid (KIP-848)
+     *
+     * Version 10 names every topic by its id and by nothing else; every version below it ignores the map.
+     *
+     * @var array<string, string>
+     */
+    protected readonly array $topicIds;
 
     /**
      * A value of the `$topicPartitions` map is either a plain offset, an {@see OffsetAndMetadata} or an already
@@ -160,6 +194,9 @@ class OffsetCommitRequest extends AbstractRequest
      * @param string $clientId        Unique client identifier
      * @param int    $correlationId   Correlated request id
      * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345), null for a dynamic one
+     * @param array<string, string> $topicIds Id of every topic, as name => the 16 raw bytes of its uuid
+     *
+     * @throws UnknownTopicIdException If a version 10 request names a topic whose id the caller did not state
      */
     public function __construct(
         /**
@@ -196,14 +233,30 @@ class OffsetCommitRequest extends AbstractRequest
          *
          * @since Version 7 of protocol
          */
-        protected readonly ?string $groupInstanceId = null
+        protected readonly ?string $groupInstanceId = null,
+        /**
+         * Id of every topic named above, as name => the 16 raw bytes of its uuid; **version 10 needs one per topic**
+         * (KIP-848) and throws {@see UnknownTopicIdException} without it, every lower version ignores the map.
+         */
+        array $topicIds = []
     ) {
+        $this->topicIds        = $topicIds;
         $topicClass            = static::topicClass();
         $packedTopicPartitions = [];
         foreach ($topicPartitions as $topic => $partitions) {
+            $topic = $partitions instanceof OffsetCommitRequestTopic ? $partitions->topic : (string) $topic;
+            if (static::VERSION >= self::MIN_TOPIC_ID_VERSION) {
+                // A version 10 entry carries no name at all, so the list it travels in is the only honest shape
+                $packedTopicPartitions[] = new $topicClass(
+                    $topic,
+                    $partitions instanceof OffsetCommitRequestTopic ? $partitions->partitions : $partitions,
+                    self::idOf($topicIds, $topic, $partitions)
+                );
+                continue;
+            }
             $packedTopicPartitions[$topic] = $partitions instanceof OffsetCommitRequestTopic
                 ? $partitions
-                : new $topicClass((string) $topic, $partitions);
+                : new $topicClass($topic, $partitions);
         }
         $this->topicPartitions = $packedTopicPartitions;
 
@@ -229,9 +282,52 @@ class OffsetCommitRequest extends AbstractRequest
         if (static::VERSION >= 2 && static::VERSION <= 4) {
             $body['retentionTime'] = BinarySchema::TYPE_INT64;
         }
-        $body['topicPartitions'] = ['topic' => static::topicClass()];
+        // From version 10 the entries carry no name, so there is no field to index the array by
+        $body['topicPartitions'] = static::VERSION >= self::MIN_TOPIC_ID_VERSION
+            ? [static::topicClass()]
+            : ['topic' => static::topicClass()];
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the id of every topic this request names, as topic name => the 16 raw bytes of its uuid
+     *
+     * @return array<string, string>
+     */
+    public function getTopicIds(): array
+    {
+        return $this->topicIds;
+    }
+
+    /**
+     * Returns the id of a topic from the map of the caller, or from a ready-made entry that carries one
+     *
+     * A version below 10 names its topics by name and never looks at the map; a version 10 frame can not name a
+     * topic at all without its id, and a client that does not know it refreshes its metadata instead of guessing.
+     *
+     * @param array<string, string> $topicIds Id of every topic, as name => the 16 raw bytes of its uuid
+     * @param mixed                 $entry    What the caller gave for the topic
+     *
+     * @throws UnknownTopicIdException If the id of the topic is not known
+     */
+    private static function idOf(array $topicIds, string $topic, mixed $entry): string
+    {
+        $topicId = $topicIds[$topic] ?? Uuid::ZERO;
+        if (Uuid::isZero($topicId) && $entry instanceof OffsetCommitRequestTopic) {
+            $topicId = $entry->topicId;
+        }
+        if (Uuid::isZero($topicId)) {
+            throw new UnknownTopicIdException(
+                [
+                    'error' => 'An OffsetCommit request of version 10 names its topics by id (KIP-848), and this'
+                        . ' client does not know the id of this one',
+                    'topic' => $topic,
+                ]
+            );
+        }
+
+        return $topicId;
     }
 
     /**
@@ -242,7 +338,8 @@ class OffsetCommitRequest extends AbstractRequest
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 6  => OffsetCommitRequestTopic::class,
+            static::VERSION >= 10 => OffsetCommitRequestTopic::class,
+            static::VERSION >= 6  => OffsetCommitRequestTopicV6::class,
             static::VERSION >= 2  => OffsetCommitRequestTopicV2::class,
             static::VERSION === 1 => OffsetCommitRequestTopicV1::class,
             default               => OffsetCommitRequestTopicV0::class,

@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * *"Endpoints for all current leaders enumerated in PartitionData with error NOT_LEADER_OR_FOLLOWER"* @ 4.1.0 - a
  * plain field at the end of both answers, empty on a one-node cluster.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareNodeEndpoint implements BinarySchemaInterface
 {

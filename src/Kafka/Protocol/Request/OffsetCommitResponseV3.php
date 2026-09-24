@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 4 (KIP-219, Kafka 2.0) did not touch the answer either; only the meaning of a non-zero
  * `throttle_time_ms` changed, see {@see OffsetCommitRequestV3}.
  *
- * @see docs/protocol/4.3.md, sections "OffsetCommit API (key 8, v0 to v9)" and "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, sections "OffsetCommit API (key 8, v0 to v10)" and "Quotas and throttle time"
  */
 final class OffsetCommitResponseV3 extends OffsetCommitResponse
 {

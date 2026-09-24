@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * acquired by this member (acknowledged already, released, or never acquired), or the **42** of a batch the broker
  * refuses to read.
  *
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+ * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
  */
 final class ShareAcknowledgeResponsePartition implements BinarySchemaInterface
 {

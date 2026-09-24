@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * below Kafka 3.7 serves, and the version a member of a KIP-848 group must not use to read its own offsets,
  * because the coordinator has no field to validate it with. {@see OffsetFetchRequest} sends the version 9.
  *
- * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
  * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
  */
 final class OffsetFetchRequestV8 extends OffsetFetchRequest

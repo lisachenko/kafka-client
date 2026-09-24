@@ -30,15 +30,16 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * acknowledge types - 0:Gap,1:Accept,2:Release,3:Reject"*. The array holds **one** type that stands for every offset
  * of the batch, or **one type per offset** - `KafkaApis.validateAcknowledgementBatches` @ 4.3.1 refuses anything else
  * with the 42, and so a batch whose first offset lies behind the last one, a batch that starts before the previous
- * batch of the same partition ended, an empty array and a type outside 0 to 3 at version 1 (4, `Renew`, is the
- * version 2 of Kafka 4.2).
+ * batch of the same partition ended, an empty array and a type outside 0 to 3 at version 1 and 0 to 4 at version 2.
  *
  * * {@see self::ACCEPT} - the record was processed: it is done for the group;
  * * {@see self::RELEASE} - give the record back: it becomes available again, and its delivery count stays;
  * * {@see self::REJECT} - the record cannot be processed: it is archived and never delivered again;
- * * {@see self::GAP} - an offset of the acquired range that holds no record (a compacted or transactional log).
+ * * {@see self::GAP} - an offset of the acquired range that holds no record (a compacted or transactional log);
+ * * {@see self::RENEW} - keep the record acquired and start its acquisition lock over (version 2, Kafka 4.2,
+ *   KIP-1222): only in a request that says `is_renew_ack`, which is the 42 of the partition otherwise.
  *
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+ * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
  */
 final class ShareAcknowledgementBatch implements BinarySchemaInterface
 {
@@ -61,6 +62,13 @@ final class ShareAcknowledgementBatch implements BinarySchemaInterface
      * The record is archived without being delivered again (`AcknowledgeType.REJECT`)
      */
     public const int REJECT = 3;
+
+    /**
+     * The record stays acquired and its acquisition lock starts over (`AcknowledgeType.RENEW`)
+     *
+     * @since Version 2 of ShareFetch and ShareAcknowledge (Kafka 4.2, KIP-1222)
+     */
+    public const int RENEW = 4;
 
     /**
      * @param int       $firstOffset      First offset of the batch

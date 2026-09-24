@@ -19,10 +19,10 @@ use Protocol\Kafka\Protocol\Data\ShareFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\ShareNodeEndpoint;
 
 /**
- * ShareFetch response, version 1 (key 78, Kafka 4.1, KIP-932)
+ * ShareFetch response, version 2 (key 78, Kafka 4.2, KIP-932)
  *
  * <pre>
- *   ShareFetch Response (Version: 1) => throttle_time_ms error_code error_message acquisition_lock_timeout_ms
+ *   ShareFetch Response (Version: 1 and 2) => throttle_time_ms error_code error_message acquisition_lock_timeout_ms
  *                                       [responses] [node_endpoints]
  *     acquisition_lock_timeout_ms => INT32             -- since version 1
  *     responses      => topic_id [partitions]
@@ -36,14 +36,20 @@ use Protocol\Kafka\Protocol\Data\ShareNodeEndpoint;
  * of the group (30000 by default): a record neither accepted, released nor rejected by then is released by the
  * broker and delivered again.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * **Version 2 (Kafka 4.2, KIP-1206 and KIP-1222) did not change the answer**: `ShareFetchResponse.json` @ 4.2.0 raises
+ * `validVersions` to `1-2` and adds no field. What the version buys is the request - the record-limit acquire mode
+ * and the renew acknowledgements - and an answer to a renew fetch that names the acknowledged partitions without
+ * records. {@see ShareFetchResponseV1} decodes the same bytes one version lower.
+ *
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
  */
 class ShareFetchResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * The api is flexible from its first version

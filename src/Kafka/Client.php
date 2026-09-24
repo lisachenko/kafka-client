@@ -122,11 +122,15 @@ use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 use Protocol\Kafka\Protocol\Request\OffsetDeleteRequest;
 use Protocol\Kafka\Protocol\Request\OffsetDeleteResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV9;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -1358,7 +1362,16 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The request is the version 9 of the api (Kafka 3.6, KIP-848): it stores the offsets in the
+     * The request is the **version 10** of the api (Kafka 4.2, KIP-848), which names every topic by its **id**: the
+     * ids are resolved through the cluster ({@see Cluster::topicIdsOf()}), and a commit that names a topic whose id
+     * the cluster does not know - a topic that does not exist - goes out as the **version 9** instead, as the Java
+     * consumer does (`CommitRequestManager` @ 4.2.0 falls back to `OffsetCommitRequest.Builder.forTopicNames()`),
+     * where the node answers it the 3 `UnknownTopicOrPartition`. A partition answered with the **100**
+     * `UnknownTopicId` - an id that went stale, because the topic was deleted or deleted and created again - reloads
+     * the metadata before the error is thrown, so that the retry of {@see RetryPolicy} names the topic anew; the answer
+     * is read back by name.
+     *
+     * The version 9 (Kafka 3.6, KIP-848) stores the offsets in the
      * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group. Its frame is
      * the flexible version 8 frame, byte for byte - {@see OffsetCommitRequestV8} sends the same bytes one number
      * lower - and what the version buys is the **answer**: a commit of a group the coordinator does not know is
@@ -1394,6 +1407,9 @@ class Client
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws UnknownTopicIdException If a topic id stayed stale after every retry (100, version 10)
+     *
+     * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
      */
     public function commitGroupOffsets(
         Node $coordinatorNode,
@@ -1406,24 +1422,52 @@ class Client
     ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
+        [$topicIds, $useTopicIds]       = $this->offsetTopicIdsOf(array_keys($topicPartitionOffsets));
+        [$requestClass, $responseClass] = $useTopicIds
+            ? [OffsetCommitRequest::class, OffsetCommitResponse::class]
+            : [OffsetCommitRequestV9::class, OffsetCommitResponseV9::class];
+
         $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => new OffsetCommitRequest(
+            function (int $correlationId) use (
+                &$topicIds,
+                $useTopicIds,
+                $requestClass,
                 $groupId,
                 $generationId,
                 $memberId,
                 $retentionTimeMs,
                 $topicPartitionOffsets,
                 $clientId,
-                $correlationId,
                 $groupInstanceId
-            ),
-            OffsetCommitResponse::class,
-            static function (OffsetCommitResponse $response) use ($groupId): void {
-                foreach ($response->topics as $topic => $topicResponse) {
+            ): AbstractRequest {
+                if ($useTopicIds) {
+                    // Every round names the ids the cluster holds now: a retry after a 100 has reloaded it
+                    $topicIds = $this->cluster->topicIdsOf(array_keys($topicIds)) + $topicIds;
+                }
+
+                return new $requestClass(
+                    $groupId,
+                    $generationId,
+                    $memberId,
+                    $retentionTimeMs,
+                    $topicPartitionOffsets,
+                    $clientId,
+                    $correlationId,
+                    $groupInstanceId,
+                    $topicIds
+                );
+            },
+            $responseClass,
+            function (OffsetCommitResponse $response) use ($groupId, &$topicIds): void {
+                foreach ($response->topicsByName($topicIds) as $topic => $topicResponse) {
                     /** @var OffsetCommitResponsePartition $partition */
                     foreach ($topicResponse->partitions as $partitionId => $partition) {
                         if ($partition->errorCode !== KafkaException::NO_ERROR) {
+                            if ($partition->errorCode === KafkaException::UNKNOWN_TOPIC_ID) {
+                                $this->reloadCluster();
+                            }
+
                             throw KafkaException::fromCode(
                                 $partition->errorCode,
                                 ['groupId' => $groupId, 'topic' => $topic, 'partitionId' => $partitionId]
@@ -1446,10 +1490,14 @@ class Client
      * for, which the nullable topic array of the version 2 (Kafka 0.10.2) makes possible; an **empty** array names no
      * topic at all and is answered with an empty result.
      *
-     * The request is the **version 9** of the api (Kafka 3.7) with a one-element batch, whose `member_id` and
-     * `member_epoch` of KIP-848 stay at `null` and `-1` - the values a classic member and every administrative
-     * reader send, and the ones the coordinator accepts without looking a member up.
-     * {@see self::fetchGroupOffsetsAsMember()} is the read of a member of a KIP-848 group.
+     * The request is the **version 10** of the api (Kafka 4.2, KIP-848) with a one-element batch, whose `member_id`
+     * and `member_epoch` of KIP-848 stay at `null` and `-1` - the values a classic member and every administrative
+     * reader send, and the ones the coordinator accepts without looking a member up - and whose topics are named by
+     * their **id**, resolved through the cluster; the answer is read back by name. A request that names a topic
+     * whose id the cluster does not know goes out as the **version 9**, which names it, as the Java consumer does
+     * (`CommitRequestManager` @ 4.2.0), and is answered the offset -1 as before. Every topic of a `null` request is
+     * named by the node with its id, and the names of the ids this client does not know yet are looked up in reloaded
+     * metadata. {@see self::fetchGroupOffsetsAsMember()} is the read of a member of a KIP-848 group.
      *
      * @param Node                                $coordinatorNode Current offset coordinator for $groupId
      * @param string                              $groupId         Name of the group
@@ -1476,17 +1524,40 @@ class Client
     ): array {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
+        [$topicIds, $useTopicIds]       = $this->offsetTopicIdsOf(array_keys($topicPartitions ?? []));
+        [$requestClass, $responseClass] = self::offsetFetchClassesOf($useTopicIds);
+
         return $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => new OffsetFetchRequest(
+            function (int $correlationId) use (
+                &$topicIds,
+                $useTopicIds,
+                $requestClass,
                 $groupId,
                 $topicPartitions,
                 $clientId,
-                $correlationId,
                 $requireStable
-            ),
-            OffsetFetchResponse::class,
-            static fn(OffsetFetchResponse $response): array => self::offsetsOfGroup($response, $groupId)
+            ): AbstractRequest {
+                if ($useTopicIds) {
+                    $topicIds = $this->cluster->topicIdsOf(array_keys($topicIds)) + $topicIds;
+                }
+
+                return new $requestClass(
+                    $groupId,
+                    $topicPartitions,
+                    $clientId,
+                    $correlationId,
+                    $requireStable,
+                    null,
+                    $topicIds
+                );
+            },
+            $responseClass,
+            function (OffsetFetchResponse $response) use ($groupId, &$topicIds): array {
+                $this->nameOffsetFetchTopics($response, $topicIds);
+
+                return self::offsetsOfGroup($response, $groupId);
+            }
         );
     }
 
@@ -1530,16 +1601,40 @@ class Client
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
         $groupIds = array_keys($groupTopicPartitions);
 
+        $topics = [];
+        foreach ($groupTopicPartitions as $topicPartitions) {
+            foreach (array_keys($topicPartitions ?? []) as $topic) {
+                $topics[(string) $topic] = true;
+            }
+        }
+        [$topicIds, $useTopicIds]       = $this->offsetTopicIdsOf(array_keys($topics));
+        [$requestClass, $responseClass] = self::offsetFetchClassesOf($useTopicIds);
+
         return $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => OffsetFetchRequest::forGroups(
+            function (int $correlationId) use (
+                &$topicIds,
+                $useTopicIds,
+                $requestClass,
                 $groupTopicPartitions,
                 $clientId,
-                $correlationId,
                 $requireStable
-            ),
-            OffsetFetchResponse::class,
-            static function (OffsetFetchResponse $response) use ($groupIds): array {
+            ): AbstractRequest {
+                if ($useTopicIds) {
+                    $topicIds = $this->cluster->topicIdsOf(array_keys($topicIds)) + $topicIds;
+                }
+
+                return $requestClass::forGroups(
+                    $groupTopicPartitions,
+                    $clientId,
+                    $correlationId,
+                    $requireStable,
+                    $topicIds
+                );
+            },
+            $responseClass,
+            function (OffsetFetchResponse $response) use ($groupIds, &$topicIds): array {
+                $this->nameOffsetFetchTopics($response, $topicIds);
                 $result = [];
                 foreach ($groupIds as $groupId) {
                     $result[$groupId] = self::offsetsOfGroup($response, (string) $groupId);
@@ -3490,6 +3585,10 @@ class Client
     /**
      * Fetches the committed offsets of a group **as one of its KIP-848 members** (version 9, Kafka 3.7)
      *
+     * The request goes out as the **version 10** (Kafka 4.2, KIP-848), whose topics are named by id, whenever the
+     * cluster knows the id of every topic it names, and as the version 9 otherwise - see
+     * {@see self::fetchGroupOffsets()}; the member id and the member epoch are checked the same way at both.
+     *
      * Version 9 of the api added a nullable `member_id` and a `member_epoch` to every group entry of the request,
      * "filled in and validated when the new consumer protocol is used" (`OffsetFetchRequest.json` @ 3.7.2): a member
      * of a group of the **new consumer group protocol** names itself with them and the coordinator refuses the read
@@ -3528,19 +3627,43 @@ class Client
     ): array {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
+        [$topicIds, $useTopicIds]       = $this->offsetTopicIdsOf(array_keys($topicPartitions ?? []));
+        [$requestClass, $responseClass] = self::offsetFetchClassesOf($useTopicIds);
+
         return $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => OffsetFetchRequest::forMember(
+            function (int $correlationId) use (
+                &$topicIds,
+                $useTopicIds,
+                $requestClass,
                 $groupId,
                 $topicPartitions,
                 $memberId,
                 $memberEpoch,
                 $clientId,
-                $correlationId,
                 $requireStable
-            ),
-            OffsetFetchResponse::class,
-            static fn(OffsetFetchResponse $response): array => self::offsetsOfGroup($response, $groupId)
+            ): AbstractRequest {
+                if ($useTopicIds) {
+                    $topicIds = $this->cluster->topicIdsOf(array_keys($topicIds)) + $topicIds;
+                }
+
+                return $requestClass::forMember(
+                    $groupId,
+                    $topicPartitions,
+                    $memberId,
+                    $memberEpoch,
+                    $clientId,
+                    $correlationId,
+                    $requireStable,
+                    $topicIds
+                );
+            },
+            $responseClass,
+            function (OffsetFetchResponse $response) use ($groupId, &$topicIds): array {
+                $this->nameOffsetFetchTopics($response, $topicIds);
+
+                return self::offsetsOfGroup($response, $groupId);
+            }
         );
     }
 
@@ -4189,6 +4312,13 @@ class Client
      * @param int                                                        $batchSize         Optimal size of a batch
      * @param array<string, list<int>>                                   $forgottenPartitions Partitions that leave
      *        the session, as the raw topic id => its partitions
+     * @param int                                                        $shareAcquireMode  How `$maxRecords` is
+     *        read (version 2, KIP-1206): {@see ShareFetchRequest::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED} acquires whole
+     *        record batches, {@see ShareFetchRequest::SHARE_ACQUIRE_MODE_RECORD_LIMIT} at most `$maxRecords` records
+     * @param bool                                                       $isRenewAck        Whether the
+     *        acknowledgements carry the type 4 `Renew` (version 2, KIP-1222): the request then fetches nothing and
+     *        is sent with `max_wait_ms`, `min_bytes`, `max_bytes`, `max_records` and `batch_size` 0, as the node
+     *        requires, whatever the arguments above say
      *
      * @throws Common\Errors\InvalidShareSessionEpochException If the epoch is not the next of the session (123)
      * @throws Common\Errors\ShareSessionNotFoundException If the leader has no session of this member (122)
@@ -4196,7 +4326,11 @@ class Client
      * @throws Common\Errors\InvalidRequestException If the frame breaks a rule of the api (42)
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+     * The request is the **version 2** of the api (Kafka 4.2, KIP-1206 and KIP-1222); a Renew renews the acquisition
+     * lock of the records it names for another `acquisitionLockTimeoutMs`.
+     *
+     * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
+     * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public function shareFetch(
         Node $leaderNode,
@@ -4209,13 +4343,21 @@ class Client
         int $minBytes = 1,
         int $maxRecords = ShareFetchRequest::DEFAULT_MAX_RECORDS,
         int $batchSize = ShareFetchRequest::DEFAULT_MAX_RECORDS,
-        array $forgottenPartitions = []
+        array $forgottenPartitions = [],
+        int $shareAcquireMode = ShareFetchRequest::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED,
+        bool $isRenewAck = false
     ): ShareFetchResponse {
         $clientId  = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
         $topics    = ShareFetchRequest::topicsOf($partitions, $acknowledgements);
         $forgotten = [];
         foreach ($forgottenPartitions as $topicId => $partitionIds) {
             $forgotten[] = new ShareFetchRequestForgottenTopic((string) $topicId, array_values($partitionIds));
+        }
+        // KIP-1222: a fetch that renews fetches nothing - `KafkaApis.handleShareFetchRequest` @ 4.3.1 refuses it with
+        // the 42 unless the four limits are 0, and `ShareSessionHandler` @ 4.2.0 sends the batch size 0 with them
+        $maxBytes = ShareFetchRequest::DEFAULT_MAX_BYTES;
+        if ($isRenewAck) {
+            $maxWaitMs = $minBytes = $maxBytes = $maxRecords = $batchSize = 0;
         }
 
         return $this->coordinatorRequest(
@@ -4227,12 +4369,14 @@ class Client
                 $topics,
                 $maxWaitMs,
                 $minBytes,
-                ShareFetchRequest::DEFAULT_MAX_BYTES,
+                $maxBytes,
                 $maxRecords,
                 $batchSize,
                 $forgotten,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $shareAcquireMode,
+                $isRenewAck
             ),
             ShareFetchResponse::class,
             static fn(ShareFetchResponse $response): ShareFetchResponse => self::checkedShareAnswer(
@@ -4257,20 +4401,28 @@ class Client
      * @param int                                                        $shareSessionEpoch The next epoch, or -1
      * @param array<string, array<int, list<ShareAcknowledgementBatch>>> $acknowledgements  Raw topic id =>
      *        partition => the acknowledgement batches of that partition
+     * @param bool                                                       $isRenewAck        Whether the
+     *        acknowledgements carry the type 4 `Renew` (version 2, KIP-1222), without which the node refuses a
+     *        partition that has one with the 42
+     *
+     * The request is the **version 2** of the api (Kafka 4.2, KIP-1222), whose answer carries the
+     * `acquisitionLockTimeoutMs` the renewed records are locked for.
      *
      * @throws Common\Errors\InvalidShareSessionEpochException If the epoch is not the next of the session (123)
      * @throws Common\Errors\ShareSessionNotFoundException If the leader has no session of this member (122)
      * @throws Common\Errors\InvalidRequestException If the frame breaks a rule of the api (42)
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+     * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+     * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public function shareAcknowledge(
         Node $leaderNode,
         string $groupId,
         string $memberId,
         int $shareSessionEpoch,
-        array $acknowledgements = []
+        array $acknowledgements = [],
+        bool $isRenewAck = false
     ): ShareAcknowledgeResponse {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
         $topics   = ShareAcknowledgeRequest::topicsOf($acknowledgements);
@@ -4283,7 +4435,8 @@ class Client
                 $shareSessionEpoch,
                 $topics,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $isRenewAck
             ),
             ShareAcknowledgeResponse::class,
             static fn(ShareAcknowledgeResponse $response): ShareAcknowledgeResponse => self::checkedShareAnswer(
@@ -4336,5 +4489,82 @@ class Client
         }
 
         return false;
+    }
+
+    /**
+     * Resolves the ids of the topics an OffsetCommit or OffsetFetch request names (version 10, Kafka 4.2, KIP-848)
+     *
+     * The second element tells whether the cluster knows the id of every topic: only then can the request go out as
+     * the version 10, which names a topic by its id and by nothing else. The Java consumer makes the same choice
+     * (`CommitRequestManager` @ 4.2.0, `canUseTopicIds`) and falls back to the version 9 otherwise.
+     *
+     * @param list<array-key> $topics Names of the topics
+     *
+     * @return array{0: array<string, string>, 1: bool} The ids, as name => the 16 raw bytes of the uuid, and whether
+     *         every topic has one
+     */
+    private function offsetTopicIdsOf(array $topics): array
+    {
+        $names    = array_map(strval(...), $topics);
+        $topicIds = $this->cluster->topicIdsOf($names);
+
+        return [$topicIds, count($topicIds) === count(array_unique($names))];
+    }
+
+    /**
+     * Returns the request and the answer class of an OffsetFetch: version 10 by topic id, or version 9 by name
+     *
+     * @return array{0: class-string<OffsetFetchRequest>, 1: class-string<OffsetFetchResponse>}
+     */
+    private static function offsetFetchClassesOf(bool $useTopicIds): array
+    {
+        return $useTopicIds
+            ? [OffsetFetchRequest::class, OffsetFetchResponse::class]
+            : [OffsetFetchRequestV9::class, OffsetFetchResponseV9::class];
+    }
+
+    /**
+     * Names the topics of every group of a version 10 OffsetFetch answer, which names them by id alone
+     *
+     * The ids of the request name themselves; an id the request did not name - an answer to "every topic of the
+     * group" - is looked up in the metadata of the cluster, which is reloaded once when it does not know one of them.
+     * A partition answered with the 100 `UnknownTopicId` reloads the metadata as well, so that a retry of the request
+     * names the topic by its current id.
+     *
+     * @param array<string, string> $topicIds Ids of the request, as name => the 16 raw bytes of the uuid
+     */
+    private function nameOffsetFetchTopics(OffsetFetchResponse $response, array $topicIds): void
+    {
+        if ($response::VERSION < OffsetFetchRequest::MIN_TOPIC_ID_VERSION) {
+            return;
+        }
+
+        $namesById = array_flip($topicIds);
+        $reloaded  = false;
+        foreach ($response->groups as $group) {
+            foreach ($group->unnamedTopicIds() as $topicId) {
+                if (isset($namesById[$topicId])) {
+                    continue;
+                }
+                $name = $this->cluster->topicNameById($topicId);
+                if ($name === null && !$reloaded) {
+                    $this->reloadCluster();
+                    $reloaded = true;
+                    $name     = $this->cluster->topicNameById($topicId);
+                }
+                if ($name !== null) {
+                    $namesById[$topicId] = $name;
+                }
+            }
+            foreach ($group->topics as $topic) {
+                foreach ($topic->partitions as $partition) {
+                    if ($partition->errorCode === KafkaException::UNKNOWN_TOPIC_ID && !$reloaded) {
+                        $this->reloadCluster();
+                        $reloaded = true;
+                    }
+                }
+            }
+            $group->nameTopics($namesById);
+        }
     }
 }

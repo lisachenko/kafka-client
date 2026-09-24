@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *   AcknowledgePartition => partition_index [acknowledgement_batches]
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1)"
+ * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
  */
 final class ShareAcknowledgeRequestPartition implements BinarySchemaInterface
 {

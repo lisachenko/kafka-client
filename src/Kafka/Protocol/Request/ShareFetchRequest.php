@@ -21,11 +21,12 @@ use Protocol\Kafka\Protocol\Data\ShareFetchRequestPartition;
 use Protocol\Kafka\Protocol\Data\ShareFetchRequestTopic;
 
 /**
- * ShareFetch, version 1: fetches records of a share group and acquires them for the member (ApiKey 78, Kafka 4.1)
+ * ShareFetch, version 2: fetches records of a share group and acquires them for the member (ApiKey 78, Kafka 4.2)
  *
  * <pre>
- *   ShareFetch Request (Version: 1) => group_id member_id share_session_epoch max_wait_ms min_bytes max_bytes
- *                                      max_records batch_size [topics] [forgotten_topics_data]
+ *   ShareFetch Request (Version: 2) => group_id member_id share_session_epoch max_wait_ms min_bytes max_bytes
+ *                                      max_records batch_size share_acquire_mode is_renew_ack [topics]
+ *                                      [forgotten_topics_data]
  *     group_id            => COMPACT_NULLABLE_STRING   -- null is the 42 "Invalid group id in the request."
  *     member_id           => COMPACT_NULLABLE_STRING   -- 1 to 36 characters
  *     share_session_epoch => INT32                     -- 0 opens a share session, -1 closes it, else the next one
@@ -34,6 +35,8 @@ use Protocol\Kafka\Protocol\Data\ShareFetchRequestTopic;
  *     max_bytes           => INT32
  *     max_records         => INT32                     -- since version 1
  *     batch_size          => INT32                     -- since version 1
+ *     share_acquire_mode  => INT8                      -- since version 2: 0 batch-optimized, 1 record-limit
+ *     is_renew_ack        => BOOLEAN                   -- since version 2: the acknowledgements hold a Renew (4)
  *     topics              => topic_id [partitions]
  *       partitions => partition_index [acknowledgement_batches]
  *     forgotten_topics_data => topic_id [partitions]
@@ -55,7 +58,18 @@ use Protocol\Kafka\Protocol\Data\ShareFetchRequestTopic;
  * `max_records` and `batch_size` are `max.poll.records` of the Java share consumer for both
  * (`ShareSessionHandler` @ 4.1.0), 500 by default.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
+ * **Version 2 (Kafka 4.2, KIP-1206 and KIP-1222)** puts two fields behind `batch_size`: `ShareFetchRequest.json` @
+ * 4.2.0, "Version 2 introduces ShareAcquireMode and Renew acknowledgements (KIP-1206 and KIP-1222)".
+ * `share_acquire_mode` chooses how `max_records` is read - **0** {@see self::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED},
+ * the only behaviour of version 1, acquires whole record batches and may exceed it; **1**
+ * {@see self::SHARE_ACQUIRE_MODE_RECORD_LIMIT} acquires `max_records` records at most - and `is_renew_ack` says that
+ * the acknowledgement batches carry the type **4** `Renew`, which extends the acquisition lock of a record instead of
+ * ending its delivery. A renew fetch fetches nothing: the node refuses it with the 42 unless `max_wait_ms`,
+ * `min_bytes`, `max_bytes` and `max_records` are all 0 (`KafkaApis.handleShareFetchRequest` @ 4.3.1), and answers
+ * the acknowledgements alone. {@see ShareFetchRequestV1} keeps the version below, which knows neither.
+ *
+ * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
  */
 class ShareFetchRequest extends AbstractRequest
 {
@@ -67,7 +81,7 @@ class ShareFetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * The api is flexible from its first version
@@ -95,6 +109,20 @@ class ShareFetchRequest extends AbstractRequest
     public const int DEFAULT_MAX_RECORDS = 500;
 
     /**
+     * Acquire whole record batches, `max_records` may be exceeded to finish one (`ShareAcquireMode.BATCH_OPTIMIZED`)
+     *
+     * @since Version 2 of protocol (Kafka 4.2, KIP-1206)
+     */
+    public const int SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED = 0;
+
+    /**
+     * Acquire `max_records` records at most (`ShareAcquireMode.RECORD_LIMIT`)
+     *
+     * @since Version 2 of protocol (Kafka 4.2, KIP-1206)
+     */
+    public const int SHARE_ACQUIRE_MODE_RECORD_LIMIT = 1;
+
+    /**
      * Topics to fetch, with the acknowledgements of their partitions
      *
      * @var list<ShareFetchRequestTopic>
@@ -114,6 +142,8 @@ class ShareFetchRequest extends AbstractRequest
      * @param int                                   $shareSessionEpoch   0 to open, -1 to close, else the next epoch
      * @param list<ShareFetchRequestTopic>          $topics              Topics to fetch and acknowledge
      * @param list<ShareFetchRequestForgottenTopic> $forgottenTopicsData Partitions to remove from the session
+     * @param int                                   $shareAcquireMode    0 batch-optimized, 1 record-limit (v2)
+     * @param bool                                  $isRenewAck          Whether the acknowledgements hold a Renew (v2)
      */
     public function __construct(
         /**
@@ -155,7 +185,20 @@ class ShareFetchRequest extends AbstractRequest
         protected readonly int $batchSize = self::DEFAULT_MAX_RECORDS,
         array $forgottenTopicsData = [],
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * How `max_records` is read: {@see self::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED} or
+         * {@see self::SHARE_ACQUIRE_MODE_RECORD_LIMIT}
+         *
+         * @since Version 2 of protocol (Kafka 4.2, KIP-1206)
+         */
+        protected readonly int $shareAcquireMode = self::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED,
+        /**
+         * Whether the acknowledgement batches carry the type 4 `Renew`
+         *
+         * @since Version 2 of protocol (Kafka 4.2, KIP-1222)
+         */
+        protected readonly bool $isRenewAck = false
     ) {
         $this->topics              = array_values($topics);
         $this->forgottenTopicsData = array_values($forgottenTopicsData);
@@ -207,18 +250,24 @@ class ShareFetchRequest extends AbstractRequest
      */
     public static function getScheme(): array
     {
-        return parent::getScheme() + [
-            'groupId'             => BinarySchema::TYPE_NULLABLE_STRING,
-            'memberId'            => BinarySchema::TYPE_NULLABLE_STRING,
-            'shareSessionEpoch'   => BinarySchema::TYPE_INT32,
-            'maxWaitMs'           => BinarySchema::TYPE_INT32,
-            'minBytes'            => BinarySchema::TYPE_INT32,
-            'maxBytes'            => BinarySchema::TYPE_INT32,
-            'maxRecords'          => BinarySchema::TYPE_INT32,
-            'batchSize'           => BinarySchema::TYPE_INT32,
-            'topics'              => [ShareFetchRequestTopic::class],
-            'forgottenTopicsData' => [ShareFetchRequestForgottenTopic::class],
+        $body = [
+            'groupId'           => BinarySchema::TYPE_NULLABLE_STRING,
+            'memberId'          => BinarySchema::TYPE_NULLABLE_STRING,
+            'shareSessionEpoch' => BinarySchema::TYPE_INT32,
+            'maxWaitMs'         => BinarySchema::TYPE_INT32,
+            'minBytes'          => BinarySchema::TYPE_INT32,
+            'maxBytes'          => BinarySchema::TYPE_INT32,
+            'maxRecords'        => BinarySchema::TYPE_INT32,
+            'batchSize'         => BinarySchema::TYPE_INT32,
         ];
+        if (static::VERSION >= 2) {
+            $body['shareAcquireMode'] = BinarySchema::TYPE_INT8;
+            $body['isRenewAck']       = BinarySchema::TYPE_BOOLEAN;
+        }
+        $body['topics']              = [ShareFetchRequestTopic::class];
+        $body['forgottenTopicsData'] = [ShareFetchRequestForgottenTopic::class];
+
+        return parent::getScheme() + $body;
     }
 
     /**
