@@ -27,10 +27,19 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     Partitions => COMPACT_ARRAY of {@see DescribeShareGroupOffsetsResponsePartition}
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0)"
+ * The partition entries are those of the version this DTO is unpacked from, which its version constant picks in
+ * {@see self::partitionClass()}: {@see DescribeShareGroupOffsetsResponseTopicV0} carries the entries without the
+ * `lag` of Kafka 4.2.
+ *
+ * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
  */
-final class DescribeShareGroupOffsetsResponseTopic implements BinarySchemaInterface
+class DescribeShareGroupOffsetsResponseTopic implements BinarySchemaInterface
 {
+    /**
+     * Version of the DescribeShareGroupOffsets API that this DTO is unpacked from
+     */
+    public const int VERSION = 1;
+
     /**
      * Name of the topic
      */
@@ -56,7 +65,19 @@ final class DescribeShareGroupOffsetsResponseTopic implements BinarySchemaInterf
         return [
             'topicName'  => BinarySchema::TYPE_STRING,
             'topicId'    => BinarySchema::TYPE_UUID,
-            'partitions' => ['partitionIndex' => DescribeShareGroupOffsetsResponsePartition::class],
+            'partitions' => ['partitionIndex' => static::partitionClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a partition entry for the version of the API that this DTO is unpacked from
+     *
+     * @return class-string<DescribeShareGroupOffsetsResponsePartition>
+     */
+    protected static function partitionClass(): string
+    {
+        return static::VERSION >= 1
+            ? DescribeShareGroupOffsetsResponsePartition::class
+            : DescribeShareGroupOffsetsResponsePartitionV0::class;
     }
 }

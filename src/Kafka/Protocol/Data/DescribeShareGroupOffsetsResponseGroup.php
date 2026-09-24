@@ -30,10 +30,18 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The errors of a group come **after** its topics, and a group that could not be described carries an empty topic
  * array next to its code - the **69** `GroupIdNotFound` of a group the coordinator does not hold, among others.
  *
- * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0)"
+ * The topic entries are those of the version this DTO is unpacked from, which its version constant picks in
+ * {@see self::topicClass()}: {@see DescribeShareGroupOffsetsResponseGroupV0} carries the topics of the version 0.
+ *
+ * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
  */
-final class DescribeShareGroupOffsetsResponseGroup implements BinarySchemaInterface
+class DescribeShareGroupOffsetsResponseGroup implements BinarySchemaInterface
 {
+    /**
+     * Version of the DescribeShareGroupOffsets API that this DTO is unpacked from
+     */
+    public const int VERSION = 1;
+
     /**
      * Id of the share group
      */
@@ -63,9 +71,21 @@ final class DescribeShareGroupOffsetsResponseGroup implements BinarySchemaInterf
     {
         return [
             'groupId'      => BinarySchema::TYPE_STRING,
-            'topics'       => ['topicName' => DescribeShareGroupOffsetsResponseTopic::class],
+            'topics'       => ['topicName' => static::topicClass()],
             'errorCode'    => BinarySchema::TYPE_INT16,
             'errorMessage' => BinarySchema::TYPE_NULLABLE_STRING,
         ];
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this DTO is unpacked from
+     *
+     * @return class-string<DescribeShareGroupOffsetsResponseTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 1
+            ? DescribeShareGroupOffsetsResponseTopic::class
+            : DescribeShareGroupOffsetsResponseTopicV0::class;
     }
 }

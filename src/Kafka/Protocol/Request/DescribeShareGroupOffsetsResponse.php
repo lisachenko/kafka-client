@@ -15,12 +15,13 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponseGroup;
+use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponseGroupV0;
 
 /**
- * The share-partition start offsets of share groups (ApiKey 90, Kafka 4.1, KIP-932)
+ * The share-partition start offsets and lags of share groups (ApiKey 90, Kafka 4.1, KIP-932; v1 Kafka 4.2, KIP-1226)
  *
  * <pre>
- *   DescribeShareGroupOffsets Response (Version: 0) => ThrottleTimeMs [Groups] TAG_BUFFER
+ *   DescribeShareGroupOffsets Response (Version: 1) => ThrottleTimeMs [Groups] TAG_BUFFER
  *     ThrottleTimeMs => INT32
  *     Groups         => COMPACT_ARRAY of {@see DescribeShareGroupOffsetsResponseGroup}
  * </pre>
@@ -30,14 +31,20 @@ use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponseGroup;
  * authorization codes 30 and 29, the coordinator codes 14, 15 and 16, the **69** `GroupIdNotFound`, the 42 and
  * the -1.
  *
- * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0)"
+ * The version 1 of Kafka 4.2 adds the `lag` of KIP-1226 to every partition entry
+ * ({@see \Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponsePartition::$lag}); the group and topic
+ * entries are those of the version this class is unpacked from, and {@see DescribeShareGroupOffsetsResponseV0}
+ * keeps the answer of the version 0.
+ *
+ * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 class DescribeShareGroupOffsetsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc
@@ -65,7 +72,11 @@ class DescribeShareGroupOffsetsResponse extends AbstractResponse
 
         return $header + [
             'throttleTimeMs' => BinarySchema::TYPE_INT32,
-            'groups'         => ['groupId' => DescribeShareGroupOffsetsResponseGroup::class],
+            'groups'         => [
+                'groupId' => static::VERSION >= 1
+                    ? DescribeShareGroupOffsetsResponseGroup::class
+                    : DescribeShareGroupOffsetsResponseGroupV0::class,
+            ],
         ];
     }
 }
