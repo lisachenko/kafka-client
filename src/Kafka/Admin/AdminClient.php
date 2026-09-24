@@ -47,6 +47,7 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeQuorumResponseReplicaState;
+use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeTopicPartitionsCursor;
 use Protocol\Kafka\Protocol\Data\DescribeTransactionsResponseTopic;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
@@ -68,6 +69,8 @@ use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\AlterShareGroupOffsetsRequest;
+use Protocol\Kafka\Protocol\Request\AlterShareGroupOffsetsResponse;
 use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsRequest;
 use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
@@ -82,6 +85,8 @@ use Protocol\Kafka\Protocol\Request\DeleteAclsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteAclsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteShareGroupOffsetsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteShareGroupOffsetsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeAclsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeAclsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
@@ -100,6 +105,8 @@ use Protocol\Kafka\Protocol\Request\DescribeProducersRequest;
 use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
 use Protocol\Kafka\Protocol\Request\DescribeQuorumRequest;
 use Protocol\Kafka\Protocol\Request\DescribeQuorumResponse;
+use Protocol\Kafka\Protocol\Request\DescribeShareGroupOffsetsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeShareGroupOffsetsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeTopicPartitionsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeTopicPartitionsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeTransactionsRequest;
@@ -4235,5 +4242,328 @@ class AdminClient
     public function listEarliestPendingUploadOffsets(iterable $topicPartitions): array
     {
         return $this->listOffsets($topicPartitions, OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP);
+    }
+
+    /**
+     * Lists the **share** groups of KIP-932 of the whole cluster, optionally only those in one of the given states
+     *
+     * `Admin.listGroups(ListGroupsOptions.forShareGroups())` of the Java admin client @ 4.3.1, which has no
+     * `listShareGroups()` of its own: the options of `forShareGroups()` set the one filter `withTypes(SHARE)` and
+     * nothing else, which is the `types_filter` of ListGroups v5 (KIP-848, Kafka 3.8) and is applied by the
+     * coordinator. So this is {@see self::listAllGroups()} with the type {@see ListGroupResponseProtocol::TYPE_SHARE}:
+     * every broker is asked for the share groups it coordinates and the answers are merged. The 4.3.1 node answers
+     * every share group with the protocol type `share`, the group type `share` and the state `Empty` or `Stable`
+     * (with a member); a classic or a KIP-848 group is never among them.
+     *
+     * {@see self::listConsumerGroups()} never lists a share group, whatever types it is asked for: it keeps the groups
+     * of the protocol type `consumer` alone.
+     *
+     * @param list<string> $states States to list, empty for every share group (KIP-518, version 4)
+     *
+     * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
+     *
+     * @return array<string, ListGroupResponseProtocol> Share groups of the cluster, indexed by the group id
+     *
+     * @see docs/protocol/4.3.md, section "The share-group admin methods"
+     */
+    public function listShareGroups(array $states = []): array
+    {
+        return $this->listAllGroups($states, [ListGroupResponseProtocol::TYPE_SHARE]);
+    }
+
+    /**
+     * Lists the share-partition start offsets and lags of share groups (ApiKey 90 v1, Kafka 4.2, KIP-932, KIP-1226)
+     *
+     * `Admin.listShareGroupOffsets(Map<String, ListShareGroupOffsetsSpec>)` of the Java admin client @ 4.3.1, over
+     * DescribeShareGroupOffsets: every group is asked for the partitions of its spec - a
+     * {@see ListShareGroupOffsetsSpec}, the same topic => partitions map or list of {@see TopicPartition} that
+     * {@see self::listConsumerGroupOffsets()} takes, or `null` for every partition the group holds state for. The
+     * coordinators of all groups are looked up in one FindCoordinator v4 request and **one request goes to each
+     * coordinator**, with the groups it coordinates.
+     *
+     * Every partition of the answer is a {@see SharePartitionOffsetInfo} - the start offset, the leader epoch and the
+     * **lag** of KIP-1226 - or `null` when the group holds no start offset for it, as the Java client maps the -1.
+     * A partition the node answered with an error of its own is left out, as the Java `ListShareGroupOffsetsHandler`
+     * skips it; the error of a whole group is thrown.
+     *
+     * **Absent state is not an error** (`GroupCoordinatorService.describeShareGroupOffsets()` @ 4.3.1): a group that
+     * does not exist, a classic group and a KIP-848 group are answered with the code 0 - an empty map when their spec
+     * names no partition, `null` for every partition it names - and so is a topic the node does not have. A share
+     * group whose members have not acknowledged a record yet answers the partitions of its subscription with `null`
+     * as well: the share coordinator keeps the start offset -1 until the first acknowledgement.
+     *
+     * An empty batch answers an empty array without sending anything.
+     *
+     * @param array<string, ListShareGroupOffsetsSpec|array<string, list<int>>|iterable<TopicPartition>|null> $groupSpecs
+     *        Partitions to list per group; a `null` value, or {@see ListShareGroupOffsetsSpec::allPartitions()}, for
+     *        every partition the group holds state for
+     *
+     * @throws KafkaException If a coordinator answered an error for a whole group - 30 when the client may not
+     *         describe it, 14 or 16 when its coordinator is loading or moved
+     *
+     * @return array<string, array<string, array<int, SharePartitionOffsetInfo|null>>> Offsets per group, topic and
+     *         partition index; null for a partition without a start offset
+     *
+     * @see docs/protocol/4.3.md, section "The share-group admin methods"
+     */
+    public function listShareGroupOffsets(array $groupSpecs): array
+    {
+        if ($groupSpecs === []) {
+            return [];
+        }
+
+        $partitionsOfGroup = [];
+        foreach ($groupSpecs as $groupId => $spec) {
+            if (!$spec instanceof ListShareGroupOffsetsSpec) {
+                $spec = new ListShareGroupOffsetsSpec($spec);
+            }
+            $partitionsOfGroup[(string) $groupId] = $spec->topicPartitions;
+        }
+
+        $coordinators = new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinators(
+            array_keys($partitionsOfGroup),
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP
+        );
+
+        /** @var array<int, array{0: Node, 1: array<string, array<string, list<int>>|null>}> $batches */
+        $batches = [];
+        foreach ($partitionsOfGroup as $groupId => $partitions) {
+            $node                                = $coordinators[$groupId];
+            $batches[$node->nodeId][0]           = $node;
+            $batches[$node->nodeId][1][$groupId] = $partitions;
+        }
+
+        $result = [];
+        foreach ($batches as [$node, $groupsOfNode]) {
+            /** @var DescribeShareGroupOffsetsResponse $response */
+            $response = $this->sendTo(
+                $node->getConnection($this->configuration),
+                fn(int $correlationId): DescribeShareGroupOffsetsRequest => new DescribeShareGroupOffsetsRequest(
+                    $groupsOfNode,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DescribeShareGroupOffsetsResponse::class,
+                ['groupId' => implode(', ', array_keys($groupsOfNode))]
+            );
+
+            foreach (array_keys($groupsOfNode) as $groupId) {
+                $groupId = (string) $groupId;
+                $group   = $response->groups[$groupId] ?? throw new UnknownErrorException(
+                    ['groupId' => $groupId, 'error' => 'The coordinator sent no result for this group']
+                );
+                if ($group->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $group->errorCode,
+                        ['groupId' => $groupId] + self::errorMessageContext($group->errorMessage)
+                    );
+                }
+
+                $offsets = [];
+                foreach ($group->topics as $topic => $topicResponse) {
+                    /** @var DescribeShareGroupOffsetsResponsePartition $partition */
+                    foreach ($topicResponse->partitions as $partitionIndex => $partition) {
+                        if ($partition->errorCode === KafkaException::NO_ERROR) {
+                            $offsets[(string) $topic][$partitionIndex] = SharePartitionOffsetInfo::fromResponsePartition(
+                                $partition
+                            );
+                        }
+                    }
+                }
+                $result[$groupId] = $offsets;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Sets the share-partition start offsets of a share group (ApiKey 91 v0, Kafka 4.1, KIP-932)
+     *
+     * `Admin.alterShareGroupOffsets(String, Map<TopicPartition, Long>)` of the Java admin client @ 4.3.1 and what
+     * `kafka-share-groups.sh --reset-offsets --execute` sends: the request goes to the coordinator of the group, which
+     * initializes the state of the partitions at the given start offsets. **A group that does not exist is created**
+     * by it, as an empty share group ("Get or create the share group", `GroupMetadataManager.alterShareGroupOffsets()`
+     * @ 4.3.1).
+     *
+     * Every requested partition gets an entry, `null` when its start offset is set and the exception of its code
+     * otherwise: the 3 `UnknownTopicOrPartition` of a topic or a partition the node does not have is per partition,
+     * and a refusal of the whole group is reported for **every** partition of the request, as the Java
+     * `AlterShareGroupOffsetsHandler` does, with the message of the node in the context - the **69**
+     * `GroupIdNotFound` "Group X is not a share group." of a classic or a KIP-848 group, and the **68**
+     * `NonEmptyGroup` "The group is not empty." of a share group with a member. Nothing is thrown for a refused
+     * partition.
+     *
+     * An empty map answers an empty array without sending anything.
+     *
+     * @param string                         $groupId Id of the share group
+     * @param array<string, array<int, int>> $offsets New start offsets, as topic => partition => offset
+     *
+     * @return array<string, array<int, KafkaException|null>> One entry per requested partition, indexed by topic and
+     *         partition index: null when the start offset is set, the exception of its code otherwise
+     *
+     * @see docs/protocol/4.3.md, section "The share-group admin methods"
+     */
+    public function alterShareGroupOffsets(string $groupId, array $offsets): array
+    {
+        if ($offsets === []) {
+            return [];
+        }
+
+        /** @var AlterShareGroupOffsetsResponse $response */
+        $response = $this->sendTo(
+            $this->findCoordinator($groupId)->getConnection($this->configuration),
+            fn(int $correlationId): AlterShareGroupOffsetsRequest => new AlterShareGroupOffsetsRequest(
+                $groupId,
+                $offsets,
+                $this->clientId(),
+                $correlationId
+            ),
+            AlterShareGroupOffsetsResponse::class,
+            ['groupId' => $groupId]
+        );
+
+        $result = [];
+        foreach ($offsets as $topic => $partitions) {
+            $topic = (string) $topic;
+            foreach (array_keys($partitions) as $partitionIndex) {
+                $context = ['groupId' => $groupId, 'topic' => $topic, 'partition' => $partitionIndex];
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    $result[$topic][$partitionIndex] = KafkaException::fromCode(
+                        $response->errorCode,
+                        $context + self::errorMessageContext($response->errorMessage)
+                    );
+
+                    continue;
+                }
+
+                $answer = $response->responses[$topic]->partitions[$partitionIndex] ?? null;
+                $result[$topic][$partitionIndex] = match (true) {
+                    $answer === null => new UnknownErrorException(
+                        $context + ['error' => 'The coordinator sent no result for this partition']
+                    ),
+                    $answer->errorCode === KafkaException::NO_ERROR => null,
+                    default => KafkaException::fromCode(
+                        $answer->errorCode,
+                        $context + self::errorMessageContext($answer->errorMessage)
+                    ),
+                };
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Makes a share group forget where it stands in whole topics (ApiKey 92 v0, Kafka 4.1, KIP-932)
+     *
+     * `Admin.deleteShareGroupOffsets(String, Set<String>)` of the Java admin client @ 4.3.1 and what
+     * `kafka-share-groups.sh --delete-offsets --topic …` sends: the share coordinator deletes the state of the topics,
+     * and a member that reads them later starts over at `share.auto.offset.reset`. There is no partition list - the
+     * api deletes whole topics.
+     *
+     * Every requested topic gets an entry, `null` when its state is deleted and the exception of its code otherwise -
+     * the 3 `UnknownTopicOrPartition` of a topic the node does not have. A refusal of the whole group is **thrown**,
+     * as the Java handler fails the whole result: the **69** `GroupIdNotFound` of a group that does not exist ("Group
+     * X not found." - a delete creates no group, unlike {@see self::alterShareGroupOffsets()}) or is a classic or a
+     * KIP-848 group ("Group X is not a share group."), and the **68** `NonEmptyGroup` of a share group with a member.
+     *
+     * An empty list answers an empty array without sending anything (the node answers such a frame with the code 0
+     * and no topic).
+     *
+     * @param string       $groupId Id of the share group
+     * @param list<string> $topics  Topics whose state is deleted, duplicates are collapsed
+     *
+     * @throws KafkaException If the group refused the request as a whole - 69 for a group that does not exist or is
+     *         not a share group, 68 for a share group with a member, 16 when the coordinator moved
+     *
+     * @return array<string, KafkaException|null> One entry per topic, null when its state is deleted
+     *
+     * @see docs/protocol/4.3.md, section "The share-group admin methods"
+     */
+    public function deleteShareGroupOffsets(string $groupId, array $topics): array
+    {
+        $topics = array_values(array_unique(array_map(strval(...), $topics)));
+        if ($topics === []) {
+            return [];
+        }
+
+        /** @var DeleteShareGroupOffsetsResponse $response */
+        $response = $this->sendTo(
+            $this->findCoordinator($groupId)->getConnection($this->configuration),
+            fn(int $correlationId): DeleteShareGroupOffsetsRequest => new DeleteShareGroupOffsetsRequest(
+                $groupId,
+                $topics,
+                $this->clientId(),
+                $correlationId
+            ),
+            DeleteShareGroupOffsetsResponse::class,
+            ['groupId' => $groupId]
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['groupId' => $groupId] + self::errorMessageContext($response->errorMessage)
+            );
+        }
+
+        $result = [];
+        foreach ($topics as $topic) {
+            $answer         = $response->responses[$topic] ?? null;
+            $context        = ['groupId' => $groupId, 'topic' => $topic];
+            $result[$topic] = match (true) {
+                $answer === null => new UnknownErrorException(
+                    $context + ['error' => 'The coordinator sent no result for this topic']
+                ),
+                $answer->errorCode === KafkaException::NO_ERROR => null,
+                default => KafkaException::fromCode(
+                    $answer->errorCode,
+                    $context + self::errorMessageContext($answer->errorMessage)
+                ),
+            };
+        }
+
+        return $result;
+    }
+
+    /**
+     * Deletes share groups and their state (ApiKey 42, DeleteGroups, for the share groups of KIP-932)
+     *
+     * `Admin.deleteShareGroups(Collection<String>)` of the Java admin client @ 4.3.1, whose
+     * `DeleteShareGroupsHandler` is the `DeleteGroupsHandler` of consumer groups under another name: a share group
+     * is deleted with DeleteGroups, the api of every group type, so this is {@see self::deleteConsumerGroups()} -
+     * one request per coordinator, and every requested group gets an entry, `null` when it was deleted and the
+     * exception of its code otherwise. A share group is deleted with its state once it has **no member**; one with a
+     * member is answered the **68** `NonEmptyGroup`, and a group the coordinator does not know the **69**
+     * `GroupIdNotFound`.
+     *
+     * **DeleteGroups does not know which type of group its caller meant**: an empty classic or KIP-848 group named
+     * here is deleted as well, with the code 0, as it is by the Java admin client. `kafka-share-groups.sh --delete`
+     * checks the type itself before it deletes anything; do the same with {@see self::listShareGroups()} when the
+     * ids are not known to be share groups.
+     *
+     * @param list<string> $groupIds Names of the share groups to delete, duplicates are collapsed
+     *
+     * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If a coordinator could not be
+     *         looked up at all
+     *
+     * @return array<string, KafkaException|null> Error of every requested group, null when it was deleted
+     *
+     * @see docs/protocol/4.3.md, section "The share-group admin methods"
+     */
+    public function deleteShareGroups(array $groupIds): array
+    {
+        return $this->deleteConsumerGroups($groupIds);
+    }
+
+    /**
+     * The context entry of the error message a flexible answer carries next to its code, none for a null or empty one
+     *
+     * @return array{error?: string}
+     */
+    private static function errorMessageContext(?string $errorMessage): array
+    {
+        return $errorMessage === null || $errorMessage === '' ? [] : ['error' => $errorMessage];
     }
 }
