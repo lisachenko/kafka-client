@@ -99,7 +99,9 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
 use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
+use Protocol\Kafka\Protocol\Request\EndTxnRequestV4;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
+use Protocol\Kafka\Protocol\Request\EndTxnResponseV4;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
@@ -157,7 +159,9 @@ use Protocol\Kafka\Protocol\Request\SyncGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
 use Throwable;
 
 /**
@@ -314,9 +318,9 @@ class Client
      * Produce messages to the specific topic partition
      *
      * The request goes out as **Produce v12** (Kafka 4.0) for the message format v2 (`message.format.version=0.11.0`
-     * and every value above it, the default) outside a transaction, as **v11** inside one - the cap of
-     * {@see self::produceVersionCapOf()}, because a v12 inside a transaction is the transaction protocol v2 of
-     * KIP-890 part 2 - and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version 3
+     * and every value above it, the default) outside a transaction and inside a transaction of the protocol v2 (a
+     * coordinator that finalizes `transaction.version` 2, KIP-890 part 2), as **v11** inside a transaction of the
+     * protocol v1 - the cap of {@see self::produceVersionCapOf()} - and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version 3
      * request has no place for and which a node of Kafka 4.0 or later refuses (KIP-896, see
      * {@see self::produceVersion()}). Every version from 9 on sends the same body; what the number states is
      * what the *client* understands of the answer - the leader discovery of KIP-951 at version 10 and, at version
@@ -3300,10 +3304,13 @@ class Client
      * are in the partitions: those are written afterwards, with a `WriteTxnMarkers` request per partition leader, so
      * a `read_committed` consumer sees the records of a committed transaction a moment after this call returns.
      *
-     * **The version sent is the 4 of Kafka 3.8** (KIP-890), which declares no field and only promises the error
-     * code 120; a 3.9.2 coordinator still answers an abort of a committed transaction the 48 and a fenced producer
-     * the 90. The producer id and the epoch that the **version 5** of Kafka 3.9 puts into the answer are the next
-     * wave of this line.
+     * **This is the end of a transaction of the protocol v1** (KIP-98), and the frame is the version 4 of Kafka 3.8
+     * (KIP-890), which declares no field and only promises the error code 120; a coordinator answers an abort of a
+     * committed transaction the 48 and a fenced producer the 90. The **version 5** of Kafka 4.0 ends a transaction
+     * of the protocol v2 and bumps the epoch of the producer with it - {@see self::endTxnBumpingEpoch()} - and a
+     * version 5 is only meant for a transaction whose partitions Produce v12 and TxnOffsetCommit v5 enrolled, so
+     * this method stays at the version 4 exactly as the Java `EndTxnRequest.Builder` @ 4.0.0 caps it at
+     * `LAST_STABLE_VERSION_BEFORE_TRANSACTION_V2` on a cluster that does not finalize `transaction.version` 2.
      *
      * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
      * @param string             $transactionalId    `transactional.id` of the producer
@@ -3320,7 +3327,7 @@ class Client
     ): void {
         $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): EndTxnRequest => new EndTxnRequest(
+            fn(int $correlationId): EndTxnRequestV4 => new EndTxnRequestV4(
                 $transactionalId,
                 $producerIdAndEpoch->producerId,
                 $producerIdAndEpoch->epoch,
@@ -3328,8 +3335,8 @@ class Client
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
-            EndTxnResponse::class,
-            static function (EndTxnResponse $response) use ($transactionalId, $transactionResult): void {
+            EndTxnResponseV4::class,
+            static function (EndTxnResponseV4 $response) use ($transactionalId, $transactionResult): void {
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
                     throw KafkaException::fromCode($response->errorCode, [
                         'transactionalId'   => $transactionalId,
@@ -3354,14 +3361,23 @@ class Client
      * {@see self::addPartitionsToTxn()} there is no top-level error code, so the first error code of the answer is
      * the one that is reported here.
      *
-     * **The version sent is the 4 of Kafka 3.8** (KIP-890), which declares no field - and this is the one api of
-     * the five where the version really changes an answer on a 3.9.2 node. The group coordinator verifies the
+     * **Without `$transactionV2` the version sent is the 4 of Kafka 3.8** (KIP-890), which declares no field - and
+     * this is the one api of the five where the version really changes an answer on a 3.9.2 node. The group coordinator verifies the
      * `__consumer_offsets` partition of the group against the transaction coordinator before it writes the
      * offsets (KIP-890 part 1), and `handleTxnCommitOffsets` @ 3.9.2 passes the verification failure through as
      * the **120** `TransactionAbortable` from the version 4 on, where a version 3 is answered the **48**
      * `InvalidTxnState`: a commit without a preceding {@see self::addOffsetsToTxn()} is exactly that case. The
      * other per-partition codes stay the three of KIP-447, and the member id is checked before the generation,
      * so an unknown member is the 25 and never the 22.
+     *
+     * **With `$transactionV2` the version sent is the 5 of Kafka 4.0** (KIP-890 part 2), the same frame again: the
+     * group coordinator then *enrols* the `__consumer_offsets` partition of the group into the open transaction
+     * itself (`txnOffsetCommitRequestVersionToTransactionSupportedOperation` @ 4.0.0 maps a version above 4 to
+     * `addPartition`), so no {@see self::addOffsetsToTxn()} goes in front of it - which is the transaction protocol
+     * v2 of a cluster that finalizes `transaction.version` 2. Measured on the 4.3.1 node: the commit the version 4
+     * is answered the 120 for is answered 0 at the version 5. A transaction of the protocol v1 must not use it -
+     * the Java `TxnOffsetCommitRequest.Builder` @ 4.0.0 caps the version at 4 unless the transaction protocol v2 is
+     * enabled - hence the default.
      *
      * @param Node               $coordinatorNode    **Group** coordinator of `$groupId`
      * @param string             $transactionalId    `transactional.id` of the producer
@@ -3370,6 +3386,8 @@ class Client
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
      * @param ConsumerGroupMetadata|null $groupMetadata Who the consumer is inside the group (KIP-447, version 3);
      *        `null` is the "not a member" commit of every version below 3
+     * @param bool $transactionV2 Whether the transaction runs the protocol v2 of KIP-890 part 2 (Kafka 4.0), whose
+     *        version 5 enrols the offsets partition itself; `false` sends the version 4 of the protocol v1
      *
      * @throws KafkaException The error code of the first partition that was refused
      */
@@ -3379,11 +3397,15 @@ class Client
         string $groupId,
         ProducerIdAndEpoch $producerIdAndEpoch,
         array $topicPartitionOffsets,
-        ?ConsumerGroupMetadata $groupMetadata = null
+        ?ConsumerGroupMetadata $groupMetadata = null,
+        bool $transactionV2 = false
     ): void {
+        $requestClass  = $transactionV2 ? TxnOffsetCommitRequest::class : TxnOffsetCommitRequestV4::class;
+        $responseClass = $transactionV2 ? TxnOffsetCommitResponse::class : TxnOffsetCommitResponseV4::class;
+
         $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): TxnOffsetCommitRequest => new TxnOffsetCommitRequest(
+            fn(int $correlationId): TxnOffsetCommitRequest => new $requestClass(
                 $transactionalId,
                 $groupId,
                 $producerIdAndEpoch->producerId,
@@ -3393,7 +3415,7 @@ class Client
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
-            TxnOffsetCommitResponse::class,
+            $responseClass,
             static function (TxnOffsetCommitResponse $response) use ($transactionalId, $groupId): void {
                 foreach ($response->topics as $topic => $topicResult) {
                     /** @var TxnOffsetCommitResponsePartition $partitionResult */
@@ -3721,7 +3743,8 @@ class Client
      *   enabled, the produce request will also include the function for a AddPartitionsToTxn call. If V2 is
      *   disabled, the client can't use produce request version higher than 11 within a transaction." The cap is how
      *   the transactional path keeps a transaction of the protocol v1 at {@see ProduceRequestV11}; see
-     *   {@see self::produceVersionCapOf()}, which {@see self::produce()} asks for it.
+     *   {@see self::produceVersionCapOf()}, which {@see self::produce()} asks for it with the
+     *   {@see TransactionManager::isTransactionV2Enabled()} of the producer.
      *
      * A cap below {@see ProduceRequest::BASELINE_VERSION} is raised to it for the message format v2: version 3 is
      * the first one that carries a record batch.
@@ -3744,14 +3767,21 @@ class Client
      * The transactional half of the version choice of {@see self::produceVersion()}: a Produce **v12** inside a
      * transaction is the transaction protocol v2 of KIP-890 part 2 - the broker adds the partition to the
      * transaction itself - which a producer of the protocol v1, the one that sends AddPartitionsToTxn, must not
-     * send, so a transactional producer is capped at {@see ProduceRequestV11} here. An idempotent producer writes
-     * outside every transaction and is not capped. **This is the single decision point the transaction protocol v2
-     * of the producer switches**: a producer whose {@see TransactionManager} speaks the protocol v2 on a node that
-     * finalizes `transaction.version` 2 answers `null` here and sends v12.
+     * send: "If V2 is disabled, the client can't use produce request version higher than 11 within a transaction"
+     * (`ProduceRequest.json` @ 4.0.0). So a transactional producer whose {@see TransactionManager} is **not** on the
+     * protocol v2 - its coordinator does not finalize `transaction.version` 2 - is capped at
+     * {@see TransactionManager::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2} ({@see ProduceRequestV11}), exactly as
+     * `ProduceRequest.Builder` @ 4.0.0 caps it with `useTransactionV1Version`; one that is on the protocol v2 sends
+     * v12, which is what enrols its partitions. An idempotent producer writes outside every transaction and is not
+     * capped either.
      */
     private static function produceVersionCapOf(TransactionManager $transactionManager): ?int
     {
-        return $transactionManager->isTransactional() ? ProduceRequestV11::VERSION : null;
+        if (!$transactionManager->isTransactional() || $transactionManager->isTransactionV2Enabled()) {
+            return null;
+        }
+
+        return TransactionManager::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2;
     }
 
     /**
@@ -3855,5 +3885,70 @@ class Client
         return $produce->maxVersion >= ProduceRequest::BASELINE_RAISED_WITH_VERSION
             ? max($produce->minVersion, ProduceRequest::BASELINE_VERSION)
             : $produce->minVersion;
+    }
+
+    /**
+     * Ends the open transaction of the protocol v2 and bumps the epoch of the producer (ApiKey 26 v5, KIP-890 part 2)
+     *
+     * The end of a transaction whose partitions a Produce v12 and whose offsets a TxnOffsetCommit v5 enrolled -
+     * the transaction protocol **v2** of a cluster that finalizes `transaction.version` 2. The request is the frame
+     * of {@see self::endTxn()} with the version **5** of Kafka 4.0 ("Version 5 enables bumping epoch on every
+     * transaction", `EndTxnRequest.json` @ 4.0.0), and the version is what the coordinator acts on:
+     * `KafkaApis.handleEndTxnRequest` @ 4.0.0 hands it `TransactionVersion.transactionVersionForEndTxn(request)`, it
+     * bumps the epoch of the producer as it prepares the commit or the abort, and it answers the producer id and
+     * the epoch the **next** transaction runs under - a new producer id with the epoch 0 when the epoch is
+     * exhausted. Every batch of the next transaction has to carry them, so the producer takes them over and starts
+     * every sequence at 0 again, as `TransactionManager.EndTxnHandler` @ 4.0.0 does whenever the producer id of the
+     * answer is not -1.
+     *
+     * Measured on the 4.3.1 node: a commit is answered 0 with the same producer id and the epoch one higher, and so
+     * is a retry of that commit with the epoch it was sent with once the markers are written; a request that
+     * arrives while they are still being written is the **51** with the defaults -1/-1, a commit of a transaction
+     * that enrolled nothing the **48**, and an epoch below the current one the **90** `ProducerFenced`. An abort of
+     * a transaction that enrolled nothing is answered 0 **and bumps the epoch all the same**.
+     *
+     * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param bool               $transactionResult  {@see EndTxnRequest::COMMIT} or {@see EndTxnRequest::ABORT}
+     *
+     * @return ProducerIdAndEpoch The producer id and epoch of the next transaction,
+     *         {@see ProducerIdAndEpoch::none()} when the answer carries none
+     *
+     * @throws KafkaException The error code of the answer
+     */
+    public function endTxnBumpingEpoch(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        bool $transactionResult
+    ): ProducerIdAndEpoch {
+        return $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): EndTxnRequest => new EndTxnRequest(
+                $transactionalId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $transactionResult,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            EndTxnResponse::class,
+            static function (EndTxnResponse $response) use (
+                $transactionalId,
+                $transactionResult
+            ): ProducerIdAndEpoch {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode($response->errorCode, [
+                        'transactionalId'   => $transactionalId,
+                        'transactionResult' => $transactionResult ? 'commit' : 'abort',
+                    ]);
+                }
+
+                return $response->hasProducerIdAndEpoch()
+                    ? new ProducerIdAndEpoch($response->producerId, $response->producerEpoch)
+                    : ProducerIdAndEpoch::none();
+            }
+        );
     }
 }

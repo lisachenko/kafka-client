@@ -59,21 +59,25 @@ use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV1;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV3;
+use Protocol\Kafka\Protocol\Request\EndTxnRequestV4;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV1;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV2;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV3;
+use Protocol\Kafka\Protocol\Request\EndTxnResponseV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV2;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV3;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV2;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequest;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequestV0;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
@@ -83,7 +87,7 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
  * @see docs/protocol/4.3.md, sections "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)",
- *      "EndTxn API (key 26, v0 to v4)", "WriteTxnMarkers API (key 27, v0 and v1)" and "TxnOffsetCommit API (key 28, v0 to v4)"
+ *      "EndTxn API (key 26, v0 to v5)", "WriteTxnMarkers API (key 27, v0 and v1)" and "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
 #[CoversClass(AddPartitionsToTxnRequestV4::class)]
@@ -110,10 +114,12 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 #[CoversClass(AddOffsetsToTxnResponseV1::class)]
 #[CoversClass(AddOffsetsToTxnResponseV0::class)]
 #[CoversClass(EndTxnRequest::class)]
+#[CoversClass(EndTxnRequestV4::class)]
 #[CoversClass(EndTxnRequestV3::class)]
 #[CoversClass(EndTxnRequestV1::class)]
 #[CoversClass(EndTxnRequestV0::class)]
 #[CoversClass(EndTxnResponse::class)]
+#[CoversClass(EndTxnResponseV4::class)]
 #[CoversClass(EndTxnResponseV3::class)]
 #[CoversClass(EndTxnResponseV2::class)]
 #[CoversClass(EndTxnResponseV1::class)]
@@ -136,8 +142,10 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 #[CoversClass(TxnOffsetCommitRequestPartition::class)]
 #[CoversClass(TxnOffsetCommitResponseTopic::class)]
 #[CoversClass(TxnOffsetCommitResponsePartition::class)]
+#[CoversClass(TxnOffsetCommitRequestV4::class)]
 #[CoversClass(TxnOffsetCommitRequestV3::class)]
 #[CoversClass(TxnOffsetCommitRequestV2::class)]
+#[CoversClass(TxnOffsetCommitResponseV4::class)]
 #[CoversClass(TxnOffsetCommitResponseV3::class)]
 #[CoversClass(TxnOffsetCommitResponseV2::class)]
 final class TransactionApiTest extends TestCase
@@ -885,12 +893,12 @@ final class TransactionApiTest extends TestCase
                 4,
             ],
             'EndTxn' => [
-                new EndTxnRequest('tx-1', 42, 3, EndTxnRequest::COMMIT, 'test', 7),
+                new EndTxnRequestV4('tx-1', 42, 3, EndTxnRequest::COMMIT, 'test', 7),
                 new EndTxnRequestV3('tx-1', 42, 3, EndTxnRequest::COMMIT, 'test', 7),
                 4,
             ],
             'TxnOffsetCommit' => [
-                new TxnOffsetCommitRequest('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
+                new TxnOffsetCommitRequestV4('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
                 new TxnOffsetCommitRequestV3('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
                 4,
             ],
@@ -920,8 +928,8 @@ final class TransactionApiTest extends TestCase
         $answers = [
             AddPartitionsToTxnResponse::class => [AddPartitionsToTxnResponseV4::class, self::ADD_PARTITIONS_V4_RESPONSE_HEX],
             AddOffsetsToTxnResponse::class    => [AddOffsetsToTxnResponseV3::class, '0000000c000000070000000000000000'],
-            EndTxnResponse::class             => [EndTxnResponseV3::class, '0000000c000000070000000000003000'],
-            TxnOffsetCommitResponse::class    => [
+            EndTxnResponseV4::class           => [EndTxnResponseV3::class, '0000000c000000070000000000003000'],
+            TxnOffsetCommitResponseV4::class  => [
                 TxnOffsetCommitResponseV3::class,
                 '0000001a' . '00000007' . '00' . '00000000' . '02' . '06746f706963' . '02' . '00000000' . '0019' . '00' . '00' . '00',
             ],
@@ -967,5 +975,86 @@ final class TransactionApiTest extends TestCase
             'test',
             7
         );
+    }
+
+    /**
+     * EndTxn v5 and TxnOffsetCommit v5 (Kafka 4.0, KIP-890 part 2) declare no field of the request
+     *
+     * "Version 5 enables bumping epoch on every transaction" and "Version 5 is the same as version 4" are the
+     * comments of `EndTxnRequest.json` and `TxnOffsetCommitRequest.json` @ 4.0.0: the version is the switch of the
+     * transaction protocol v2, the frame is the one of the version 4 with another number in the header.
+     */
+    public function testTheKip890VersionsOfKafka40AreTheFramesOfTheVersionFourWithAHigherVersionField(): void
+    {
+        $frames = [
+            'EndTxn' => [
+                new EndTxnRequest('tx-1', 42, 3, EndTxnRequest::ABORT, 'test', 7),
+                new EndTxnRequestV4('tx-1', 42, 3, EndTxnRequest::ABORT, 'test', 7),
+            ],
+            'TxnOffsetCommit' => [
+                new TxnOffsetCommitRequest('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
+                new TxnOffsetCommitRequestV4('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
+            ],
+        ];
+
+        foreach ($frames as $api => [$current, $keptBehind]) {
+            self::assertSame(5, $current->getApiVersion(), "{$api} is at the version Kafka 4.0 added");
+            self::assertSame(4, $keptBehind->getApiVersion(), "{$api} keeps the version of the protocol v1");
+
+            $old = bin2hex((string) $keptBehind);
+            self::assertSame(
+                substr($old, 0, 12) . '0005' . substr($old, 16),
+                bin2hex((string) $current),
+                "the {$api} frame of Kafka 4.0 differs from the version 4 in the version field alone"
+            );
+        }
+    }
+
+    /**
+     * The answer of EndTxn v5 carries the producer id and the epoch of the next transaction
+     *
+     * `EndTxnResponse.json` @ 4.0.0 appends `producer_id` (int64) and `producer_epoch` (int16) behind the error
+     * code, both with the default -1; the node answers the -1 pair with every error code.
+     */
+    public function testTheVersionFiveAnswerOfEndTxnCarriesTheBumpedProducerIdAndEpoch(): void
+    {
+        $bumped = EndTxnResponse::unpack(new StringStream((string) hex2bin(
+            '00000016' . '00000065' . '00' . '00000000' . '0000' . '00000000000000d3' . '0001' . '00'
+        )));
+
+        self::assertSame(KafkaException::NO_ERROR, $bumped->errorCode);
+        self::assertTrue($bumped->hasProducerIdAndEpoch());
+        self::assertSame(211, $bumped->producerId);
+        self::assertSame(1, $bumped->producerEpoch);
+
+        $refused = EndTxnResponse::unpack(new StringStream((string) hex2bin(
+            '00000016' . '00000066' . '00' . '00000000' . '0033' . 'ffffffffffffffff' . 'ffff' . '00'
+        )));
+
+        self::assertSame(KafkaException::CONCURRENT_TRANSACTIONS, $refused->errorCode);
+        self::assertFalse($refused->hasProducerIdAndEpoch(), 'the defaults -1/-1 hand out nothing');
+        self::assertSame(-1, $refused->producerEpoch);
+
+        $versionFour = EndTxnResponseV4::unpack(new StringStream((string) hex2bin('0000000c000000070000000000003000')));
+
+        self::assertFalse($versionFour->hasProducerIdAndEpoch(), 'the version 4 has no place for the pair');
+        self::assertSame('0000000c000000070000000000003000', bin2hex((string) $versionFour));
+    }
+
+    /**
+     * The answer of TxnOffsetCommit v5 is the one of the version 4, which reads the same bytes
+     */
+    public function testTheVersionFiveAnswerOfTxnOffsetCommitIsTheFrameOfTheVersionFour(): void
+    {
+        $hex = '0000001a' . '00000007' . '00' . '00000000' . '02' . '06746f706963' . '02' . '00000000' . '0078'
+            . '00' . '00' . '00';
+
+        $new = TxnOffsetCommitResponse::unpack(new StringStream((string) hex2bin($hex)));
+        $old = TxnOffsetCommitResponseV4::unpack(new StringStream((string) hex2bin($hex)));
+
+        self::assertSame(5, $new::VERSION);
+        self::assertSame(120, $new->topics['topic']->partitions[0]->errorCode);
+        self::assertSame($hex, bin2hex((string) $new));
+        self::assertSame(bin2hex((string) $old), bin2hex((string) $new));
     }
 }

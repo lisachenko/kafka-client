@@ -314,9 +314,32 @@ final class DelegationTokenApiTest extends IntegrationTestCase
 
         // 62, not 66: for the controller the token is not "expired", the RemoveDelegationTokenRecord took it out
         // of the metadata log and out of the token cache
-        $this->expectException(DelegationTokenNotFoundException::class);
+        self::assertExpiredTokenIsNotFound($admin, $token->hmac);
+    }
 
-        $admin->expireDelegationToken($token->hmac);
+    /**
+     * Expires a token that was just expired until the node answers the 62 of a token it does not have
+     *
+     * The 4.3.1 node answered a second expire that followed the first one immediately with 0 in the baseline of the
+     * 4.x line: the controller looks the hmac up in a `DelegationTokenCache` (`DelegationTokenControlManager` @
+     * 4.3.1), which may learn of the removal a moment after the first answer. The second expire is therefore
+     * repeated for a bounded while, and only the 62 ends it.
+     */
+    private static function assertExpiredTokenIsNotFound(AdminClient $admin, string $hmac): void
+    {
+        $deadline = microtime(true) + 10.0;
+        do {
+            try {
+                $admin->expireDelegationToken($hmac);
+            } catch (DelegationTokenNotFoundException $notFound) {
+                self::assertSame(KafkaException::DELEGATION_TOKEN_NOT_FOUND, $notFound->getCode());
+
+                return;
+            }
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+
+        self::fail('an expired token must end as the 62 of a token the cluster does not have');
     }
 
     public function testAnHmacNoTokenOfTheClusterHasIsTheNotFoundCode(): void
@@ -387,9 +410,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
             'an immediate expiry of an expired token is accepted on a KRaft node and answers the clock of the node'
         );
 
-        $this->expectException(DelegationTokenNotFoundException::class);
-
-        $admin->expireDelegationToken($token->hmac);
+        self::assertExpiredTokenIsNotFound($admin, $token->hmac);
     }
 
     public function testARenewerWhoseTypeIsNotUserIsRefusedAndNoTokenIsCreated(): void

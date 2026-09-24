@@ -86,13 +86,14 @@ final class ProduceVersionChoiceTest extends TestCase
         self::assertSame([null], $client->produceVersionCaps);
     }
 
-    public function testATransactionalProducerIsCappedAtVersionEleven(): void
+    public function testATransactionalProducerThatWasNotInitializedIsCappedAtVersionEleven(): void
     {
         $client  = $this->client();
         $manager = new TransactionManager($client, 'orders-tx', 30000);
 
         $client->produce([self::TOPIC => [0 => [new Record('in a transaction')]]], $manager);
 
+        self::assertFalse($manager->isTransactionV2Enabled());
         self::assertSame(
             [ProduceRequestV11::VERSION],
             $client->produceVersionCaps,
@@ -100,13 +101,45 @@ final class ProduceVersionChoiceTest extends TestCase
         );
     }
 
-    private function client(): FakeClient
+    public function testATransactionalProducerOfTheProtocolV1IsCappedAtVersionEleven(): void
     {
-        $client              = new FakeClient(
+        // A coordinator that finalizes `transaction.version` 1: the partitions are enrolled by AddPartitionsToTxn
+        $client  = $this->client(1);
+        $manager = new TransactionManager($client, 'orders-tx', 30000);
+        $manager->initTransactions();
+        $manager->beginTransaction();
+
+        $client->produce([self::TOPIC => [0 => [new Record('protocol v1')]]], $manager);
+
+        self::assertFalse($manager->isTransactionV2Enabled());
+        self::assertSame([TransactionManager::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2], $client->produceVersionCaps);
+        self::assertSame(11, TransactionManager::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2);
+        self::assertSame(11, Client::produceVersion(RecordBatch::MAGIC, $client->produceVersionCaps[0]));
+    }
+
+    public function testATransactionalProducerOfTheProtocolV2SendsVersionTwelve(): void
+    {
+        // A coordinator that finalizes `transaction.version` 2 (KIP-890 part 2): the Produce v12 enrols the partition
+        $client  = $this->client(2);
+        $manager = new TransactionManager($client, 'orders-tx', 30000);
+        $manager->initTransactions();
+        $manager->beginTransaction();
+
+        $client->produce([self::TOPIC => [0 => [new Record('protocol v2')]]], $manager);
+
+        self::assertTrue($manager->isTransactionV2Enabled());
+        self::assertSame([null], $client->produceVersionCaps, 'no cap');
+        self::assertSame(12, Client::produceVersion(RecordBatch::MAGIC, $client->produceVersionCaps[0]));
+    }
+
+    private function client(?int $transactionVersion = null): FakeClient
+    {
+        $client                     = new FakeClient(
             ClusterFixture::withPartitions([self::TOPIC => [0 => 1]]),
             [ProducerConfig::ACKS => ProducerConfig::ACKS_ALL]
         );
-        $client->producerIds = [new ProducerIdAndEpoch(4000, 0)];
+        $client->producerIds        = [new ProducerIdAndEpoch(4000, 0)];
+        $client->transactionVersion = $transactionVersion;
 
         return $client;
     }

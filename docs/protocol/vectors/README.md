@@ -81,7 +81,9 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1193** of them in **62** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **1207** of them in **62** files: **14** are the transaction protocol v2 of Kafka 4.0 (KIP-890 part
+2), captured on the `kafka-4-3-1` node of the 4.x line: the TxnOffsetCommit v4 and v5 pairs of one commit, the 120 and
+the 0, in `txn-offset-commit.json` and five EndTxn v5 pairs in `end-txn.json` - **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the

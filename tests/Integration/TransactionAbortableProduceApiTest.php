@@ -301,14 +301,12 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
         // What the 120 is for: the batch fails, the transaction can not be committed any more, and the producer
         // carries on with the SAME transactional id once it has aborted. `Client::produce()` reports the code as
         // the exception of that partition and `TransactionManager::batchFailed()` moves the producer into
-        // ABORTABLE_ERROR, from which only `abortTransaction()` leads out
+        // ABORTABLE_ERROR, from which only `abortTransaction()` leads out. The node finalizes `transaction.version`
+        // 2, on which a producer of the protocol v2 never meets the 120 (its Produce v12 enrols the partition, see
+        // the test below), so the producer of this test is held on the protocol v1 - Produce v11 inside the
+        // transaction, AddPartitionsToTxn in front of it - which is what a 3.x cluster would make of it
         $transactionalId = self::uniqueTransactionalId('t2-38-recover');
-        $manager         = new TransactionManager(
-            $this->client,
-            $transactionalId,
-            60000,
-            $this->configuration()
-        );
+        $manager         = $this->transactionManagerOfTheProtocolV1($transactionalId);
 
         $manager->initTransactions();
         $manager->beginTransaction();
@@ -361,6 +359,50 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
             $accepted[$this->topic][self::VERIFIED_PARTITION]->baseOffset,
             'the next transaction of the same producer commits, behind the marker of the aborted one'
         );
+    }
+
+    public function testAProducerOfTheProtocolV2EnrolsThePartitionWithItsProduceVersionTwelve(): void
+    {
+        // The other side of the version choice: on this node the transaction manager speaks the protocol v2, so
+        // `Client::produce()` sends the transactional batch as Produce v12, which enrols the partition itself - the
+        // very batch that is refused the 120 at version 11 above is appended and committed
+        $transactionalId = self::uniqueTransactionalId('t2-40-v2-producer');
+        $manager         = new TransactionManager($this->client, $transactionalId, 60000, $this->configuration());
+
+        $manager->initTransactions();
+        self::assertTrue($manager->isTransactionV2Enabled(), 'the node finalizes transaction.version 2');
+
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$this->topic => [self::UNVERIFIED_PARTITION => []]]);
+        $accepted = $this->client->produce(
+            [$this->topic => [self::UNVERIFIED_PARTITION => [new Record('t2-40 enrolled by the produce')]]],
+            $manager
+        );
+        $manager->commitTransaction();
+
+        self::assertSame(0, $accepted[$this->topic][self::UNVERIFIED_PARTITION]->baseOffset);
+        self::assertTrue($manager->isReady());
+    }
+
+    /**
+     * A transaction manager held on the transaction protocol v1 even on a node that finalizes `transaction.version` 2
+     */
+    private function transactionManagerOfTheProtocolV1(string $transactionalId): TransactionManager
+    {
+        return new class ($this->client, $transactionalId, $this->configuration()) extends TransactionManager {
+            /**
+             * @param array<string, mixed> $configuration
+             */
+            public function __construct(Client $client, string $transactionalId, array $configuration)
+            {
+                parent::__construct($client, $transactionalId, 60000, $configuration);
+            }
+
+            protected function canEnrolPartitionsByProduce(): bool
+            {
+                return false;
+            }
+        };
     }
 
     /**

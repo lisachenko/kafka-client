@@ -39,6 +39,7 @@ use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Throwable;
 
 /**
@@ -110,8 +111,37 @@ use Throwable;
  * answer - the field that makes the difference between "your records were deleted, number the partition from 0
  * again" and "your records are there and we disagree about them" visible at all.
  *
+ * ### The transaction protocol v2 (Kafka 4.0, KIP-890 part 2)
+ *
+ * A cluster that finalizes the feature **`transaction.version` 2** runs every transaction of a client that asks for
+ * it under the protocol v2, and this class asks for it whenever the cluster does, as the Java `TransactionManager`
+ * @ 4.0.0 does (`maybeUpdateTransactionV2Enabled()`, `isTransactionV2Enabled()`):
+ *
+ * * the partitions of a transaction are **not** enrolled with an `AddPartitionsToTxn` any more - the Produce
+ *   request of version 12 and above enrols them itself - and the offsets of a group not with an
+ *   `AddOffsetsToTxn`: the TxnOffsetCommit **v5** enrols the `__consumer_offsets` partition of the group;
+ * * every transaction ends with an EndTxn **v5**, and the coordinator **bumps the epoch** of the producer with it
+ *   and answers the producer id and epoch of the next transaction, which this class takes over together with a
+ *   fresh start of every sequence at 0;
+ * * so an abortable error needs no `InitProducerId` of KIP-360 any more: the abort itself bumps the epoch.
+ *
+ * The feature is read off the ApiVersions answer of the transaction coordinator ({@see self::isTransactionV2Enabled()})
+ * when the producer is initialized and again before every end of a transaction, which ends with the protocol it
+ * began with. A cluster that finalizes the level only while this producer runs makes the producer bump its epoch
+ * with an `InitProducerId` once, after the end of the transaction of the protocol v1, as the Java client does "to
+ * fence the old V1 transaction epoch". A 3.x node - no `transaction.version` at all - and a 4.x cluster below the
+ * level 2 keep the protocol **v1**: AddPartitionsToTxn, AddOffsetsToTxn, TxnOffsetCommit **v4**, EndTxn **v4**
+ * and a Produce of at most the version 11 (`ProduceRequest.LAST_STABLE_VERSION_BEFORE_TRANSACTION_V2` @ 4.0.0).
+ *
+ * The version of the Produce request is the one piece of the protocol v2 this class does not send: the client
+ * that writes the batch chooses it, and {@see self::isTransactionV2Enabled()} is what it chooses by - the
+ * version 12 and above inside a transaction of the protocol v2, at most the version 11 inside one of the
+ * protocol v1. A client whose Produce request cannot go above the version 11 cannot enrol a partition that way, so
+ * the protocol v2 also needs {@see self::canEnrolPartitionsByProduce()}.
+ *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/4.3.md, sections "InitProducerId API (key 22, v0 to v5)" and "The idempotent producer"
+ * @see docs/protocol/4.3.md, sections "InitProducerId API (key 22, v0 to v5)", "The idempotent producer" and "The
+ *      transaction protocol v2 on a node that finalizes it (Kafka 4.0)"
  */
 class TransactionManager
 {
@@ -130,6 +160,24 @@ class TransactionManager
      * configuration carries no `metadata.fetch.timeout.ms`
      */
     public const int DEFAULT_COORDINATOR_TIMEOUT_MS = 30000;
+
+    /**
+     * The finalized feature of KIP-1022 that switches the transaction protocol, `TransactionVersion.FEATURE_NAME`
+     */
+    public const string TRANSACTION_VERSION_FEATURE = 'transaction.version';
+
+    /**
+     * The level of {@see self::TRANSACTION_VERSION_FEATURE} from which on a cluster runs the transaction protocol v2
+     * of KIP-890 part 2, `TransactionVersion.TV_2` ("epoch bump per transaction and optimizations")
+     */
+    public const int TRANSACTION_VERSION_2 = 2;
+
+    /**
+     * The highest Produce version a transaction of the protocol v1 may use,
+     * `ProduceRequest.LAST_STABLE_VERSION_BEFORE_TRANSACTION_V2` @ 4.0.0: every version above it enrols the
+     * partitions of its batch into the transaction itself
+     */
+    public const int LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2 = 11;
 
     /**
      * Producer id and epoch of this producer, {@see ProducerIdAndEpoch::none()} until the first `InitProducerId`
@@ -206,6 +254,24 @@ class TransactionManager
      * @var array<string, TopicPartition>
      */
     private array $newPartitionsInTransaction = [];
+
+    /**
+     * Whether the transactions of this producer run the protocol v2 of KIP-890 part 2 (Kafka 4.0)
+     *
+     * `TransactionManager.isTransactionV2Enabled` @ 4.0.0, see {@see self::isTransactionV2Enabled()}.
+     */
+    private bool $transactionV2 = false;
+
+    /**
+     * Whether the open transaction enrolled anything at the coordinator, i.e. whether there is anything to end
+     *
+     * `TransactionManager.transactionStarted` @ 4.0.0: a transaction of the protocol v1 starts with the first
+     * `AddPartitionsToTxn` or `AddOffsetsToTxn` that went through, one of the protocol v2 with the first partition
+     * a Produce enrols or the first `TxnOffsetCommit`. The coordinator knows nothing of a transaction that never
+     * started - it answers an EndTxn of it with the **48** - so {@see self::commitTransaction()} and
+     * {@see self::abortTransaction()} send none for it.
+     */
+    private bool $transactionStarted = false;
 
     /**
      * @param Client      $client               Client that sends the `InitProducerId` request
@@ -617,8 +683,11 @@ class TransactionManager
             return;
         }
 
-        // KIP-360: the abort that follows has to bump the epoch, see `bumpEpochIfNeeded()`
-        $this->epochBumpRequired = true;
+        // KIP-360: the abort that follows has to bump the epoch, see `bumpEpochIfNeeded()` - unless the abort is an
+        // EndTxn v5 of the protocol v2, which bumps it itself (`needToTriggerEpochBumpFromClient()` @ 4.0.0)
+        if (!$this->transactionV2) {
+            $this->epochBumpRequired = true;
+        }
 
         $this->transitionTo(TransactionState::ABORTABLE_ERROR, $exception);
     }
@@ -708,6 +777,38 @@ class TransactionManager
     }
 
     /**
+     * Tells whether the transactions of this producer run the protocol v2 of KIP-890 part 2 (Kafka 4.0).
+     *
+     * `TransactionManager.isTransactionV2Enabled()` @ 4.0.0: `true` once the transaction coordinator reported the
+     * finalized feature {@see self::TRANSACTION_VERSION_FEATURE} at {@see self::TRANSACTION_VERSION_2} or above -
+     * the default of a 4.x cluster - and this producer can enrol a partition with its Produce request. It is what
+     * the Produce version of a transactional batch is chosen by: **12 and above** while it is `true`, because those
+     * versions enrol the partitions of the batch into the transaction; **at most 11**
+     * ({@see self::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2}) while it is `false`, because the partitions of a
+     * transaction of the protocol v1 were enrolled by an `AddPartitionsToTxn`, as `ProduceRequest.Builder` @ 4.0.0
+     * caps the version with `useTransactionV1Version`. A producer without a `transactional.id` and one that was not
+     * initialized answer `false`.
+     */
+    public function isTransactionV2Enabled(): bool
+    {
+        return $this->transactionV2;
+    }
+
+    /**
+     * Tells whether the Produce request of this client can enrol the partitions of a batch into a transaction.
+     *
+     * The protocol v2 of KIP-890 part 2 has no `AddPartitionsToTxn` of the client: a partition becomes part of the
+     * transaction with the first Produce **v12** (Kafka 4.0) that writes into it, and every version below it only
+     * *verifies* the partition, which the leader refuses with the 120 for a partition no `AddPartitionsToTxn` added.
+     * A client whose Produce request stops at the version 11 therefore keeps the protocol v1 whatever the cluster
+     * finalizes. This reads the version of {@see ProduceRequest}, the request of the message format v2.
+     */
+    protected function canEnrolPartitionsByProduce(): bool
+    {
+        return ProduceRequest::VERSION > self::LAST_PRODUCE_VERSION_BEFORE_TRANSACTION_V2;
+    }
+
+    /**
      * Initializes the transactional producer: fences every earlier incarnation of its transactional id.
      *
      * The single `InitProducerId` this sends is what makes a `transactional.id` more than a name: the coordinator
@@ -745,6 +846,9 @@ class TransactionManager
                     );
                 }
             );
+
+            // Which transaction protocol the producer speaks is decided here, `maybeUpdateTransactionV2Enabled(true)`
+            $this->maybeUpdateTransactionV2Enabled(true);
         } catch (Throwable $error) {
             // A producer that never got its id can not do anything at all, so there is no state below fatal for it
             $this->transitionToFatalError($error);
@@ -781,6 +885,10 @@ class TransactionManager
      * One call sends at most one `AddPartitionsToTxn` request, for every partition of the batch that the
      * coordinator does not hold yet.
      *
+     * **In a transaction of the protocol v2** (Kafka 4.0, {@see self::isTransactionV2Enabled()}) nothing is sent:
+     * the Produce request of version 12 and above enrols the partitions of its batch itself, so this only notes
+     * them as part of the transaction, as `maybeAddPartition()` @ 4.0.0 does.
+     *
      * @param array<string, array<int, mixed>> $topicPartitions Whatever is keyed by topic and partition, e.g. the
      *        buffered records of a batch
      *
@@ -802,6 +910,16 @@ class TransactionManager
         }
 
         if ($this->newPartitionsInTransaction === []) {
+            return;
+        }
+
+        // The protocol v2 of KIP-890 part 2: the Produce v12 that follows enrols the partitions itself, so they are
+        // part of the transaction from here on and nothing goes to the coordinator (`maybeAddPartition()` @ 4.0.0)
+        if ($this->transactionV2) {
+            $this->partitionsInTransaction   += $this->newPartitionsInTransaction;
+            $this->newPartitionsInTransaction = [];
+            $this->transactionStarted         = true;
+
             return;
         }
 
@@ -827,6 +945,7 @@ class TransactionManager
             $this->partitionsInTransaction[$key] = $topicPartition;
             unset($this->newPartitionsInTransaction[$key]);
         }
+        $this->transactionStarted = true;
     }
 
     /**
@@ -847,6 +966,10 @@ class TransactionManager
      * commit of a generation that is over (22), of a member it does not know (25) or of an instance id that has
      * moved on (82). A bare group id keeps meaning what it meant before - the generation -1 with an empty member
      * id, which the coordinator accepts without checking anything.
+     *
+     * **In a transaction of the protocol v2** (Kafka 4.0, {@see self::isTransactionV2Enabled()}) it takes one
+     * request: the `TxnOffsetCommit` goes out as the version **5**, which enrols the `__consumer_offsets` partition
+     * of the group itself, and the `AddOffsetsToTxn` is gone - `sendOffsetsToTransaction()` @ 4.0.0.
      *
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit, as
      *        topic => partition => offset
@@ -879,19 +1002,28 @@ class TransactionManager
         }
 
         $transactionalId = $this->requireTransactionalId();
+        $transactionV2   = $this->transactionV2;
 
-        $this->transactionalRequest(fn(): mixed => $this->onTransactionCoordinator(
-            function (Node $coordinator) use ($transactionalId, $groupId): void {
-                $this->client->addOffsetsToTxn($coordinator, $transactionalId, $this->producerIdAndEpoch, $groupId);
-            }
-        ));
+        // The protocol v2 of KIP-890 part 2 has no AddOffsetsToTxn: the TxnOffsetCommit v5 enrols the offsets
+        // partition of the group itself (`sendOffsetsToTransaction()` @ 4.0.0)
+        if (!$transactionV2) {
+            $this->transactionalRequest(fn(): mixed => $this->onTransactionCoordinator(
+                function (Node $coordinator) use ($transactionalId, $groupId): void {
+                    $this->client->addOffsetsToTxn($coordinator, $transactionalId, $this->producerIdAndEpoch, $groupId);
+                }
+            ));
+        }
+        // From here on the coordinator holds a transaction that has to be ended, even if the commit below fails
+        $this->transactionStarted = true;
+
         $this->transactionalRequest(fn(): mixed => $this->onGroupCoordinator(
             $groupId,
             function (Node $coordinator) use (
                 $transactionalId,
                 $groupId,
                 $topicPartitionOffsets,
-                $groupMetadata
+                $groupMetadata,
+                $transactionV2
             ): void {
                 $this->client->txnOffsetCommit(
                     $coordinator,
@@ -899,7 +1031,8 @@ class TransactionManager
                     $groupId,
                     $this->producerIdAndEpoch,
                     $topicPartitionOffsets,
-                    $groupMetadata
+                    $groupMetadata,
+                    $transactionV2
                 );
             }
         ));
@@ -915,6 +1048,10 @@ class TransactionManager
      *
      * Everything the caller buffered has to be flushed **before** this call - a record that is still in the
      * producer's buffer when the transaction ends is not part of it.
+     *
+     * A transaction of the protocol v2 ends with an EndTxn **v5** (Kafka 4.0), and its answer carries the epoch the
+     * coordinator bumped with it: the next transaction runs under it, every sequence from 0. A transaction that
+     * enrolled nothing sends no request at all.
      *
      * @throws LogicException For a producer that has no open transaction
      * @throws Throwable      The error of a producer that is in an error state
@@ -941,6 +1078,10 @@ class TransactionManager
      * as `TransactionManager.beginAbort()` @ 0.11.0.3 clears `newPartitionsInTransaction`: there is no point in
      * telling the coordinator about a partition that is about to be rolled back.
      *
+     * After an abortable error the abort bumps the epoch of the producer: with an `InitProducerId` of KIP-360
+     * behind the EndTxn **v4** of the protocol v1 ({@see self::bumpEpochIfNeeded()}), and with the EndTxn **v5**
+     * itself in the protocol v2 of Kafka 4.0, which bumps the epoch of every transaction it ends.
+     *
      * @throws LogicException For a producer that has no open transaction
      * @throws KafkaException For an error the coordinator reports
      */
@@ -955,8 +1096,6 @@ class TransactionManager
         $this->newPartitionsInTransaction = [];
 
         $this->endTransaction(EndTxnRequest::ABORT);
-
-        $this->bumpEpochIfNeeded();
     }
 
     /**
@@ -994,18 +1133,95 @@ class TransactionManager
 
     /**
      * Ends the open transaction and puts the producer back into `READY`
+     *
+     * `beginCompletingTransaction()` @ 4.0.0 is the model. The transaction ends with the protocol it began with -
+     * an EndTxn **v5** that bumps the epoch for one of the protocol v2, an EndTxn **v4** for one of the protocol v1
+     * - and the feature is read again before it, so that the *next* transaction speaks what the cluster finalizes
+     * by then; a producer that moves up to the protocol v2 that way bumps its epoch once more, with the
+     * `InitProducerId` of {@see self::bumpEpochIfNeeded()}. A transaction that never enrolled anything is not
+     * ended at the coordinator at all, which would answer it the 48: the producer only goes back to `READY`.
      */
     private function endTransaction(bool $transactionResult): void
     {
         $transactionalId = $this->requireTransactionalId();
+        $transactionV2   = $this->transactionV2;
 
-        $this->transactionalRequest(fn(): mixed => $this->onTransactionCoordinator(
-            function (Node $coordinator) use ($transactionalId, $transactionResult): void {
-                $this->client->endTxn($coordinator, $transactionalId, $this->producerIdAndEpoch, $transactionResult);
-            }
-        ));
+        $this->maybeUpdateTransactionV2Enabled(false);
+
+        if ($this->transactionStarted) {
+            $this->transactionalRequest(fn(): mixed => $this->onTransactionCoordinator(
+                function (Node $coordinator) use ($transactionalId, $transactionResult, $transactionV2): void {
+                    if (!$transactionV2) {
+                        $this->client->endTxn(
+                            $coordinator,
+                            $transactionalId,
+                            $this->producerIdAndEpoch,
+                            $transactionResult
+                        );
+
+                        return;
+                    }
+
+                    $next = $this->client->endTxnBumpingEpoch(
+                        $coordinator,
+                        $transactionalId,
+                        $this->producerIdAndEpoch,
+                        $transactionResult
+                    );
+                    // The coordinator bumped the epoch with the end of the transaction, or handed out a new
+                    // producer id when the epoch was exhausted: the next transaction starts every sequence at 0
+                    if ($next->isValid()) {
+                        $this->producerIdAndEpoch = $next;
+                        $this->sequenceNumbers    = [];
+                        $this->lastAckedOffsets   = [];
+                    }
+                }
+            ));
+        }
 
         $this->completeTransaction();
+
+        $this->bumpEpochIfNeeded();
+    }
+
+    /**
+     * Reads the finalized `transaction.version` of the cluster and decides the transaction protocol of the producer
+     *
+     * `maybeUpdateTransactionV2Enabled()` @ 4.0.0: the level comes with the ApiVersions answer (the finalized
+     * features of KIP-584), which the transaction coordinator is asked for; a node that finalizes no
+     * `transaction.version` - every 3.x node - runs the level 0. Moving up to the protocol v2 anywhere but in the
+     * initialization bumps the epoch once, "to fence the old V1 transaction epoch" (`clientSideEpochBumpRequired`).
+     *
+     * An answer that does not arrive, or that refuses the request - a peer older than Kafka 3.9 answers the
+     * ApiVersions v4 of {@see Client::apiVersions()} with the 35 - leaves the protocol where it is: the v1 of every
+     * line below while the producer is being initialized, and whatever the last answer said afterwards, exactly as
+     * the Java client keeps what its last ApiVersions answer said. The next end of a transaction asks again.
+     */
+    private function maybeUpdateTransactionV2Enabled(bool $onInitialization): void
+    {
+        $transactionalId = $this->requireTransactionalId();
+
+        try {
+            $this->transactionCoordinator ??= $this->client->getTransactionCoordinator($transactionalId);
+            $answer = $this->client->apiVersions($this->transactionCoordinator);
+        } catch (KafkaException) {
+            return;
+        }
+        if ($answer->errorCode !== KafkaException::NO_ERROR) {
+            return;
+        }
+
+        $feature = $answer->finalizedFeaturesEpoch >= 0
+            ? ($answer->finalizedFeatures[self::TRANSACTION_VERSION_FEATURE] ?? null)
+            : null;
+        $level   = $feature?->maxVersionLevel ?? 0;
+
+        $wasTransactionV2    = $this->transactionV2;
+        $this->transactionV2 = $level >= self::TRANSACTION_VERSION_2 && $this->canEnrolPartitionsByProduce();
+
+        if (!$onInitialization && !$wasTransactionV2 && $this->transactionV2) {
+            $this->epochBumpRequired = true;
+        }
     }
 
     /**
@@ -1073,6 +1289,7 @@ class TransactionManager
 
         $this->partitionsInTransaction    = [];
         $this->newPartitionsInTransaction = [];
+        $this->transactionStarted         = false;
     }
 
     /**
@@ -1195,7 +1412,8 @@ class TransactionManager
      * answers it puts this producer into {@see TransactionState::ABORTABLE_ERROR}, from which the abort with the
      * epoch bump of KIP-360 leads out - exactly what "the client can abort the transaction to continue using this
      * transactional ID" asks for, and what the Java `TransactionManager` @ 3.9.2 does with the code in all six of
-     * its handlers. On the 3.9.2 node of this line the branch is really reached: a TxnOffsetCommit **v4** whose
+     * its handlers. On the 3.9.2 node of the 3.x line the branch was really reached, and it still is on a 4.3.1
+     * node inside a transaction of the protocol v1: a TxnOffsetCommit **v4** whose
      * `__consumer_offsets` partition the open transaction does not hold - a `sendOffsetsToTransaction()` whose
      * AddOffsetsToTxn never went through - is answered the 120, where the version 3 is answered the 48 and the
      * producer would be finished.

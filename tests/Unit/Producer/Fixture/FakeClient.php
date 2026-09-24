@@ -20,7 +20,10 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
+use Protocol\Kafka\Producer\Internals\TransactionManager;
+use Protocol\Kafka\Protocol\Data\ApiVersionsFinalizedFeature;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 
 /**
@@ -98,8 +101,40 @@ final class FakeClient extends Client
         'addPartitionsToTxn' => [],
         'addOffsetsToTxn'    => [],
         'endTxn'             => [],
+        'endTxnBumpingEpoch' => [],
         'txnOffsetCommit'    => [],
     ];
+
+    /**
+     * The finalized `transaction.version` the scripted ApiVersions answer reports, `null` for none at all (a 3.x
+     * node), as the transaction protocol of KIP-890 part 2 is decided by it
+     */
+    public ?int $transactionVersion = null;
+
+    /**
+     * Number of ApiVersions requests this client answered
+     */
+    public int $apiVersionsCalls = 0;
+
+    /**
+     * Errors the scripted ApiVersions throws, one after the other
+     *
+     * @var list<\Throwable>
+     */
+    public array $apiVersionsErrors = [];
+
+    /**
+     * Error code of the scripted ApiVersions answer, the 35 of a peer that does not serve the version
+     */
+    public int $apiVersionsErrorCode = 0;
+
+    /**
+     * The producer id and epoch every EndTxn v5 answers, one after the other; the epoch of the request plus one
+     * once the list runs out
+     *
+     * @var list<ProducerIdAndEpoch>
+     */
+    public array $bumpedProducerIds = [];
 
     /**
      * Every coordinator lookup, as `[kind, key]` pairs
@@ -256,6 +291,50 @@ final class FakeClient extends Client
     }
 
     /**
+     * Answers the ApiVersions request of the transaction manager with the scripted finalized features
+     */
+    public function apiVersions(Node $node): ApiVersionsResponse
+    {
+        ++$this->apiVersionsCalls;
+
+        $error = array_shift($this->apiVersionsErrors);
+        if ($error !== null) {
+            throw $error;
+        }
+
+        $answer            = new ApiVersionsResponse();
+        $answer->errorCode = $this->apiVersionsErrorCode;
+        if ($this->transactionVersion !== null) {
+            $feature                  = new ApiVersionsFinalizedFeature();
+            $feature->name            = TransactionManager::TRANSACTION_VERSION_FEATURE;
+            $feature->minVersionLevel = $this->transactionVersion;
+            $feature->maxVersionLevel = $this->transactionVersion;
+
+            $answer->finalizedFeaturesEpoch = 7;
+            $answer->finalizedFeatures      = [$feature->name => $feature];
+        }
+
+        return $answer;
+    }
+
+    /**
+     * Records an `EndTxn` v5 and answers the next scripted producer id and epoch, or the epoch bumped by one
+     */
+    public function endTxnBumpingEpoch(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        bool $transactionResult
+    ): ProducerIdAndEpoch {
+        $this->transactionCalls[] = ['endTxnBumpingEpoch', $transactionalId, $transactionResult, $producerIdAndEpoch];
+
+        $this->maybeThrow('endTxnBumpingEpoch');
+
+        return array_shift($this->bumpedProducerIds)
+            ?? new ProducerIdAndEpoch($producerIdAndEpoch->producerId, $producerIdAndEpoch->epoch + 1);
+    }
+
+    /**
      * Records an `EndTxn` and throws the next scripted error of that api
      */
     public function endTxn(
@@ -278,17 +357,22 @@ final class FakeClient extends Client
         string $groupId,
         ProducerIdAndEpoch $producerIdAndEpoch,
         array $topicPartitionOffsets,
-        ?ConsumerGroupMetadata $groupMetadata = null
+        ?ConsumerGroupMetadata $groupMetadata = null,
+        bool $transactionV2 = false
     ): void {
         // The membership of KIP-447 is recorded as well, so that a test can see what the producer told the group
-        // coordinator about its consumer
-        $this->transactionCalls[] = [
+        // coordinator about its consumer, and the protocol of KIP-890 part 2 unless it is the v1 of every line below
+        $call = [
             'txnOffsetCommit',
             $transactionalId,
             $groupId,
             $topicPartitionOffsets,
             $groupMetadata,
         ];
+        if ($transactionV2) {
+            $call[] = 'v2';
+        }
+        $this->transactionCalls[] = $call;
 
         $this->maybeThrow('txnOffsetCommit');
     }

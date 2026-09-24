@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * and written in the flexible encoding since the version 3. The version 3 is what a client sends to a broker
  * below Kafka 3.8.
  *
- * @see docs/protocol/4.3.md, section "EndTxn API (key 26, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "EndTxn API (key 26, v0 to v5)"
  */
 final class EndTxnRequestV3 extends EndTxnRequest
 {
