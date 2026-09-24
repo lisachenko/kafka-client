@@ -34,11 +34,13 @@ use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV16;
+use Protocol\Kafka\Protocol\Request\FetchRequestV17;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV16;
+use Protocol\Kafka\Protocol\Request\FetchResponseV17;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 
 /**
  * What **Kafka 3.9** adds to the Fetch api: the replica directory id of KIP-853 (version 17).
@@ -63,7 +65,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  *
  * Every topic of this class is named `t2-39-…`, so that it can run next to the other suites on the shared node.
  *
- * @see docs/protocol/4.3.md, sections "The replica directory id of KIP-853 (v17)" and "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, sections "The replica directory id of KIP-853 (v17)" and "Fetch API (key 1, v0 to v18)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -273,8 +275,10 @@ final class FetchDirectoryIdTest extends IntegrationTestCase
         $fetched = $client->fetchPartitions([$this->topic => [self::PARTITION => 0]], 250);
 
         self::assertSame(16, FetchRequestV16::VERSION);
-        self::assertSame(17, FetchRequest::VERSION, 'the version this client sends since Kafka 3.9');
-        self::assertSame(17, FetchResponse::VERSION);
+        self::assertSame(17, FetchRequestV17::VERSION, 'the version Kafka 3.9 added');
+        self::assertSame(17, FetchResponseV17::VERSION);
+        self::assertSame(18, FetchRequest::VERSION, 'which Kafka 4.1 raised with the tag of KIP-1166');
+        self::assertSame(18, FetchResponse::VERSION);
         self::assertSame(
             self::RECORDS,
             array_map(
@@ -333,14 +337,14 @@ final class FetchDirectoryIdTest extends IntegrationTestCase
         }
 
         $answer = $this->send(
-            new ProduceRequest(
+            new ProduceRequestV12(
                 [$this->topic => [self::PARTITION => RecordBatch::fromRecords($records)]],
                 1,
                 self::REQUEST_TIMEOUT_MS,
                 self::CLIENT_ID,
                 3890
             ),
-            ProduceResponse::class
+            ProduceResponseV12::class
         );
 
         self::assertSame(

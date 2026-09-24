@@ -16,11 +16,15 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\Errors\TransactionAbortableException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
+use Protocol\Kafka\Protocol\Data\ProduceRequestTopicV12;
 use Protocol\Kafka\Protocol\Data\ProduceResponseCurrentLeader;
 use Protocol\Kafka\Protocol\Data\ProduceResponseNodeEndpoint;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
@@ -31,6 +35,7 @@ use Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV8;
 use Protocol\Kafka\Protocol\Data\ProduceResponseRecordError;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV10;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV5;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV8;
@@ -39,6 +44,7 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV11;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
@@ -52,6 +58,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV11;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
@@ -88,7 +95,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
  * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
  * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v12)", "MessageSet and Message" and
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]
@@ -376,7 +383,8 @@ final class ProduceApiTest extends TestCase
         self::assertSame(self::REQUEST_HEADER_V7_HEX . $body, $frames[7]);
         self::assertSame(self::REQUEST_HEADER_V8_HEX . $body, $frames[8]);
         self::assertSame(ProduceRequestV3::getScheme(), ProduceRequestV8::getScheme());
-        self::assertSame(12, ProduceRequest::VERSION, 'version 12 is the transaction protocol v2 of KIP-890');
+        self::assertSame(13, ProduceRequest::VERSION, 'version 13 is the topic ids of KIP-516');
+        self::assertSame(12, ProduceRequestV12::VERSION, 'version 12 is the transaction protocol v2 of KIP-890');
         self::assertSame(11, ProduceRequestV11::VERSION, 'version 11 is the abortable transaction error of KIP-890');
         self::assertSame(10, ProduceRequestV10::VERSION, 'version 10 is the leader discovery of KIP-951');
         self::assertSame(9, ProduceRequestV9::VERSION, 'version 9 is the flexible one of KIP-482');
@@ -403,7 +411,8 @@ final class ProduceApiTest extends TestCase
             ProduceResponseV8::getScheme()['topics'],
             'and the one of version 8 carries the record errors of KIP-467'
         );
-        self::assertSame(12, ProduceResponse::VERSION);
+        self::assertSame(13, ProduceResponse::VERSION);
+        self::assertSame(12, ProduceResponseV12::VERSION);
         self::assertSame(11, ProduceResponseV11::VERSION);
         self::assertSame(10, ProduceResponseV10::VERSION);
         self::assertSame(9, ProduceResponseV9::VERSION);
@@ -715,9 +724,19 @@ final class ProduceApiTest extends TestCase
             ProduceResponsePartitionV0::getScheme()
         );
         self::assertSame(
-            ['topic' => ProduceResponseTopic::class],
+            [ProduceResponseTopic::class],
             ProduceResponse::getScheme()['topics'],
-            'version 10 reads the partition entries with the tagged current leader'
+            'version 13 names every topic by its id, which leaves nothing to index the array by'
+        );
+        self::assertSame(
+            ['topic' => ProduceResponseTopicV10::class],
+            ProduceResponseV12::getScheme()['topics'],
+            'the versions 10 to 12 read the partition entries with the tagged current leader'
+        );
+        self::assertSame(
+            ProduceResponseTopicV10::getScheme()['partitions'],
+            ProduceResponseTopic::getScheme()['partitions'],
+            'and version 13 reads the very same partition entries'
         );
         self::assertSame(
             ['topic' => ProduceResponseTopicV8::class],
@@ -817,10 +836,10 @@ final class ProduceApiTest extends TestCase
         ];
 
         $eleven = bin2hex((string) new ProduceRequestV11(...$arguments));
-        $twelve = bin2hex((string) new ProduceRequest(...$arguments));
+        $twelve = bin2hex((string) new ProduceRequestV12(...$arguments));
 
-        self::assertSame(12, ProduceRequest::VERSION);
-        self::assertSame(ProduceRequestV11::getScheme(), ProduceRequest::getScheme());
+        self::assertSame(12, ProduceRequestV12::VERSION);
+        self::assertSame(ProduceRequestV11::getScheme(), ProduceRequestV12::getScheme());
         self::assertSame($eleven, substr_replace($twelve, '000b', 12, 4), 'only the api version differs');
         self::assertSame('0000000c', substr($twelve, 8, 8), 'the key 0 and the version 12 of the header');
         self::assertSame(ProduceRequest::FLEXIBLE_VERSION, ProduceRequestV11::FLEXIBLE_VERSION);
@@ -852,7 +871,7 @@ final class ProduceApiTest extends TestCase
             . '00';
         $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
 
-        $answer    = ProduceResponse::unpack(new StringStream($frame));
+        $answer    = ProduceResponseV10::unpack(new StringStream($frame));
         $partition = $answer->topics['orders']->partitions[0];
 
         self::assertSame(42, $partition->baseOffset);
@@ -880,7 +899,7 @@ final class ProduceApiTest extends TestCase
             . '01' . '00' . '18' . '02' . '00000002' . '0962726f6b65722d32' . '00002384' . '057261636b' . '00';
         $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
 
-        $answer    = ProduceResponse::unpack(new StringStream($frame));
+        $answer    = ProduceResponseV10::unpack(new StringStream($frame));
         $partition = $answer->topics['orders']->partitions[0];
 
         self::assertSame(6, $partition->errorCode);
@@ -934,7 +953,7 @@ final class ProduceApiTest extends TestCase
         );
         self::assertSame(
             bin2hex($frame),
-            bin2hex((string) ProduceResponse::unpack(new StringStream($frame))),
+            bin2hex((string) ProduceResponseV12::unpack(new StringStream($frame))),
             'and so does the version 12 class: "Version 12 is the same as version 10 (KIP-890)"'
         );
         self::assertInstanceOf(
@@ -942,6 +961,101 @@ final class ProduceApiTest extends TestCase
             KafkaException::fromCode($partition->errorCode, []),
             'the code the version promises to understand'
         );
+    }
+
+    public function testAVersionThirteenRequestNamesEveryTopicByItsId(): void
+    {
+        // `ProduceRequest.json` @ 4.1.0: "Version 13 replaces topic names with topic IDs (KIP-516). May return
+        // UNKNOWN_TOPIC_ID error code." - `Name` is `"versions": "0-12"` and `TopicId` a uuid `"versions": "13+"`
+        // in its place, so the frame is the version 12 frame with the compact string of the name exchanged for
+        // the 16 bytes of the id
+        $topicId   = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $arguments = [
+            ['orders' => [0 => hex2bin(self::RECORD_BATCH_HEX)]],
+            1,
+            1000,
+            'test',
+            5,
+            'orders-tx',
+        ];
+
+        $twelve   = bin2hex((string) new ProduceRequestV12(...$arguments));
+        $thirteen = bin2hex((string) new ProduceRequest(...[...$arguments, ['orders' => $topicId]]));
+
+        self::assertSame('0000000d', substr($thirteen, 8, 8), 'the key 0 and the version 13 of the header');
+        self::assertSame(strlen($twelve) + 2 * (16 - 7), strlen($thirteen), 'the 7 bytes of 06 "orders" became 16');
+        self::assertSame(
+            substr_replace(str_replace('07' . bin2hex('orders'), bin2hex($topicId), $twelve), '000d', 12, 4),
+            // the frame size moves with the body
+            substr_replace($thirteen, sprintf('%08x', intdiv(strlen($twelve), 2) - 4), 0, 8),
+            'the id stands where the name stood, and nothing else changes'
+        );
+        self::assertSame(
+            ['topicId' => BinarySchema::TYPE_UUID, 'partitions' => ['partition' => ProduceRequestPartition::class]],
+            ProduceRequestTopic::getScheme()
+        );
+        self::assertSame(
+            ['topic' => BinarySchema::TYPE_STRING, 'partitions' => ['partition' => ProduceRequestPartition::class]],
+            ProduceRequestTopicV12::getScheme()
+        );
+        self::assertSame([ProduceRequestTopic::class], ProduceRequest::getScheme()['topicMessages']);
+        self::assertSame(['topic' => ProduceRequestTopicV12::class], ProduceRequestV12::getScheme()['topicMessages']);
+        self::assertSame(['orders' => $topicId], new ProduceRequest(...[...$arguments, ['orders' => $topicId]])->getTopicIds());
+        self::assertSame(13, ProduceRequestTopic::VERSION);
+        self::assertSame(12, ProduceRequestTopicV12::VERSION);
+    }
+
+    public function testAVersionThirteenRequestCanNotBeBuiltForATopicWithoutAnId(): void
+    {
+        // A name the caller has no id for can not be put on the wire at all: the request refuses it with the
+        // retriable 100 UNKNOWN_TOPIC_ID, which is what `Client::produce()` reads as "reload the metadata"
+        $arguments = [['orders' => [0 => hex2bin(self::RECORD_BATCH_HEX)]], 1, 1000, 'test', 5, null];
+
+        foreach ([[], ['orders' => Uuid::ZERO], ['payments' => Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw')]] as $ids) {
+            try {
+                new ProduceRequest(...[...$arguments, $ids]);
+                self::fail('a version 13 request without the id of its topic');
+            } catch (UnknownTopicIdException $exception) {
+                self::assertSame(KafkaException::UNKNOWN_TOPIC_ID, $exception->getCode());
+                self::assertInstanceOf(RetriableException::class, $exception);
+            }
+        }
+
+        // and a version below 13 does not need the id
+        self::assertSame([], new ProduceRequestV12(...$arguments)->getTopicIds());
+    }
+
+    public function testAVersionThirteenAnswerNamesEveryTopicByItsId(): void
+    {
+        // `ProduceResponse.json` @ 4.1.0: "Version 13 replaces topic names with topic IDs (KIP-516)." - the
+        // version 12 answer of an accepted batch with the 16 bytes of the id where the name was
+        $topicId = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $body    = '00000384' . '00'
+            . '02' . bin2hex($topicId)
+            . '02' . '00000000' . '0000' . '000000000000002a' . 'ffffffffffffffff' . '0000000000000000'
+            . '01' . '00' . '00'
+            . '00'
+            . '00000000'
+            . '00';
+        $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+
+        $answer = ProduceResponse::unpack(new StringStream($frame));
+
+        self::assertSame([0], array_keys($answer->topics), 'a list, there is no name to key it by');
+        self::assertSame($topicId, $answer->topics[0]->topicId);
+        self::assertSame('', $answer->topics[0]->topic, 'the name is not on the wire any more');
+        self::assertSame(42, $answer->topics[0]->partitions[0]->baseOffset);
+        self::assertSame($frame, (string) $answer, 'the answer has to survive a round trip');
+        self::assertSame(
+            ['topicId' => BinarySchema::TYPE_UUID, 'partitions' => ['partition' => ProduceResponsePartition::class]],
+            ProduceResponseTopic::getScheme()
+        );
+        self::assertSame(
+            ['topic' => BinarySchema::TYPE_STRING, 'partitions' => ['partition' => ProduceResponsePartition::class]],
+            ProduceResponseTopicV10::getScheme()
+        );
+        self::assertSame(13, ProduceResponseTopic::VERSION);
+        self::assertSame(10, ProduceResponseTopicV10::VERSION);
     }
 
     private function createRequest(int $requiredAcks): ProduceRequest

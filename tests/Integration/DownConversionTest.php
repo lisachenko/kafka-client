@@ -33,8 +33,8 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV9;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\FetchResponseV9;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -54,7 +54,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * message.downconversion.enable". This class measures that, and that every version the node serves answers the log
  * as it lies.
  *
- * @see docs/protocol/4.3.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v18)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -188,7 +188,7 @@ final class DownConversionTest extends IntegrationTestCase
     private function produce(string $topic, string $value): void
     {
         $stream = $this->connect();
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$topic => [0 => RecordBatch::fromRecords(
                 [new Record($value, null, 0, null, (int) round(microtime(true) * 1000))]
             )]],
@@ -198,7 +198,7 @@ final class DownConversionTest extends IntegrationTestCase
             800
         )->writeTo($stream);
 
-        $partition = ProduceResponse::unpack($stream)->topics[$topic]->partitions[0];
+        $partition = ProduceResponseV12::unpack($stream)->topics[$topic]->partitions[0];
         self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, "the record was not appended to {$topic}");
     }
 

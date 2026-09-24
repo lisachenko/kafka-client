@@ -33,8 +33,8 @@ use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Tests\Fixture\ConsumerGroupMemberProcess;
 use Protocol\Kafka\Tests\Fixture\SessionAwareConsumer;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -771,7 +771,7 @@ final class FetchSessionConsumerTest extends IntegrationTestCase
 
         do {
             $stream = $this->connect();
-            new ProduceRequest(
+            new ProduceRequestV12(
                 [$this->topic => [$partition => RecordBatch::fromRecords($records)]],
                 1,
                 self::PRODUCE_TIMEOUT_MS,
@@ -779,7 +779,7 @@ final class FetchSessionConsumerTest extends IntegrationTestCase
                 $this->correlationId++
             )->writeTo($stream);
 
-            $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+            $errorCode = ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
             if ($errorCode === KafkaException::NO_ERROR) {
                 return;
             }
