@@ -20,12 +20,13 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * One log directory of a DescribeLogDirs answer, i.e. one entry of the `log_dirs` array
  *
  * <pre>
- *   DescribeLogDirsResponseLogDir => error_code log_dir [topics] total_bytes usable_bytes
+ *   DescribeLogDirsResponseLogDir => error_code log_dir [topics] total_bytes usable_bytes is_cordoned
  *     error_code   => INT16
  *     log_dir      => STRING
  *     topics       => DescribeLogDirsResponseTopic
  *     total_bytes  => INT64                        -- since version 4 (KIP-827)
  *     usable_bytes => INT64                        -- since version 4 (KIP-827)
+ *     is_cordoned  => BOOLEAN                      -- since version 5 (KIP-1066)
  * </pre>
  *
  * `DESCRIBE_LOG_DIRS_RESPONSE_V0` in `DescribeLogDirsResponse.schemaVersions()` @ 1.1.1. The answer holds one entry
@@ -54,14 +55,32 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * keeps the {@see self::UNKNOWN_BYTES} of the default. {@see DescribeLogDirsResponseLogDirV3} is the entry of
  * every version below 4.
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * **Kafka 4.3 appended the cordon flag of KIP-1066** behind the two sizes: "Version 5 adds IsCordoned field" of
+ * `DescribeLogDirsResponse.json` @ 4.3.1, one `bool` that is `"ignorable": true` with the default `false` and says
+ * whether the directory is listed in the dynamic per-broker option `cordoned.log.dirs` - a cordoned directory
+ * keeps the replicas it holds and serves them, but receives no new one. `ReplicaManager.describeLogDirs` @ 4.3.1
+ * reports it only once the finalized `metadata.version` is at least `4.3-IV0`, and `false` below that; an offline
+ * directory is answered without it, i.e. with the default. {@see DescribeLogDirsResponseLogDirV4} is the entry of
+ * the version 4.
+ *
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 class DescribeLogDirsResponseLogDir implements BinarySchemaInterface
 {
     /**
-     * Version of the answer this entry belongs to; the version 4 of Kafka 3.3 is the first one with the two sizes
+     * Version of the answer this entry belongs to; the version 5 of Kafka 4.3 is the first one with the cordon flag
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
+
+    /**
+     * The version 4 of Kafka 3.3 is the first one whose entries carry the two sizes of their volume (KIP-827)
+     */
+    public const int VOLUME_SIZE_VERSION = 4;
+
+    /**
+     * The version 5 of Kafka 4.3 is the first one whose entries say whether the directory is cordoned (KIP-1066)
+     */
+    public const int CORDONED_VERSION = 5;
 
     /**
      * The two sizes of a directory the broker did not measure, the default of the fields of KIP-827
@@ -100,6 +119,13 @@ class DescribeLogDirsResponseLogDir implements BinarySchemaInterface
     public int $usableBytes = self::UNKNOWN_BYTES;
 
     /**
+     * Whether the directory is listed in `cordoned.log.dirs`, i.e. takes no new replica; false below version 5
+     *
+     * @since Version 5 of protocol (Kafka 4.3, KIP-1066)
+     */
+    public bool $isCordoned = false;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -110,9 +136,13 @@ class DescribeLogDirsResponseLogDir implements BinarySchemaInterface
             'topics'    => ['topic' => DescribeLogDirsResponseTopic::class],
         ];
         // The two sizes of KIP-827 are the LAST fields of the entry, behind the topics it holds
-        if (static::VERSION >= 4) {
+        if (static::VERSION >= self::VOLUME_SIZE_VERSION) {
             $scheme['totalBytes']  = BinarySchema::TYPE_INT64;
             $scheme['usableBytes'] = BinarySchema::TYPE_INT64;
+        }
+        // The cordon flag of KIP-1066 follows them, as the last field of the entry
+        if (static::VERSION >= self::CORDONED_VERSION) {
+            $scheme['isCordoned'] = BinarySchema::TYPE_BOOLEAN;
         }
 
         return $scheme;

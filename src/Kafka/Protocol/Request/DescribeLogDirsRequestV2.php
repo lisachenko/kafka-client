@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the version 2 is what a broker below Kafka 3.2 is asked with, and its answer has no top-level error code
  * ({@see DescribeLogDirsResponseV2}).
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class DescribeLogDirsRequestV2 extends DescribeLogDirsRequest
 {
