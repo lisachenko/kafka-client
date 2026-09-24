@@ -1,8 +1,8 @@
 {
     "api": "describe-log-dirs",
     "apiKey": 35,
-    "section": "DescribeLogDirs API (key 35, v0 to v4)",
-    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0 to v4), replayed by tests/Compliance.",
+    "section": "DescribeLogDirs API (key 35, v0 to v5)",
+    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describelogdirs.request.v0",
@@ -553,7 +553,7 @@
         {
             "id": "describelogdirs.request.v4",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "DescribeLogDirs request v4 (Kafka 3.3) that asks for one partition of one topic. The request is the frame of the versions 2 and 3 byte for byte - \"Version 4 is the same as version 2 (new fields in response)\" of `DescribeLogDirsRequest.json` @ 3.3.2 - and the higher version alone asks for the two sizes of KIP-827.",
@@ -578,7 +578,7 @@
         {
             "id": "describelogdirs.response.v4",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The answer of the node: both log directories, the one that holds the replica naming the topic, and at the END of each directory entry - behind its topics - the `total_bytes` and `usable_bytes` of KIP-827. The two directories of this node sit on the SAME filesystem, so the two numbers are the same twice: `LogManager.describeLogDirs` @ 3.9.2 reads them from `File.getTotalSpace` and `File.getUsableSpace`, i.e. from the volume and not from the directory.",
@@ -622,7 +622,7 @@
         {
             "id": "describelogdirs.request.v4.no-partitions",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "The same version with an EMPTY topic array, which asks for no replica at all and is the cheapest way to ask a broker how much room its disks have.",
@@ -640,7 +640,7 @@
         {
             "id": "describelogdirs.response.v4.no-partitions",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The two directories with an empty topic array each, and the two sizes of their volume behind it.",
@@ -672,7 +672,7 @@
         {
             "id": "describelogdirs.request.v4.all-partitions",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "The version 4 with the NULL topic array, which asks for every replica of every directory; its answer names every topic of the node and is not stored, like its version 0, 2 and 3 counterparts.",
@@ -690,7 +690,7 @@
         {
             "id": "describelogdirs.request.v4.unauthorized",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "The same request of the SASL user `acltest`, which may not DESCRIBE the CLUSTER resource.",
@@ -708,7 +708,7 @@
         {
             "id": "describelogdirs.response.v4.unauthorized",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The refusal at the version 4 is the one the version 3 introduced, and the two sizes never appear: the top-level `error_code` is 31 and the directory array is empty, so there is no directory entry that could carry a volume size.",
@@ -716,6 +716,235 @@
             "fields": {
                 "messageSize": 13,
                 "correlationId": 3323,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 31,
+                "logDirs": []
+            }
+        },
+        {
+            "id": "describelogdirs.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "DescribeLogDirs request v5 (Kafka 4.3, KIP-1066) that asks for the one partition of `t4-43-vectors`. The request is the frame of the versions 2 to 4 with a new version field: \"Version 5 is the same as version 2 (new fields in response)\" of `DescribeLogDirsRequest.json` @ 4.3.1.",
+            "hex": "0000002e00230005000010cc000d74342d34332d766563746f727300020e74342d34332d766563746f727302000000000000",
+            "fields": {
+                "messageSize": 46,
+                "apiKey": 35,
+                "apiVersion": 5,
+                "correlationId": 4300,
+                "clientId": "t4-43-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-43-vectors": {
+                        "topic": "t4-43-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer of the node with no directory cordoned: both log directories, the second one holding the replica, and at the END of each directory entry - behind the two volume sizes of KIP-827 - the `is_cordoned` flag the version 5 added, `false` twice, because `cordoned.log.dirs` of the node is empty.",
+            "hex": "0000007f000010cc00000000000000030000102f746d702f6b61666b612d6c6f6773010000003efe39d0000000000459c0c00000000000122f746d702f6b61666b612d6c6f67732d32020e74342d34332d766563746f72730200000000000000000000000000000000000000000000000000003efe39d0000000000459c0c000000000",
+            "fields": {
+                "messageSize": 127,
+                "correlationId": 4300,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": [],
+                        "totalBytes": 270553174016,
+                        "usableBytes": 18685673472,
+                        "isCordoned": false
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": {
+                            "t4-43-vectors": {
+                                "topic": "t4-43-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 0,
+                                        "offsetLag": 0,
+                                        "isFuture": false
+                                    }
+                                ]
+                            }
+                        },
+                        "totalBytes": 270553174016,
+                        "usableBytes": 18685673472,
+                        "isCordoned": false
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v5.no-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The version 5 with an EMPTY topic array, which asks for no replica at all: the cheapest way to ask which directories of a broker are cordoned.",
+            "hex": "0000001a00230005000010cd000d74342d34332d766563746f7273000100",
+            "fields": {
+                "messageSize": 26,
+                "apiKey": 35,
+                "apiVersion": 5,
+                "correlationId": 4301,
+                "clientId": "t4-43-vectors",
+                "headerTaggedFields": [],
+                "topics": []
+            }
+        },
+        {
+            "id": "describelogdirs.response.v5.no-partitions",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The two directories with an empty topic array each, the two sizes of their volume, and `is_cordoned = false` behind them.",
+            "hex": "00000059000010cd00000000000000030000102f746d702f6b61666b612d6c6f6773010000003efe39d0000000000459c0c00000000000122f746d702f6b61666b612d6c6f67732d32010000003efe39d0000000000459c0c000000000",
+            "fields": {
+                "messageSize": 89,
+                "correlationId": 4301,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": [],
+                        "totalBytes": 270553174016,
+                        "usableBytes": 18685673472,
+                        "isCordoned": false
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": [],
+                        "totalBytes": 270553174016,
+                        "usableBytes": 18685673472,
+                        "isCordoned": false
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v5.cordoned",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The same request for the partition of `t4-43-vectors`, sent while the dynamic per-broker option `cordoned.log.dirs` of the node was `/tmp/kafka-logs-2` (set with IncrementalAlterConfigs on the resource `broker:1`, removed again right after the capture).",
+            "hex": "0000002e00230005000010cf000d74342d34332d766563746f727300020e74342d34332d766563746f727302000000000000",
+            "fields": {
+                "messageSize": 46,
+                "apiKey": 35,
+                "apiVersion": 5,
+                "correlationId": 4303,
+                "clientId": "t4-43-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-43-vectors": {
+                        "topic": "t4-43-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v5.cordoned",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The cordoned directory answers `is_cordoned = true` - the one byte `01` before its tag buffer - and still reports the replica it holds: a cordon keeps what a directory has and only stops new replicas from landing in it. `/tmp/kafka-logs` answers `false`. The frame is otherwise the one of the uncordoned answer.",
+            "hex": "0000007f000010cf00000000000000030000102f746d702f6b61666b612d6c6f6773010000003efe39d0000000000459be900000000000122f746d702f6b61666b612d6c6f67732d32020e74342d34332d766563746f72730200000000000000000000000000000000000000000000000000003efe39d0000000000459be9000010000",
+            "fields": {
+                "messageSize": 127,
+                "correlationId": 4303,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": [],
+                        "totalBytes": 270553174016,
+                        "usableBytes": 18685530112,
+                        "isCordoned": false
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": {
+                            "t4-43-vectors": {
+                                "topic": "t4-43-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 0,
+                                        "offsetLag": 0,
+                                        "isFuture": false
+                                    }
+                                ]
+                            }
+                        },
+                        "totalBytes": 270553174016,
+                        "usableBytes": 18685530112,
+                        "isCordoned": true
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v5.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The version 5 with the NULL topic array, sent by the SASL user `acltest`, which may not DESCRIBE the CLUSTER resource.",
+            "hex": "0000001a00230005000010ce000d74342d34332d766563746f7273000000",
+            "fields": {
+                "messageSize": 26,
+                "apiKey": 35,
+                "apiVersion": 5,
+                "correlationId": 4302,
+                "clientId": "t4-43-vectors",
+                "headerTaggedFields": [],
+                "topics": null
+            }
+        },
+        {
+            "id": "describelogdirs.response.v5.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The refusal of the version 3 once more: the top-level `error_code` 31 and an empty directory array, so neither the volume sizes nor the cordon flag appear - both live inside a directory entry.",
+            "hex": "0000000d000010ce0000000000001f0100",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 4302,
                 "headerTaggedFields": [],
                 "throttleTimeMs": 0,
                 "errorCode": 31,

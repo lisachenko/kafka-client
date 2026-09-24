@@ -2589,11 +2589,13 @@ class AdminClient
      * every topic entry that keeps no partition, a filter Kafka 3.7 added - so a request that names one partition
      * is answered with that one topic there.
      *
-     * The request goes out as **version 4**, the version Kafka 3.3 added: every directory of its answer carries
-     * the `total_bytes` and `usable_bytes` of KIP-827, the size and the free space of the **volume** the directory
-     * sits on, which {@see LogDirInfo::$totalBytes} and {@see LogDirInfo::$usableBytes} report and which are
-     * {@see LogDirInfo::UNKNOWN_BYTES} for a directory the broker could not measure. Two directories of the same
-     * filesystem answer the same two numbers.
+     * The request goes out as **version 5**, the version Kafka 4.3 added: every directory of its answer carries
+     * the `is_cordoned` flag of KIP-1066, which {@see LogDirInfo::$isCordoned} reports - `true` for a directory
+     * listed in the dynamic per-broker option `cordoned.log.dirs`, which keeps and serves its replicas but takes no
+     * new one. The version 4 of Kafka 3.3 before it had added the `total_bytes` and `usable_bytes` of KIP-827, the
+     * size and the free space of the **volume** the directory sits on, which {@see LogDirInfo::$totalBytes} and
+     * {@see LogDirInfo::$usableBytes} report and which are {@see LogDirInfo::UNKNOWN_BYTES} for a directory the
+     * broker could not measure. Two directories of the same filesystem answer the same two numbers.
      *
      * The version 3 of Kafka 3.2 had added the **top-level error code** ("Version 3 adds the top-level ErrorCode
      * field" of `DescribeLogDirsResponse.json` @ 3.2.3), which is the refusal of the whole request and is thrown
