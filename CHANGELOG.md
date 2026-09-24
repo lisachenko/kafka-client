@@ -5,7 +5,7 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
 own: `main` is the **4.x line**, built towards the **Kafka 4.x wire protocol** one Kafka minor at a time on top
-of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client speaks **Kafka 4.2**
+of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client speaks **Kafka 4.3**
 (the milestone of the line reached so far) and the KIP-848 consumer protocol. The lines
 below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
@@ -16,8 +16,7 @@ Unreleased — the 4.x line (towards Kafka 4.3.1)
 
 The 4.x line, built on `main` on top of the finished 3.x line (branched off as `3.x`), on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213)). The plan
-of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **Kafka 4.2**. One milestone
-follows (4.3), and the KIP-932 share consumer as the last wave.
+of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **Kafka 4.3**: every minor of the line is in, and the KIP-932 share consumer as the last wave.
 
 ### Added
 
@@ -43,7 +42,7 @@ follows (4.3), and the KIP-932 share consumer as the last wave.
 - **The protocol document is `docs/protocol/4.3.md`**, renamed from `docs/protocol/3.9.md` with every `@see`
   reference: a new head, the 4.3.1 node and its features among the sources, "What 4.3.1 adds to the 3.9.2 protocol"
   (the four minors, the versions KIP-896 removed, the keys 88–92 and the codes 128–133, the owner's decisions), and
-  the api-key table rebuilt from the ApiVersions answer of the node — **75 keys**, fifteen of them starting above
+  the api-key table rebuilt from the ApiVersions answer of the node — **75 keys**, twenty-two of them starting above
   v0 — with a "What Kafka 4.x added" column and every version this line has not reached marked *not yet
   implemented on this line*.
 - **`ApiVersionProbeTest` pins the 4.3.1 table**: a frame of every key at its maximum version (the share-group,
@@ -65,6 +64,32 @@ brought every one of them to what the node answers (see "Kafka 4.0 — Changed" 
   [docs/handoff/3.x.md](docs/handoff/3.x.md) and the plan of the 4.x line took its place as
   `docs/handoff/main.md`; the tables of tag points and milestone commits left the handoff records — the tags of
   the repository are the record.
+
+### Kafka 4.3 — Added
+
+Milestone `chore(4.x): Kafka 4.3 complete`, PRs #232 (T4) and #233 (T1). With it every minor of the line is in.
+
+- **DescribeLogDirs v5** (KIP-1066): the `IsCordoned` of every log directory, behind the two volume sizes;
+  `AdminClient::describeLogDirs()` sends it and `Admin\LogDirInfo::$isCordoned` reports it.
+  `DescribeLogDirsRequestV4`/`ResponseV4` and `Data\DescribeLogDirsResponseLogDirV4` keep the version below. Measured
+  on the node by cordoning `/tmp/kafka-logs-2` through the dynamic per-broker option `cordoned.log.dirs`: the flag
+  follows within ~50 ms, the directory keeps its replicas, the replicas of a new topic land elsewhere, a move into it
+  is the 39, and the broker-side validation of the option answers the 42.
+- **The final audit of the api tables** against the ApiVersions answer of the node and the message specs at the
+  tags 4.0.0 to 4.3.1: `ApiVersionProbeTest` sends every version of every controller api and the one above it —
+  Vote v2 (4.0) and BrokerHeartbeat v2 (4.3, the tagged `CordonedLogDirs`) are refused as disabled apis on the client
+  listener — and `ControlRecordTypeTest` pins the key of a control record against the `ControlRecordTypeSchema.json`
+  of Kafka 4.3 and the keys the node writes.
+- **8 wire vectors** captured on the `kafka-4-3-1` node (**286** on the 4.x line, **1421** in **74** files).
+
+### Kafka 4.3 — Changed
+
+- The api-key table and the README table corrected by the audit: the flexible version of Metadata (9), one bold
+  version per row (the one the client sends), the share-group v0 attributed as the JSON does (unstable in 3.9, the
+  early access of KIP-932 in 4.0, removed in 4.1), the client-metrics apis 71 and 72 hidden from the answer, and a row
+  for the controller apis; KIP-896 raised the minimum of twenty apis, nineteen of them on the client listener.
+- The logs quoted for a refused api are those of 4.3.1: a controller api is a *disabled* api, a version above the
+  table an *unsupported version*, and the ZooKeeper apis 4–7 an *unsupported api*.
 
 ### Kafka 4.2 — Added
 

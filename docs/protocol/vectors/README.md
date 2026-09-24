@@ -1,6 +1,7 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 4.x line has captured **278** vectors of its own so far, on the `kafka-4-3-1` node — the 40 frames of Kafka 4.2
+The 4.x line has captured **286** vectors of its own so far, on the `kafka-4-3-1` node — the 8 frames of
+DescribeLogDirs v5 of Kafka 4.3 (the cordon flag of KIP-1066) in `describe-log-dirs.json`. And the 40 frames of Kafka 4.2
 on the offset and share-group apis: OffsetCommit v10 and OffsetFetch v10 by topic id (KIP-848), 10 each in
 `offset-commit.json` and `offset-fetch.json`, and ShareFetch v2 and ShareAcknowledge v2 (KIP-1206, KIP-1222), 10 each
 in `share-fetch.json` and `share-acknowledge.json`. And the 8 frames of

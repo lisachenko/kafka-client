@@ -14,7 +14,7 @@ natural in PHP.
 **This branch is the 4.x line and is being built towards the Apache Kafka 4.3.1 wire protocol**, one Kafka
 minor at a time (4.0, 4.1, 4.2, 4.3), on top of the finished 3.x line (branched off as `3.x`), with the **KIP-932
 share consumer** as its last wave. The node of the line is a Kafka **4.3.1** **KRaft** node, and the milestone
-reached is **Kafka 4.2**: the client speaks every version Kafka 4.0 to 4.2 added to the apis it implements — the
+reached is **Kafka 4.3**: the client speaks every version Kafka 4.0 to 4.3 added to the apis it implements — the
 transaction protocol v2 of KIP-890 part 2, Produce and the group offsets by topic id and the share-group wire of
 KIP-932 among them — on
 top of the **KIP-848 consumer protocol** of the 3.x line, and the versions Kafka 4.0 removed (KIP-896) are never sent
@@ -491,7 +491,7 @@ foreach ($group->members as $memberId => $member) {
 | `listPartitionReassignments()`               | ListPartitionReassignments v0 | The reassignments in flight, with the target, adding and removing replica lists of each partition (KIP-455) |
 | `removeMembersFromConsumerGroup()`           | LeaveGroup v5 | Removes members of a group by hand, a static one by its `group.instance.id` (KIP-345, Kafka 2.4); one error per member, `MemberToRemove::byInstanceId()`/`byMemberId()`; since v5 (Kafka 3.2) every entry names a `reason`, `member was removed by an admin` unless the caller gives one |
 | `deleteConsumerGroupOffsets()`               | OffsetDelete v0 | Deletes the committed offsets of single partitions of a group (KIP-496, Kafka 2.4); an `Empty` group hands over everything, a live consumer group answers 86 for the topics it consumes, another protocol type 68 and an unknown group 69 |
-| `describeLogDirs()`                          | DescribeLogDirs v4      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories; since v3 (Kafka 3.2) a refusal of the whole request is a **top-level error code** and is thrown (31 for a principal that may not describe the cluster); since v4 (Kafka 3.3) every directory reports the **total and usable bytes** of its volume (KIP-827) |
+| `describeLogDirs()`                          | DescribeLogDirs v5      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories; since v3 (Kafka 3.2) a refusal of the whole request is a **top-level error code** and is thrown (31 for a principal that may not describe the cluster); since v4 (Kafka 3.3) every directory reports the **total and usable bytes** of its volume (KIP-827); since v5 (Kafka 4.3) every directory says whether it is **cordoned** (KIP-1066, `LogDirInfo::$isCordoned`) |
 | `describeAcls()` / `createAcls()` / `deleteAcls()` | DescribeAcls v3 / CreateAcls v3 / DeleteAcls v3 | The acls of the cluster (Kafka 3.3, the first line of this package to speak them): a `Common\AclBinding` is a resource pattern (`LITERAL` or `PREFIXED`, the `USER` resource of KIP-373 included) and an access control entry; a describe or a delete names an `AclBindingFilter` whose fields may be wildcards, `MATCH` asks which acls apply to a resource; measured against the `StandardAuthorizer` of the node with the principal `acltest` |
 | `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v2  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
 | `createPartitions()`                         | CreatePartitions v3     | Raises the partition count of topics that exist (KIP-195); controller-only like `createTopics()`, and it can only ever grow a topic (37 otherwise) |
@@ -779,9 +779,9 @@ Supported Kafka protocol versions
 ----------------------------------
 
 This branch is the **4.x line**, built towards the Kafka **4.3.1** wire protocol on top of the finished **3.x
-line** (its record is [docs/handoff/3.x.md](docs/handoff/3.x.md)). Today the client speaks **Kafka 4.2** —
-everything Kafka 3.0 to 3.9 and 4.0 to 4.2 added, and the KIP-848 consumer protocol — against a **4.3.1** node, and the
-table below lists the version of every api the client sends; what Kafka 4.3 adds arrives with the last gated milestone
+line** (its record is [docs/handoff/3.x.md](docs/handoff/3.x.md)). Today the client speaks **Kafka 4.3** —
+everything Kafka 3.0 to 3.9 and 4.0 to 4.3 added, and the KIP-848 consumer protocol — against a **4.3.1** node, and the
+table below lists the version of every api the client sends; every minor of the line is in, and the KIP-932 share consumer is its last wave
 (the plan is [docs/handoff/main.md](docs/handoff/main.md)). The frozen protocol snapshots of the lines below
 live on `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka
 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
@@ -792,7 +792,7 @@ node, broker and controller in one process — on its client listeners: **75 api
 57, 60, 61, 64–66, 68, 69, 74–81 and 83–92. The ZooKeeper apis 4–7 have no version any more, the
 controller-only apis 52–54, 56, 58, 59, 62, 63, 67, 70, 73 and 82 live on the controller listener, and the
 client-metrics apis 71 and 72 are hidden while the node has no telemetry plugin. **Kafka 4.0 removed the
-versions below the Kafka 2.1 baseline** (KIP-896): fifteen rows start above v0, and every removed version —
+versions below the Kafka 2.1 baseline** (KIP-896): nineteen apis of the client listener lost their lowest versions and eighteen rows start above v0 (Produce's still starts at 0), and every removed version —
 Produce v0 to v2 too, which the answer still lists — closes the connection. The answer is read with
 `Client::apiVersions()` and pinned by `tests/Integration/ApiVersionProbeTest.php`, which sends one real frame
 of every key at its maximum version, one above it and one below every minimum.
@@ -814,13 +814,13 @@ table below). The `2.x` column is where the 3.x line started.
 | 7 | ControlledShutdown | none — removed with ZooKeeper in 4.0 | controller | v0 … v2, **v3** | v0 … v2, **v3** — wire only: the classes and the vectors stay, `controlledShutdown()` is gone from the admin client |
 | 8 | OffsetCommit | v2 … v10 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v9, **v10** (Kafka 4.2, KIP-848: every topic named by its **topic id**, the 100 of an unknown or deleted id, v9 for a topic the cluster gives no id; `OffsetCommitRequestV9` keeps the v8 frame of Kafka 3.6 that may carry the 69 of an unknown group and the 113 of a KIP-848 member epoch, `OffsetCommitRequestV8` the flexible v8) |
 | 9 | OffsetFetch | v1 … v10 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v9, **v10** (Kafka 4.2, KIP-848: every topic named by its **topic id**, the answer named back, v9 for a topic the cluster gives no id; `OffsetFetchRequestV9` keeps the member id and member epoch of KIP-848, Kafka 3.7, `OffsetFetchRequestV8` the batch of several groups of Kafka 3.0) |
-| 10 | GroupCoordinator (FindCoordinator) | v0 … v6 | yes | v0 … v2, **v3** | v0 … v3, **v4** (the `coordinator_keys` batch of KIP-699, Kafka 3.0; `GroupCoordinatorRequestV3` keeps the single key), **v5** (the same frame with the promise of the code 120 of KIP-890, Kafka 3.8), **v6** (the third coordinator type of KIP-932, Kafka 3.9, the version this client sends: `COORDINATOR_TYPE_SHARE` is a constant and a measurement — the node answers a share lookup the **15** of a coordinator it does not have, and the versions below it the **42**; `GroupCoordinatorRequestV5`/`ResponseV5` and the V4 pair keep the versions below) |
+| 10 | GroupCoordinator (FindCoordinator) | v0 … v6 | yes | v0 … v2, **v3** | v0 … v3, v4 (the `coordinator_keys` batch of KIP-699, Kafka 3.0; `GroupCoordinatorRequestV3` keeps the single key), v5 (the same frame with the promise of the code 120 of KIP-890, Kafka 3.8), **v6** (the third coordinator type of KIP-932, Kafka 3.9, the version this client sends: the node answers a key that is not a share-partition key `<group id>:<topic id>:<partition>` the **42**, a valid one the leader of its `__share_group_state` partition (the 15 while that topic does not exist yet), and a share lookup below v6 the **42**; `GroupCoordinatorRequestV5`/`ResponseV5` and the V4 pair keep the versions below) |
 | 11 | JoinGroup | v0 … v9 | yes | v0 … v6, **v7** | v0 … v8, **v9** (the `reason` of KIP-800 at v8, the `skip_assignment` of KIP-814 at v9, Kafka 3.2; `JoinGroupRequestV7`/`V8` keep the versions below) |
 | 12 | Heartbeat | v0 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
 | 13 | LeaveGroup | v0 … v5 | yes | v0 … v3, **v4** | v0 … v4, **v5** (the `reason` of KIP-800 per member, Kafka 3.2; `LeaveGroupRequestV4` keeps the version below) |
 | 14 | SyncGroup | v0 … v5 | yes | v0 … v4, **v5** | v0 … v4, **v5** |
 | 15 | DescribeGroups | v0 … v6 | yes | v0 … v4, **v5** | v0 … v5, **v6** (Kafka 4.0, KIP-1043: the 69 of an unknown group; `DescribeGroupsRequestV5` keeps the version below) |
-| 16 | ListGroups | v0 … v5 | yes | v0 … v3, **v4** | v0 … v3, **v4** (the states filter and the group state of KIP-518), **v5** (the `types_filter` of the request and the `group_type` of every entry, KIP-848, Kafka 3.8, the version this client sends; `ListGroupsRequestV4`/`ResponseV4` and `ListGroupResponseProtocolV4` keep the version below) |
+| 16 | ListGroups | v0 … v5 | yes | v0 … v3, **v4** | v0 … v3, v4 (the states filter and the group state of KIP-518), **v5** (the `types_filter` of the request and the `group_type` of every entry, KIP-848, Kafka 3.8, the version this client sends; `ListGroupsRequestV4`/`ResponseV4` and `ListGroupResponseProtocolV4` keep the version below) |
 | 17 | SaslHandshake | v0, v1 | yes | v0, **v1** | v0, **v1** |
 | 18 | ApiVersions | v0 … v4 | yes | v0 … v2, **v3** | v0 … v3, **v4** (Kafka 3.9, KAFKA-17011: the v3 frame, and the answer reports a supported feature whose `min_version` is 0 — `kraft.version` on a KRaft node; `ApiVersionsRequestV3`/`ResponseV3` keep the version below) |
 | 19 | CreateTopics | v2 … v7 | controller | v0 … v6, **v7** | v0 … v6, **v7** |
@@ -839,7 +839,7 @@ table below). The `2.x` column is where the 3.x line started.
 | 32 | DescribeConfigs | v1 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
 | 33 | AlterConfigs | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 34 | AlterReplicaLogDirs | v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
-| 35 | DescribeLogDirs | v1 … v5 | yes | v0, v1, **v2** | v0 … v3, **v4** (the top-level error code of Kafka 3.2, the volume sizes of KIP-827, Kafka 3.3) |
+| 35 | DescribeLogDirs | v1 … v5 | yes | v0, v1, **v2** | v0 … v4, **v5** (the top-level error code of Kafka 3.2, the volume sizes of KIP-827, Kafka 3.3, the cordon flag of KIP-1066, Kafka 4.3; `DescribeLogDirsRequestV4` keeps the version below) |
 | 36 | SaslAuthenticate | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 37 | CreatePartitions | v0 … v3 | controller | v0 … v2, **v3** | v0 … v2, **v3** |
 | 38 | CreateDelegationToken | v1, v2, v3 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (a token for another principal, KIP-373, Kafka 3.3) |
@@ -856,6 +856,7 @@ table below). The `2.x` column is where the 3.x line started.
 | 49 | AlterClientQuotas | v0, v1 | yes | v0, **v1** | v0, **v1** |
 | 50 | DescribeUserScramCredentials | v0 | yes | **v0** (Kafka 2.7) | **v0** (Kafka 2.7) |
 | 51 | AlterUserScramCredentials | v0 | yes | **v0** (Kafka 2.7) | **v0** (Kafka 2.7) |
+| 52–54, 58, 59, 62, 63, 67, 70, 73 | The controller apis (Vote, BeginQuorumEpoch, EndQuorumEpoch, Envelope, FetchSnapshot, BrokerRegistration, BrokerHeartbeat, AllocateProducerIds, ControllerRegistration, AssignReplicasToDirs) | not on the client listener of a KRaft node | controller | no | no — controller apis, probed at every version (Vote v2 Kafka 4.0, BrokerHeartbeat v2 Kafka 4.3); every one of them closes a client connection |
 | 55 | DescribeQuorum | v0, v1, v2 | broker (a raft api the client listener serves) | – | **v0, v1, v2** (`AdminClient::describeMetadataQuorum()`, Kafka 2.7 / 3.3 / 3.9; the nodes, the directory ids and the two error messages of KIP-853, `Admin\QuorumNode` and `Admin\RaftVoterEndpoint`; `DescribeQuorumRequestV1`/`ResponseV1` and the `V0` classes keep the versions below) |
 | 56 | AlterIsr | not on the client listener of a KRaft node | broker→controller | no — broker→controller, probed only | no — broker→controller, probed only |
 | 57 | UpdateFeatures | v0, v1, v2 | controller | **v0** (Kafka 2.7) | **v0, v1, v2** (Kafka 2.7 / 3.3 / 4.0: the `upgrade_type` and the `validate_only` of KIP-778, and the answer without per-feature results) |
@@ -866,11 +867,11 @@ table below). The `2.x` column is where the 3.x line started.
 | 66 | ListTransactions | v0, v1, v2 | yes | – | v0, v1, **v2** (`AdminClient::listTransactions()`, Kafka 3.0; the duration filter of KIP-994, Kafka 3.8; the `$transactionalIdPattern` of KIP-1152, Kafka 4.1, and its 128; `ListTransactionsRequestV1` and `V0` keep the versions below) |
 | 68 | ConsumerGroupHeartbeat | v0, v1 | yes | – | v0 (Kafka 3.5, KIP-848, `ConsumerGroupHeartbeatRequestV0`), **v1** (Kafka 4.0: the regex subscription of KIP-848, `KafkaConsumer::subscribeByPattern()`, and the member id the client generates itself, KIP-1082) — the whole membership protocol of the new consumer in one api, in place of JoinGroup, SyncGroup, Heartbeat and LeaveGroup: a consumer with `group.protocol=consumer` sends it from `Consumer\Internals\ConsumerGroupHeartbeatCoordinator` through `Client::joinConsumerGroup()`, `::consumerGroupHeartbeat()` and `::leaveConsumerGroup()`, with `ConsumerGroupHeartbeatRequest::forJoin()`/`forHeartbeat()`/`forLeave()` for the delta encoding of the frame |
 | 69 | ConsumerGroupDescribe | v0, v1 | yes | – | v0 (Kafka 3.7, KIP-848, `ConsumerGroupDescribeRequestV0`), **v1** (Kafka 4.0: the member type of KIP-1099) — the DescribeGroups of the new protocol (`AdminClient::describeConsumerGroups()`, `::describeConsumerGroup()`): the group and assignment epochs, the server-side assignor and both assignments of every member. Key 15 answers a group of this type the state `Dead`, so an admin client routes by the `group_type` of a ListGroups v5 |
-| 71 | GetTelemetrySubscriptions | v0 | yes (hidden without a telemetry plugin) | – | **v0, wire only** (Kafka 3.7, KIP-714) — classes and vectors, no client method |
-| 72 | PushTelemetry | v0 | yes (hidden without a telemetry plugin) | – | **v0, wire only** (Kafka 3.7, KIP-714) |
+| 71 | GetTelemetrySubscriptions | hidden — not in the answer without a telemetry plugin (v0 answered) | yes | – | **v0, wire only** (Kafka 3.7, KIP-714) — classes and vectors, no client method |
+| 72 | PushTelemetry | hidden — not in the answer without a telemetry plugin (v0 answered) | yes | – | **v0, wire only** (Kafka 3.7, KIP-714) |
 | 74 | ListClientMetricsResources (ListConfigResources since 4.1) | v0, v1 | yes | – | v0 (Kafka 3.7, KIP-714, `ListClientMetricsResourcesRequestV0`), **v1** (Kafka 4.1, KIP-1142: `AdminClient::listConfigResources()`, the config resources of the cluster by type) |
 | 75 | DescribeTopicPartitions | v0 | yes | – | **v0** (`AdminClient::describeTopicPartitions()`, the paging api of KIP-966, Kafka 3.8) |
-| 76 | ShareGroupHeartbeat | v1 | yes (`share.version` 1) | – | **v1** (Kafka 4.1, KIP-932: `Client::joinShareGroup()`, `shareGroupHeartbeat()`, `leaveShareGroup()`; the early-access v0 of 3.9 is gone) |
+| 76 | ShareGroupHeartbeat | v1 | yes (`share.version` 1) | – | **v1** (Kafka 4.1, KIP-932: `Client::joinShareGroup()`, `shareGroupHeartbeat()`, `leaveShareGroup()`; the v0 — unstable in 3.9, the early access of 4.0 — is gone) |
 | 77 | ShareGroupDescribe | v1 | yes | – | **v1** (Kafka 4.1: `AdminClient::describeShareGroups()`, `describeShareGroup()`) |
 | 78 | ShareFetch | v1, v2 | yes | – | v1 (Kafka 4.1: `Client::shareFetch()`, the share session and the acquired records with their delivery count), **v2** (Kafka 4.2, KIP-1206 and KIP-1222: the acquire mode and the renew fetch; `ShareFetchRequestV1` keeps the version 1) |
 | 79 | ShareAcknowledge | v1, v2 | yes | – | v1 (Kafka 4.1: `Client::shareAcknowledge()`, the close of the share session with the epoch -1), **v2** (Kafka 4.2, KIP-1222: the renew acknowledgement and the lock timeout of the answer; `ShareAcknowledgeRequestV1` keeps the version 1) |
@@ -1020,6 +1021,7 @@ current milestone):
 | **KIP-1206 and KIP-1222: the acquire mode and the renew acknowledgement of a share fetch** (ShareFetch v2, ShareAcknowledge v2, `ShareAcknowledgementBatch::RENEW`) | 4.2 | – | – | – | – | – | – | – | **yes** — the wire; a renew extends the acquisition lock |
 | **KIP-1226: the delivery-complete count and the share-partition lag** (WriteShareGroupState v1, ReadShareGroupStateSummary v1, DescribeShareGroupOffsets v1) | 4.2 | – | – | – | – | – | – | – | **wire only** — lag = end offset − start offset − delivery-complete count, measured with real share traffic |
 | **KIP-1228: the transaction version of a marker** (WriteTxnMarkers v2) and **`ack_when_committed`** (AddRaftVoter v1) | 4.2 | – | – | – | – | – | – | – | **yes** — the marker is wire only (a broker→broker api); `addRaftVoter(…, $ackWhenCommitted)` |
+| **KIP-1066: the cordon flag of a log directory** (DescribeLogDirs v5, `LogDirInfo::$isCordoned`) | 4.3 | – | – | – | – | – | – | – | **yes** — a cordoned directory keeps its replicas, a new topic lands elsewhere, a move into it is 39 |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 133** (the constants of 4.3.1, declared by the foundation of the 4.x line; 105 is 3.0's, 128 is 4.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x and the 4.x line; everything else the
