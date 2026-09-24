@@ -380,7 +380,8 @@ class KafkaProducer
      * There is no request behind this call - the protocol has no "BeginTransaction" frame - so nothing is sent
      * until the first {@see self::flush()} of the transaction, which enrols the partitions of its batch with an
      * `AddPartitionsToTxn` request; that request is what starts the `transaction.timeout.ms` of the coordinator
-     * running.
+     * running. On a cluster that finalizes `transaction.version` 2 (Kafka 4.0, KIP-890 part 2) the Produce request
+     * of the batch enrols its partitions itself and no `AddPartitionsToTxn` is sent at all.
      *
      * @throws InvalidConfigurationException For a producer without a `transactional.id`
      * @throws \LogicException               For a producer that was not initialized, or that is inside a

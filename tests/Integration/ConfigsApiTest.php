@@ -30,6 +30,7 @@ use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestConfigEntry;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
@@ -123,6 +124,24 @@ final class ConfigsApiTest extends IntegrationTestCase
     ];
 
     /**
+     * The topic options the 4.3.1 node reports with the source `DYNAMIC_DEFAULT_BROKER_CONFIG` although no suite set
+     * them: the cluster-level `min.insync.replicas` of the eligible leader replicas of KIP-966
+     *
+     * The node finalizes `eligible.leader.replicas.version` 1, and the controller writes a cluster-level
+     * `min.insync.replicas` - the value of its own configuration, 1 - into the metadata log before it enables ELR
+     * (`ConfigurationControlManager.maybeGenerateElrSafetyRecords()` @ 4.3.1). That record lives in the default
+     * broker resource `broker:`, and every topic reports its option as a dynamic default of the cluster.
+     */
+    private const array CLUSTER_DEFAULT_TOPIC_OPTIONS = [
+        'min.insync.replicas' => '1',
+    ];
+
+    /**
+     * What the controller answers an AlterConfigs of `broker:` that would drop the option above, as long as ELR is on
+     */
+    private const string ELR_MIN_ISR_REMOVAL = 'Cluster-level min.insync.replicas cannot be removed while ELR is enabled.';
+
+    /**
      * The broker option the two dynamic tests change, with the value the `server.properties` of the image implies
      *
      * `log.cleaner.backoff.ms` is one of `LogCleaner.ReconfigurableConfigs` and therefore dynamically updatable,
@@ -185,9 +204,15 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertGreaterThan(20, count($config->entries), 'a 1.1 topic has more than twenty options');
         self::assertSame([], $config->ownValues(), 'a topic created without options has none of its own');
         self::assertSame(
-            self::STATIC_BROKER_TOPIC_OPTIONS,
+            self::brokerTopicOptions(),
             $config->nonDefaultValues(),
-            'but the one whose broker synonym the container sets is not a default any more'
+            'but the one whose broker synonym the container sets is not a default any more, and neither is the '
+            . 'cluster-level min.insync.replicas of KIP-966'
+        );
+        self::assertSame(
+            ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG,
+            $config->get('min.insync.replicas')?->source,
+            'the controller wrote it into the default broker resource when it enabled the eligible leader replicas'
         );
 
         $segment = $config->get('segment.bytes');
@@ -257,20 +282,19 @@ final class ConfigsApiTest extends IntegrationTestCase
     }
 
     /**
-     * A 2.8.2 broker still serves the version 0 - and its `is_default` boolean is **false for every option**
+     * The version 0 is no longer served: Kafka 4.0 removed it (KIP-896) and the node closes the connection
      *
-     * Up to Kafka 1.1 the broker computed the boolean from the source it had derived (`is_default = (source ==
-     * DEFAULT_CONFIG)`), so a version 0 answer still said which options nobody had configured. From Kafka 2.4 the
-     * answer is built from the generated `DescribeConfigsResponseData`, and `ConfigHelper.createTopicConfigEntry()`
-     * @ 2.8.2 sets the **source** alone - nothing ever calls `setIsDefault()`, so the field keeps the `false` of
-     * the generator and every entry of a version 0 frame carries it, an option the topic itself set and an
-     * untouched default alike.
-     *
-     * The client-side derivation {@see DescribeConfigsResponseConfigEntry::source()} therefore answers
-     * `TOPIC_CONFIG` for every entry of a version 0 answer of this broker: the boolean has lost its meaning, and
-     * a client that wants the source asks for version 1 or higher.
+     * `DescribeConfigsRequest.json` @ 4.0.0 declares `"validVersions": "1-4"`, and a frame below the minimum of the
+     * table costs the connection - `UnsupportedVersionException: Received request for api with key 32
+     * (DescribeConfigs) and unsupported version 0` in the log of the node - instead of an answer. The classes and
+     * the wire vectors of the version 0 stay (the compliance suite replays them), and so does what the 2.8.2 broker
+     * of the 2.x line answered to it: an `is_default` that was **false for every option**, because
+     * `ConfigHelper.createTopicConfigEntry()` @ 2.8.2 set the source alone and never called `setIsDefault()` -
+     * which made the client-side derivation {@see DescribeConfigsResponseConfigEntry::source()} answer
+     * `TOPIC_CONFIG` for every entry of such an answer. A client that wants the source asks for the version 1 or
+     * higher, which is all the node serves.
      */
-    public function testTheVersionZeroAnswerOfATwoEightBrokerCarriesIsDefaultFalseForEveryOption(): void
+    public function testTheVersionZeroIsRefusedWithAClosedConnection(): void
     {
         $topic  = $this->createTopic('version-zero');
         $stream = $this->connect();
@@ -284,30 +308,9 @@ final class ConfigsApiTest extends IntegrationTestCase
             't5-configs',
             42
         )->writeTo($stream);
-        $response = DescribeConfigsResponseV0::unpack($stream);
 
-        $entries = $response->resources[0]->configEntries;
-        self::assertInstanceOf(DescribeConfigsResponseConfigEntryV0::class, $entries['segment.bytes']);
-        self::assertFalse(
-            $entries['segment.bytes']->isDefault,
-            'the option is a STATIC_BROKER_CONFIG, which is not a default in any release'
-        );
-        self::assertFalse(
-            $entries['retention.ms']->isDefault,
-            'and neither is the untouched default of the topic: a 2.8.2 broker never sets the boolean at all'
-        );
-        self::assertSame([], $entries['segment.bytes']->configSynonyms, 'version 0 has no synonyms on the wire');
-        self::assertSame(
-            ConfigSource::TOPIC_CONFIG,
-            $entries['segment.bytes']->source(ConfigResource::TYPE_TOPIC),
-            'a client derives the source back from the boolean and the resource type, as the Java client does - '
-            . 'and the derivation is lossy: the option is a STATIC_BROKER_CONFIG, which the boolean cannot say'
-        );
-        self::assertSame(
-            ConfigSource::TOPIC_CONFIG,
-            $entries['retention.ms']->source(ConfigResource::TYPE_TOPIC),
-            'and on this broker it is wrong for every entry, because the boolean is always false'
-        );
+        $this->expectException(NetworkException::class);
+        DescribeConfigsResponseV0::unpack($stream);
     }
 
     public function testAnOptionNameTheBrokerDoesNotKnowIsDroppedFromTheAnswer(): void
@@ -452,7 +455,7 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertSame([$resource->key() => null], $this->admin->alterConfigs([$resource->key() => []]));
         self::assertSame([], $this->ownValuesUntil($resource, []));
         self::assertSame(
-            self::STATIC_BROKER_TOPIC_OPTIONS,
+            self::brokerTopicOptions(),
             $this->nonDefaults($resource),
             'what is left is what the broker configuration gives the topic'
         );
@@ -599,16 +602,24 @@ final class ConfigsApiTest extends IntegrationTestCase
         $default = ConfigResource::defaultBroker();
         self::assertSame('broker:', $default->key(), 'the resource type 4 with an empty name');
 
+        // An AlterConfigs REPLACES the whole resource, and the `broker:` of the 4.3.1 node holds the cluster-level
+        // `min.insync.replicas` of KIP-966, which the controller refuses to drop while the eligible leader replicas
+        // are on: the resource is refused as a whole with the 40, and nothing of it changes
+        $replaced = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
+        self::assertInstanceOf(InvalidConfigException::class, $replaced[$default->key()]);
+        self::assertStringContainsString(self::ELR_MIN_ISR_REMOVAL, $replaced[$default->key()]->getMessage());
+
         try {
             // The cluster-wide default resource is the one resource of the broker that a unique name cannot
-            // separate: every suite on the shared container writes into the very same `broker:`, and an
-            // `AlterConfigs` of it replaces the WHOLE resource, so another suite can drop this option between the
-            // write and the read. The write is therefore repeated until the read sees it, the assertion is a
-            // SUPERSET - this option with this value - instead of the exact key list, and the cleanup below
-            // deletes that one option instead of replacing the resource.
+            // separate: every suite on the shared node writes into the very same `broker:`, so the option is set
+            // with an IncrementalAlterConfigs (KIP-339), which touches it alone, the write is repeated until the
+            // read sees it, the assertion is a SUPERSET - this option with this value - instead of the exact key
+            // list, and the cleanup below deletes that one option instead of replacing the resource.
             $entry = null;
             for ($attempt = 0; $attempt < 5 && $entry === null; $attempt++) {
-                $result = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
+                $result = $this->admin->incrementalAlterConfigs(
+                    [$default->key() => [AlterConfigOp::set(self::DYNAMIC_OPTION, '17000')]]
+                );
                 self::assertSame([$default->key() => null], $result);
 
                 $entry = $this->describeUntil(
@@ -661,8 +672,10 @@ final class ConfigsApiTest extends IntegrationTestCase
 
         $error = $result[$resource->key()];
         self::assertInstanceOf(InvalidRequestException::class, $error);
+        // The names are a Java list since the KRaft node of the 4.x line; a 2.8.2 and a 3.9.2 broker wrote the
+        // Scala `Set(log.retention.hours)`
         self::assertStringContainsString(
-            'Cannot update these configs dynamically: Set(log.retention.hours)',
+            'Cannot update these configs dynamically: [log.retention.hours]',
             $error->getMessage()
         );
         self::assertStringNotContainsString(
@@ -703,10 +716,13 @@ final class ConfigsApiTest extends IntegrationTestCase
             'These security configs can be dynamically updated only per-listener using the listener prefix',
             $error->getMessage()
         );
+        $entries = $this->admin->describeConfigs([$default])[$default->key()]->entries;
+        self::assertArrayNotHasKey('ssl.keystore.location', $entries, 'and the cluster-wide default did not take it');
         self::assertSame(
-            [],
-            $this->admin->describeConfigs([$default])[$default->key()]->entries,
-            'and the cluster-wide default configuration is still empty'
+            self::CLUSTER_DEFAULT_TOPIC_OPTIONS['min.insync.replicas'],
+            $entries['min.insync.replicas']->value ?? null,
+            'what it holds on the 4.3.1 node is the min.insync.replicas of KIP-966 (the other suites of the shared '
+            . 'node may add options of their own for a moment)'
         );
     }
 
@@ -982,6 +998,20 @@ final class ConfigsApiTest extends IntegrationTestCase
                 usleep(50_000);
             }
         }
+    }
+
+    /**
+     * What a topic without options of its own reports as not a default: the static broker options of the image and
+     * the cluster-level options of the node, in the order of the answer (by name)
+     *
+     * @return array<string, string>
+     */
+    private static function brokerTopicOptions(): array
+    {
+        $options = self::STATIC_BROKER_TOPIC_OPTIONS + self::CLUSTER_DEFAULT_TOPIC_OPTIONS;
+        ksort($options);
+
+        return $options;
     }
 
     /**
