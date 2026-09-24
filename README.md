@@ -392,6 +392,77 @@ start it twice and watch the two members split the partitions — and
 
 See the [consumer configuration] reference for the full set of options.
 
+Share consumer API
+------------------
+
+A **share group** (KIP-932, Kafka 4.1) is a group whose members do not own partitions but **share**
+them record by record: every record of a subscribed topic is delivered to one member at a time, which
+holds it under an acquisition lock (the group config `share.record.lock.duration.ms`, 30 s by
+default) and acknowledges it. `Consumer\KafkaShareConsumer` is the `KafkaShareConsumer` of the Java
+client @ 4.3.1:
+
+```php
+use Protocol\Kafka\Consumer\AcknowledgeType;
+use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\KafkaShareConsumer;
+
+$consumer = new KafkaShareConsumer([
+    ConsumerConfig::BOOTSTRAP_SERVERS          => ['tcp://127.0.0.1:9092'],
+    ConsumerConfig::GROUP_ID                   => 'my-share-group',
+    ConsumerConfig::SHARE_ACKNOWLEDGEMENT_MODE => ConsumerConfig::SHARE_ACKNOWLEDGEMENT_MODE_EXPLICIT,
+]);
+$consumer->setAcknowledgementCommitCallback(function (array $offsets, $exception) {
+    // [topic][partition] => offsets, and the error of the node or null - once per topic-partition
+});
+$consumer->subscribe(['my-topic']);
+
+while (true) {
+    foreach ($consumer->poll(1000) as $topic => $partitions) {        // joins the group on the first call
+        foreach ($partitions as $partition => $records) {
+            foreach ($records as $record) {                          // ConsumerRecord, with $record->deliveryCount
+                $consumer->acknowledge($record, process($record) ? AcknowledgeType::ACCEPT : AcknowledgeType::RELEASE);
+            }
+        }
+    }
+    $results = $consumer->commitSync();                              // [topic][partition] => ?KafkaException
+}
+$consumer->close();                  // closes the share sessions (the rest is released) and leaves the group
+```
+
+An acknowledgement is one of four: **ACCEPT** (processed, never delivered again), **RELEASE**
+(delivered again - to this member or another one - with a delivery count one higher, until the group
+config `share.delivery.count.limit` archives it), **REJECT** (archived at once) and **RENEW** (Kafka
+4.2, KIP-1222: still being processed - the lock starts over, and the next `poll()` returns the record
+again). `share.acknowledgement.mode` is `implicit` by default: the next `poll()` or commit then
+accepts everything the last `poll()` returned, and `acknowledge()` is refused; in the `explicit` mode
+every record has to be acknowledged before the next `poll()`. Acknowledgements travel with the
+ShareFetch of the next `poll()`, or in a ShareAcknowledge of `commitSync()`/`commitAsync()`;
+`acknowledge($topic, $partition, $offset, $type)` is the form for a record a deserializer failed on.
+`share.acquire.mode = record_limit` (KIP-1206) has the node acquire no more than `max.poll.records`
+records per fetch, where the default `batch_optimized` hands out whole record batches, and
+`acquisitionLockTimeoutMs()` reports the lock of the last answer.
+
+**Where to start and what to show are group configs**, not options of the consumer: a share group
+reads from `latest` unless its `share.auto.offset.reset` says `earliest`, and its isolation level is
+`share.isolation.level` - set them with IncrementalAlterConfigs on the config resource type 32
+(`ConfigResource.Type.GROUP`) before the first member joins. The constructor refuses
+`auto.offset.reset`, `enable.auto.commit`, `group.instance.id`, `isolation.level`,
+`partition.assignment.strategy`, `session.timeout.ms`, `heartbeat.interval.ms`, `group.protocol` and
+`group.remote.assignor`, as the Java one does.
+
+**PHP has no background thread**, so the heartbeat of a share member is sent from `poll()` (at the
+interval the coordinator dictates), `commitAsync()` sends its request before it returns and reports
+only to the callback, and the callback runs inside the call that sent the acknowledgements. A member
+keeps one **share session** per leader: the ShareFetch of the epoch 0 opens it, and a session the
+node lost - it lives on its connection, so a dropped connection takes it along - is answered 122 or
+123, after which the consumer opens a new one by itself; the acknowledgements of the lost session are
+reported as failed to the callback, and its records are delivered again. `AdminClient::describeShareGroups()`
+describes the group, and `deleteConsumerGroups()` deletes it once it is empty.
+
+[examples/share-consumer.php](examples/share-consumer.php) is a runnable version of this — start it
+twice and watch two members share one topic. The protocol document has the frames and what the node
+answered in "The share consumer (KIP-932)".
+
 Admin API
 ---------
 
@@ -680,6 +751,9 @@ marked **(0.10)**.
 | `exclude.internal.topics` | true | hides `__consumer_offsets` from `Cluster::topics()` |
 | `check.crcs` | true | verify the CRC of every message |
 | `key.deserializer` / `value.deserializer` | – | class names; a poll then returns `ConsumerRecord`s |
+| `share.acknowledgement.mode` **(4.1)** | `implicit` | share consumer only: `implicit` (the next `poll()` or commit accepts what the last `poll()` returned) or `explicit` (every record through `acknowledge()` before the next `poll()`) |
+| `share.acquire.mode` **(4.2)** | `batch_optimized` | share consumer only: `batch_optimized` (whole record batches) or `record_limit` (no more than `max.poll.records` records, KIP-1206) |
+| `max.poll.records` | 500 | share consumer only: the `max_records` and `batch_size` of every ShareFetch |
 
 **Producer** (`Producer\ProducerConfig`)
 
@@ -1145,6 +1219,7 @@ Every file in [examples/](examples) is runnable against the container of `docker
 | [`producer.php`](examples/producer.php) | batching, compression, keys and partitions, the `RecordMetadata` of a batch |
 | [`consumer.php`](examples/consumer.php) | `assign()`, `seek()`, deserializers, the timestamps of a record |
 | [`consumer-group.php`](examples/consumer-group.php) | `subscribe()`, the rebalance listener, `max.poll.interval.ms` — start it twice |
+| [`share-consumer.php`](examples/share-consumer.php) | `KafkaShareConsumer` (KIP-932): a share group, explicit acknowledgements, a release and its redelivery, the callback — start it twice |
 | [`record-headers.php`](examples/record-headers.php) | the record headers of Kafka 0.11 (KIP-82), written and read back end to end |
 | [`idempotent-producer.php`](examples/idempotent-producer.php) | `enable.idempotence`: the producer id, the sequence numbers and what a duplicate batch answers |
 | [`transactional-producer.php`](examples/transactional-producer.php) | `transactional.id`, the consume-transform-produce loop and a `read_committed` consumer |
