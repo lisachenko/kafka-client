@@ -24,8 +24,10 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * </pre>
  *
  * The `LeaderIdAndEpoch` of the two answers @ 4.1.0 - a plain field of every partition, not the tagged one of Fetch
- * v12 and later. `-1` is "unknown"; the 4.3.1 node fills it in on every partition it answers (leader 0, epoch 0 on
- * the one-node cluster).
+ * v12 and later, with no default in the spec, so it is `0 0` on the wire unless the node fills it in - and the 4.3.1
+ * node does that only for a partition it answers 6 `NotLeaderOrFollower` or 74 `FencedLeaderEpoch`, together with
+ * the endpoint of the new leader in `node_endpoints` (`KafkaApis.processShareFetchResponse` and
+ * `processShareAcknowledgeResponse` @ 4.3.1). `-1` is "unknown" there.
  *
  * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1)"
  */
@@ -37,14 +39,14 @@ final class ShareLeaderIdAndEpoch implements BinarySchemaInterface
     public const int UNKNOWN = -1;
 
     /**
-     * Id of the current leader, -1 when it is not known
+     * Id of the current leader, -1 when it is not known, 0 when the node did not fill it in
      */
-    public int $leaderId = self::UNKNOWN;
+    public int $leaderId = 0;
 
     /**
-     * Latest known leader epoch
+     * Latest known leader epoch, 0 when the node did not fill it in
      */
-    public int $leaderEpoch = self::UNKNOWN;
+    public int $leaderEpoch = 0;
 
     /**
      * @inheritdoc

@@ -47,7 +47,7 @@ final class ShareAcknowledgeResponsePartition implements BinarySchemaInterface
     public ?string $errorMessage = null;
 
     /**
-     * Current leader of the partition, filled in by the node on every partition it answers
+     * Current leader of the partition, filled in only with the error codes 6 and 74 (`0 0` otherwise)
      */
     public ShareLeaderIdAndEpoch $currentLeader;
 
