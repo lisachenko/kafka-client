@@ -18,7 +18,7 @@ use RuntimeException;
 /**
  * Reader of the wire vectors that live next to the protocol document.
  *
- * The vectors in `docs/protocol/vectors/*.json` are the machine-readable half of `docs/protocol/3.9.md`: the
+ * The vectors in `docs/protocol/vectors/*.json` are the machine-readable half of `docs/protocol/4.3.md`: the
  * document shows every one of them as an annotated hex dump, the JSON files carry the same bytes together with the
  * values that the message decodes into. Both halves are kept in step by {@see DocumentationSyncTest}.
  */
@@ -32,7 +32,7 @@ final class VectorFile
     /**
      * Location of the protocol document that the vectors are documented in
      */
-    public const string PROTOCOL_DOCUMENT = __DIR__ . '/../../docs/protocol/3.9.md';
+    public const string PROTOCOL_DOCUMENT = __DIR__ . '/../../docs/protocol/4.3.md';
 
     /**
      * Returns the vectors of one api as a PHPUnit data provider, indexed by the vector id
@@ -107,9 +107,12 @@ final class VectorFile
         if ($files === false) {
             throw new RuntimeException('Vector directory ' . self::VECTORS_DIRECTORY . ' can not be listed');
         }
-        sort($files);
+        // Sorted by the base name, not by the path: `read-share-group-state-summary.json` sorts before
+        // `read-share-group-state.json` (`-` is below `.`), while the two names sort the other way round
+        $names = array_map(static fn(string $file): string => basename($file, '.json'), $files);
+        sort($names);
 
-        return array_map(static fn(string $file): string => basename($file, '.json'), $files);
+        return $names;
     }
 
     /**

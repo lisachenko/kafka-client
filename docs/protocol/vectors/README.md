@@ -1,5 +1,44 @@
-Wire vectors of the Kafka 3.9.2 protocol
+Wire vectors of the Kafka 4.3.1 protocol
 ========================================
+The 4.x line has captured **286** vectors of its own so far, on the `kafka-4-3-1` node — the 8 frames of
+DescribeLogDirs v5 of Kafka 4.3 (the cordon flag of KIP-1066) in `describe-log-dirs.json`. And the 40 frames of Kafka 4.2
+on the offset and share-group apis: OffsetCommit v10 and OffsetFetch v10 by topic id (KIP-848), 10 each in
+`offset-commit.json` and `offset-fetch.json`, and ShareFetch v2 and ShareAcknowledge v2 (KIP-1206, KIP-1222), 10 each
+in `share-fetch.json` and `share-acknowledge.json`. And the 8 frames of
+ListOffsets v11 of Kafka 4.2 (the earliest pending upload offset `-6` of KIP-1023) in `offsets.json`. And the 10 frames of the
+admin and transaction half of Kafka 4.2: the 4 of DescribeShareGroupOffsets v1 (the lag of KIP-1226) in
+`describe-share-group-offsets.json` and the 6 of WriteTxnMarkers v2 (KIP-1228) in `write-txn-markers.json`. And the 18
+frames of the raft-voter and share-state half of Kafka 4.2: the 10 of AddRaftVoter v1 (`ack_when_committed`) in
+`add-raft-voter.json`, and the 4 each of WriteShareGroupState v1 and ReadShareGroupStateSummary v1 (the
+`DeliveryCompleteCount` of KIP-1226) in `write-share-group-state.json` and `read-share-group-state-summary.json`. And
+the 40 frames of the
+share-group wire of Kafka 4.1 (KIP-932) in the four new files `share-group-heartbeat.json` (14),
+`share-group-describe.json` (6), `share-fetch.json` (12) and `share-acknowledge.json` (8). And the 44 frames of the admin
+half of Kafka 4.0: the 20 of UpdateFeatures v2 and of the version 1 a 4.x controller answers in `update-features.json`,
+the 6 of DescribeCluster v2 (KIP-1073) in `describe-cluster.json`, the 2 of DescribeQuorum v2 re-measured on the
+dynamic quorum in `describe-quorum.json`, and the 16 of the two raft-voter apis of KIP-853 in the two new files
+`add-raft-voter.json` and `remove-raft-voter.json`. And the 28 frames of Kafka
+4.0 on the group apis: the 16 of ConsumerGroupHeartbeat v1 (the member id of KIP-1082 and the regex subscription with
+its 128) in `consumer-group-heartbeat.json`, the 4 of ConsumerGroupDescribe v1 (the member type of KIP-1099) in
+`consumer-group-describe.json` and the 8 of DescribeGroups v6 (the 69 of KIP-1043) in `describe-groups.json`. And
+the 14 frames of the transaction protocol v2 of Kafka 4.0 (KIP-890 part 2) in `txn-offset-commit.json` and
+`end-txn.json`. And the 14 frames of the record half of Kafka 4.0: the 6 of Produce v12 in `produce.json` (a plain
+batch, the transactional batch of the transaction protocol v2 of KIP-890 part 2 whose partition the broker adds itself,
+and the version 11 pair of the same question refused with the 120), the 4 of Metadata v13 in `metadata.json` (the
+top-level error code of KIP-1102) and the 4 of ListOffsets v10 in `offsets.json` (the `timeout_ms` of KIP-1075). And the 32 frames of the admin half of
+Kafka 4.1: the 10 of ListTransactions v2 (the `transactional_id_pattern` of KIP-1152 and its 128) in
+`list-transactions.json`, the 8 of the key 74 at version 1 (ListConfigResources, KIP-1142) in
+`list-client-metrics-resources.json`, and the 14 of the five share-group state apis 83 to 87 of KIP-932, wire only,
+in the five new files `initialize-share-group-state.json`, `read-share-group-state.json`,
+`write-share-group-state.json`, `delete-share-group-state.json` and `read-share-group-state-summary.json`.
+And the 8 frames of the record half of Kafka 4.1: the 4 of Produce v13 in `produce.json` (the topic named by id of
+KIP-516, and the 100 of an id the node does not have) and the 4 of Fetch v18 in `fetch.json` (a consumer's frame and
+a follower's with the tagged high watermark of KIP-1166).
+And the 22 frames of the admin half of Kafka 4.1: the 4 of AlterPartitionReassignments v1
+(`allow_replication_factor_change`) in `alter-partition-reassignments.json` and the 18 of the share-group offset apis
+90 to 92 of KIP-932, wire only, in the three new files `describe-share-group-offsets.json`,
+`alter-share-group-offsets.json` and `delete-share-group-offsets.json`.
+
 The 3.x line has captured **466** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
@@ -72,7 +111,20 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1135** of them in **60** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **1421** of them in **74** files: **8** are DescribeLogDirs v5 of Kafka 4.3 (the cordon flag of
+KIP-1066) in `describe-log-dirs.json`, captured on the `kafka-4-3-1` node with `/tmp/kafka-logs-2` cordoned and not -
+**40** are the offset and share-group apis of Kafka 4.2 (OffsetCommit
+and OffsetFetch v10, ShareFetch and ShareAcknowledge v2), captured on the `kafka-4-3-1` node - **8** are ListOffsets v11 of Kafka 4.2 (KIP-1023), captured on
+the `kafka-4-3-1` node - **18** are the raft-voter and share-state apis of Kafka 4.2,
+captured on the `kafka-4-3-1` node - **10** are the two versions Kafka 4.2 added to the admin and transaction apis,
+captured on the same node - the DescribeShareGroupOffsets v1 pairs of the share-partition lag of KIP-1226 in
+`describe-share-group-offsets.json`, measured with real share traffic, and the three WriteTxnMarkers v2 pairs of the
+transaction version of KIP-1228 in `write-txn-markers.json` - **40** are the share-group apis of Kafka 4.1 (KIP-932), captured on the
+`kafka-4-3-1` node in four new files - **22** are the admin apis of Kafka 4.1 on the `kafka-4-3-1` node (the
+AlterPartitionReassignments v1 pairs of `allow_replication_factor_change` and the share-group offset apis 90 to 92 of
+KIP-932 in three new files), **14** are the transaction protocol v2 of Kafka 4.0 (KIP-890 part
+2), captured on the `kafka-4-3-1` node of the 4.x line: the TxnOffsetCommit v4 and v5 pairs of one commit, the 120 and
+the 0, in `txn-offset-commit.json` and five EndTxn v5 pairs in `end-txn.json` - **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -233,7 +285,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v12)",
+    "section": "Metadata API (key 3, v0 to v13)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

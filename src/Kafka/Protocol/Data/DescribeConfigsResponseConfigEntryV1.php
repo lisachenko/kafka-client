@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * them. Its {@see DescribeConfigsResponseConfigEntry::$configType} then keeps the
  * {@see \Protocol\Kafka\Admin\ConfigType::UNKNOWN} of the field's default and its documentation stays `null`.
  *
- * @see docs/protocol/3.9.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class DescribeConfigsResponseConfigEntryV1 extends DescribeConfigsResponseConfigEntry
 {

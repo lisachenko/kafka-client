@@ -34,11 +34,14 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroupV8;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
-use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV8;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV9;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -65,12 +68,19 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see self::tearDownAfterClass()} - every KIP-848 member with the leave heartbeat of the epoch -1 first, because
  * a group that still holds a member is not deletable.
  *
- * @see docs/protocol/3.9.md, section "The member id and epoch of KIP-848 (v9)"
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * **Kafka 4.2** added the version 10, which names every topic of a group entry by its id (KIP-848): the last tests of
+ * the class read by id as a KIP-848 member, as the client, for every topic of a group and for an id the node does
+ * not know.
+ *
+ * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/4.3.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV8::class)]
+#[CoversClass(OffsetFetchRequestV9::class)]
+#[CoversClass(OffsetFetchResponseV9::class)]
 #[CoversClass(OffsetFetchRequestGroup::class)]
 #[CoversClass(OffsetFetchRequestGroupV8::class)]
 #[CoversClass(OffsetFetchResponse::class)]
@@ -149,7 +159,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
     }
 
     /**
-     * The read of every client of this line is the version 9 with the two new fields at their defaults
+     * The read of every client is the version 10 of Kafka 4.2 since the 4.2 milestone; the version 9 of the same
+     * question carries the two new fields at their defaults
      */
     public function testTheClientReadsCommittedOffsetsWithTheVersionNineOfKip848(): void
     {
@@ -160,14 +171,14 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
         $offsets = new Client($this->cluster(), $this->configuration())
             ->fetchGroupOffsets($this->coordinator($groupId), $groupId, [$topic => [0]]);
 
-        self::assertSame(9, OffsetFetchRequest::VERSION, 'the version this client sends since Kafka 3.7');
-        self::assertSame(9, OffsetFetchResponse::VERSION);
+        self::assertSame(10, OffsetFetchRequest::VERSION, 'the version Kafka 4.2 added');
+        self::assertSame(9, OffsetFetchRequestV9::VERSION, 'the version of KIP-848 in Kafka 3.7');
         self::assertSame([$topic => [0 => self::COMMITTED_OFFSET]], $offsets);
 
         $entry = $this->fetch(
             $this->coordinatorStream($groupId),
-            OffsetFetchRequest::class,
-            OffsetFetchResponse::class,
+            OffsetFetchRequestV9::class,
+            OffsetFetchResponseV9::class,
             $groupId,
             [$topic => [0]],
             null,
@@ -248,8 +259,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
         foreach ([$epoch - 1, $epoch + 5, OffsetFetchRequestGroup::NO_MEMBER_EPOCH] as $index => $stale) {
             $entry = $this->fetch(
                 $stream,
-                OffsetFetchRequest::class,
-                OffsetFetchResponse::class,
+                OffsetFetchRequestV9::class,
+                OffsetFetchResponseV9::class,
                 $groupId,
                 [$topic => [0]],
                 $memberId,
@@ -299,8 +310,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
         foreach (['not-a-member-of-this-group', ''] as $index => $unknown) {
             $entry = $this->fetch(
                 $stream,
-                OffsetFetchRequest::class,
-                OffsetFetchResponse::class,
+                OffsetFetchRequestV9::class,
+                OffsetFetchResponseV9::class,
                 $groupId,
                 [$topic => [0]],
                 $unknown,
@@ -336,8 +347,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
 
         $accepted = $this->fetch(
             $stream,
-            OffsetFetchRequest::class,
-            OffsetFetchResponse::class,
+            OffsetFetchRequestV9::class,
+            OffsetFetchResponseV9::class,
             $groupId,
             [$topic => [0]],
             null,
@@ -350,8 +361,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
 
         $broken = $this->fetch(
             $stream,
-            OffsetFetchRequest::class,
-            OffsetFetchResponse::class,
+            OffsetFetchRequestV9::class,
+            OffsetFetchResponseV9::class,
             $groupId,
             [$topic => [0]],
             null,
@@ -369,8 +380,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
         // the connection is not stranded by it: the next request on it is answered normally
         $again = $this->fetch(
             $stream,
-            OffsetFetchRequest::class,
-            OffsetFetchResponse::class,
+            OffsetFetchRequestV9::class,
+            OffsetFetchResponseV9::class,
             $groupId,
             [$topic => [0]],
             null,
@@ -420,8 +431,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
 
         foreach (
             [
-                [OffsetFetchRequest::class, OffsetFetchResponse::class, 'a-member', 4, 3750],
-                [OffsetFetchRequest::class, OffsetFetchResponse::class, null, -1, 3751],
+                [OffsetFetchRequestV9::class, OffsetFetchResponseV9::class, 'a-member', 4, 3750],
+                [OffsetFetchRequestV9::class, OffsetFetchResponseV9::class, null, -1, 3751],
                 [OffsetFetchRequestV8::class, OffsetFetchResponseV8::class, null, -1, 3752],
             ] as [$request, $response, $memberId, $epoch, $correlationId]
         ) {
@@ -454,8 +465,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
 
         $stable = $this->fetch(
             $stream,
-            OffsetFetchRequest::class,
-            OffsetFetchResponse::class,
+            OffsetFetchRequestV9::class,
+            OffsetFetchResponseV9::class,
             $groupId,
             [$topic => [0]],
             $memberId,
@@ -469,8 +480,8 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
 
         $staleAndStable = $this->fetch(
             $stream,
-            OffsetFetchRequest::class,
-            OffsetFetchResponse::class,
+            OffsetFetchRequestV9::class,
+            OffsetFetchResponseV9::class,
             $groupId,
             [$topic => [0]],
             $memberId,
@@ -499,7 +510,7 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
 
         $stream = $this->coordinatorStream($classic);
 
-        OffsetFetchRequest::forGroups(
+        OffsetFetchRequestV9::forGroups(
             [
                 $classic => [$topic => [0]],
                 $modern  => new OffsetFetchRequestGroup($modern, [$topic => [0]], $memberId, $epoch - 1),
@@ -507,7 +518,7 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
             self::CLIENT_ID,
             3770
         )->writeTo($stream);
-        $answer = OffsetFetchResponse::unpack($stream);
+        $answer = OffsetFetchResponseV9::unpack($stream);
 
         self::assertSame(
             self::COMMITTED_OFFSET,
@@ -516,6 +527,106 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
         self::assertSame(KafkaException::NO_ERROR, $answer->groupOf($classic)->errorCode);
         self::assertSame(KafkaException::STALE_MEMBER_EPOCH, $answer->groupOf($modern)->errorCode);
         self::assertSame([], $answer->groupOf($modern)->topics);
+    }
+
+    /**
+     * Version 10 (Kafka 4.2, KIP-848): a KIP-848 member reads by topic id, and its epoch is checked as at version 9
+     */
+    public function testAMemberOfAKip848GroupReadsByTopicIdWithItsMemberEpoch(): void
+    {
+        $topic   = $this->topic();
+        $groupId = $this->uniqueGroupName();
+        [$memberId, $epoch] = $this->modernGroupWithACommittedOffset($groupId, $topic);
+        $stream  = $this->coordinatorStream($groupId);
+
+        $current = $this->fetch(
+            $stream,
+            OffsetFetchRequest::class,
+            OffsetFetchResponse::class,
+            $groupId,
+            [$topic => [0]],
+            $memberId,
+            $epoch,
+            3780
+        )->groupOf($groupId);
+
+        self::assertSame(KafkaException::NO_ERROR, $current->errorCode);
+        self::assertSame(self::topicIdOf($topic), $current->topics[$topic]->topicId, 'the answer names the id');
+        self::assertSame(self::COMMITTED_OFFSET, $current->topics[$topic]->partitions[0]->offset);
+
+        $stale = $this->fetch(
+            $stream,
+            OffsetFetchRequest::class,
+            OffsetFetchResponse::class,
+            $groupId,
+            [$topic => [0]],
+            $memberId,
+            $epoch + 3,
+            3781
+        )->groupOf($groupId);
+
+        self::assertSame(KafkaException::STALE_MEMBER_EPOCH, $stale->errorCode);
+        self::assertSame([], $stale->topics);
+
+        self::assertSame(
+            [$topic => [0 => self::COMMITTED_OFFSET]],
+            new Client($this->cluster(), $this->configuration())->fetchGroupOffsetsAsMember($this->coordinator($groupId), $groupId, [$topic => [0]], $memberId, $epoch),
+            'the client reads as the member by topic id'
+        );
+    }
+
+    /**
+     * An id the node does not know is the 100 of the partition with the offset -1, next to the answer of the rest
+     */
+    public function testAnIdTheNodeDoesNotKnowIsTheHundredWithTheOffsetMinusOne(): void
+    {
+        $topic   = $this->topic();
+        $groupId = $this->uniqueGroupName();
+        $this->classicGroupWithACommittedOffset($groupId, $topic);
+        $unknown = random_bytes(16);
+        $stream  = $this->coordinatorStream($groupId);
+
+        OffsetFetchRequest::forGroups(
+            [$groupId => [$topic => [0], 't3-42-nowhere' => [0]]],
+            self::CLIENT_ID,
+            3782,
+            false,
+            [$topic => self::topicIdOf($topic), 't3-42-nowhere' => $unknown]
+        )->writeTo($stream);
+        $group = OffsetFetchResponse::unpack($stream)->groupOf($groupId);
+        $group->nameTopics([self::topicIdOf($topic) => $topic, $unknown => 't3-42-nowhere']);
+
+        self::assertSame(KafkaException::NO_ERROR, $group->errorCode);
+        self::assertSame(self::COMMITTED_OFFSET, $group->topics[$topic]->partitions[0]->offset);
+        self::assertSame(KafkaException::UNKNOWN_TOPIC_ID, $group->topics['t3-42-nowhere']->partitions[0]->errorCode);
+        self::assertSame(-1, $group->topics['t3-42-nowhere']->partitions[0]->offset);
+    }
+
+    /**
+     * The answer to every topic of a group names each by its id, and the client names them back by its metadata
+     */
+    public function testEveryTopicOfAGroupIsAnsweredByIdAndNamedBackByTheClient(): void
+    {
+        $topic   = $this->topic();
+        $groupId = $this->uniqueGroupName();
+        $this->classicGroupWithACommittedOffset($groupId, $topic);
+
+        $group = $this->fetch(
+            $this->coordinatorStream($groupId),
+            OffsetFetchRequest::class,
+            OffsetFetchResponse::class,
+            $groupId,
+            null,
+            null,
+            OffsetFetchRequestGroup::NO_MEMBER_EPOCH,
+            3783
+        )->groupOf($groupId);
+
+        self::assertSame([self::topicIdOf($topic)], $group->unnamedTopicIds(), 'the node names the topic by id');
+        self::assertSame(
+            [$topic => [0 => self::COMMITTED_OFFSET]],
+            new Client($this->cluster(), $this->configuration())->fetchGroupOffsets($this->coordinator($groupId), $groupId, null)
+        );
     }
 
     /**
@@ -536,14 +647,27 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
         int $correlationId,
         bool $requireStable = false
     ): OffsetFetchResponse {
+        $topicIds = [];
+        if ($requestClass::VERSION >= OffsetFetchRequest::MIN_TOPIC_ID_VERSION) {
+            foreach (array_keys($topicPartitions ?? []) as $topic) {
+                $topicIds[(string) $topic] = self::topicIdOf((string) $topic);
+            }
+        }
         $requestClass::forGroups(
             [$groupId => new OffsetFetchRequestGroup($groupId, $topicPartitions, $memberId, $memberEpoch)],
             self::CLIENT_ID,
             $correlationId,
-            $requireStable
+            $requireStable,
+            $topicIds
         )->writeTo($stream);
 
-        return $responseClass::unpack($stream);
+        $answer = $responseClass::unpack($stream);
+        // A version 10 answer names the topics by id alone; the tests read the answer of named topics by name
+        foreach ($topicIds === [] ? [] : $answer->groups as $group) {
+            $group->nameTopics(array_flip($topicIds));
+        }
+
+        return $answer;
     }
 
     /**
@@ -644,7 +768,7 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
         string $topic,
         int $correlationId
     ): void {
-        new OffsetCommitRequest(
+        new OffsetCommitRequestV9(
             $groupId,
             $generationId,
             $memberId,
@@ -653,7 +777,7 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
             self::CLIENT_ID,
             $correlationId
         )->writeTo($stream);
-        $answer = OffsetCommitResponse::unpack($stream);
+        $answer = OffsetCommitResponseV9::unpack($stream);
 
         self::assertSame(
             KafkaException::NO_ERROR,

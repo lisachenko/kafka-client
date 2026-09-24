@@ -32,6 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     subscribed_topic_regex => COMPACT_NULLABLE_STRING
  *     assignment             => [topic_partitions]
  *     target_assignment      => [topic_partitions]
+ *     member_type            => INT8                      -- since version 1
  * </pre>
  *
  * The `Member` structure of `ConsumerGroupDescribeResponse.json` @ 3.9.2. It reports what
@@ -42,13 +43,40 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * `subscribed_topic_regex` is the `subscribe(Pattern)` of KIP-848: a group whose members subscribe by pattern is
  * resolved by the **coordinator**, not by the client, which is the other half of the assignment moving to the
- * broker. This client subscribes by name, so the field is null in everything it produces.
+ * broker. A 4.3.1 node answers the empty string for a member that subscribed by name, and the regex itself for a
+ * member that subscribed with one (ConsumerGroupHeartbeat v1, Kafka 4.0).
+ *
+ * **Version 1 (Kafka 4.0, KIP-1099) appended the int8 `member_type`**, which tells the two kinds of member of a
+ * `consumer` group apart: {@see self::MEMBER_TYPE_CONSUMER} for a member that heartbeats with key 68 and
+ * {@see self::MEMBER_TYPE_CLASSIC} for a classic member that joined the group with JoinGroup during the online
+ * upgrade of KIP-848 - the Java client reports it as the `upgraded()` of a `MemberDescription`. The default
+ * {@see self::MEMBER_TYPE_UNKNOWN} is what a version 0 entry leaves the field at.
  *
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponse
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 class ConsumerGroupDescribeMember implements BinarySchemaInterface
 {
+    /**
+     * Version of the ConsumerGroupDescribe API that this DTO decodes a member entry of
+     */
+    public const int VERSION = 1;
+
+    /**
+     * `member_type` of a member whose type the answer does not say: the default of the field, and every version 0
+     */
+    public const int MEMBER_TYPE_UNKNOWN = -1;
+
+    /**
+     * `member_type` of a member of the classic protocol that joined a group of the consumer protocol (KIP-1099)
+     */
+    public const int MEMBER_TYPE_CLASSIC = 0;
+
+    /**
+     * `member_type` of a member of the consumer protocol of KIP-848 (KIP-1099)
+     */
+    public const int MEMBER_TYPE_CONSUMER = 1;
+
     /**
      * Topics this member subscribed to by name
      *
@@ -102,11 +130,18 @@ class ConsumerGroupDescribeMember implements BinarySchemaInterface
     public ConsumerGroupDescribeAssignment $targetAssignment;
 
     /**
+     * Protocol this member speaks: one of the `MEMBER_TYPE_*` constants (KIP-1099)
+     *
+     * @since Version 1 of protocol
+     */
+    public int $memberType = self::MEMBER_TYPE_UNKNOWN;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'memberId'             => BinarySchema::TYPE_STRING,
             'instanceId'           => BinarySchema::TYPE_NULLABLE_STRING,
             'rackId'               => BinarySchema::TYPE_NULLABLE_STRING,
@@ -118,5 +153,10 @@ class ConsumerGroupDescribeMember implements BinarySchemaInterface
             'assignment'           => ConsumerGroupDescribeAssignment::class,
             'targetAssignment'     => ConsumerGroupDescribeAssignment::class,
         ];
+        if (static::VERSION >= 1) {
+            $scheme['memberType'] = BinarySchema::TYPE_INT8;
+        }
+
+        return $scheme;
     }
 }

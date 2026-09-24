@@ -75,7 +75,7 @@ use Throwable;
  * itself is not part of a session: a broker keeps the session of a client that reconnects, but the client can not
  * know how much of the last request the broker processed, so it starts over.
  *
- * @see docs/protocol/3.9.md, section "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/4.3.md, section "Fetch sessions (v7, KIP-227)"
  * @see \Protocol\Kafka\Client::fetchPartitionsWithSessions()
  */
 final class FetchSessionHandler
@@ -158,7 +158,7 @@ final class FetchSessionHandler
      *
      * @param array<string, string> $topicIds Id of every topic of the request, as name => the 16 raw bytes
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     public function rememberTopicIds(array $topicIds): void
     {

@@ -89,7 +89,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * the same in both, because a feature finalized at the level 0 is not finalized at all.
  * {@see ApiVersionsResponseV3} reads the answer one version below.
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 class ApiVersionsResponse extends AbstractResponse
 {

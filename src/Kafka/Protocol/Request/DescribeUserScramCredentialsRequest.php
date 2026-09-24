@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Data\ScramUserName;
  * null/empty to describe all users"* - which is the one nullable array of this protocol whose empty form is not
  * "nothing".
  *
- * @see docs/protocol/3.9.md, section "DescribeUserScramCredentials API (key 50, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeUserScramCredentials API (key 50, v0)"
  */
 class DescribeUserScramCredentialsRequest extends AbstractRequest
 {

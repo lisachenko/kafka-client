@@ -27,6 +27,7 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV1;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV12;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
@@ -35,6 +36,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV6;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV12;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
@@ -45,7 +47,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 /**
  * Verifies the Metadata API v0 to v4 against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -343,7 +345,7 @@ final class MetadataApiTest extends IntegrationTestCase
         // `MetadataRequest.json` @ 2.8.2 has no field between version 4 and version 8, and
         // `MetadataResponse.json` only notes "Starting in version 6, on quota violation, brokers send out
         // responses before throttling": version 6 (Kafka 2.0, KIP-219) is the version 5 frame with another number
-        // in its header, and it is the version this client sends.
+        // in its header.
         $topic = self::uniqueTopicName('t3-metadata-v6');
         $this->awaitTopicWithLeaders($topic);
 
@@ -355,7 +357,7 @@ final class MetadataApiTest extends IntegrationTestCase
         $versionSix = MetadataResponseV6::unpack($stream);
 
         self::assertSame(6, MetadataRequestV6::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(12, MetadataRequest::VERSION, 'and the client sends the version Kafka 3.1 added');
+        self::assertSame(13, MetadataRequest::VERSION, 'and the version Kafka 4.0 added (KIP-1102)');
         self::assertSame($versionFive->getMessageSize(), $versionSix->getMessageSize());
         self::assertSame($versionFive->clusterId, $versionSix->clusterId);
         self::assertSame($versionFive->controllerId, $versionSix->controllerId);
@@ -373,6 +375,44 @@ final class MetadataApiTest extends IntegrationTestCase
             self::assertSame($sameOfVersionFive->isr, $partition->isr);
             self::assertSame($sameOfVersionFive->offlineReplicas, $partition->offlineReplicas);
         }
+    }
+
+    public function testVersionThirteenAppendsATopLevelErrorCodeThatTheNodeLeavesAtZero(): void
+    {
+        // `MetadataResponse.json` @ 4.0.0: "Version 13 supports top-level error code in the response" (KIP-1102),
+        // an int16 behind the topics. What it is for is the 129 REBOOTSTRAP_REQUIRED, and no broker of 4.0 to 4.3.1
+        // writes it - `MetadataRequest.getErrorResponse` @ 4.3.1 puts the code of a failed request into every topic
+        // entry and leaves the top level at 0, and only the clients read the field
+        $topic = self::uniqueTopicName('t2-40-metadata-v13');
+        $this->awaitTopicWithLeaders($topic);
+
+        $stream = $this->connect();
+        new MetadataRequestV12([$topic], false, self::CLIENT_ID, 48)->writeTo($stream);
+        $twelve = MetadataResponseV12::unpack($stream);
+        new MetadataRequest([$topic], false, self::CLIENT_ID, 49)->writeTo($stream);
+        $thirteen = MetadataResponse::unpack($stream);
+
+        self::assertSame(KafkaException::NO_ERROR, $thirteen->errorCode);
+        self::assertSame(
+            $twelve->getMessageSize() + 2,
+            $thirteen->getMessageSize(),
+            'the two bytes of the top-level error code are the whole difference'
+        );
+        // Behind the Size and the CorrelationId: the version 12 body, with the code in front of its tag buffer
+        self::assertSame(
+            substr(bin2hex((string) $twelve), 16),
+            substr(bin2hex((string) $thirteen), 16, -6) . '00',
+            'the version 12 answer, with the code in front of the tag buffer of the body'
+        );
+        self::assertSame('000000', substr(bin2hex((string) $thirteen), -6), 'error_code 0 and the empty tag buffer');
+
+        // A topic the node refuses is refused in its own entry, the top level stays 0 even then
+        $missing = self::uniqueTopicName('t2-40-metadata-v13-missing');
+        new MetadataRequest([$missing], false, self::CLIENT_ID, 50)->writeTo($stream);
+        $refused = MetadataResponse::unpack($stream);
+
+        self::assertSame(KafkaException::UNKNOWN_TOPIC_OR_PARTITION, $refused->topics[$missing]->topicErrorCode);
+        self::assertSame(KafkaException::NO_ERROR, $refused->errorCode);
     }
 
     public function testTheAdminClientReportsTheOfflineReplicasOfEveryPartition(): void

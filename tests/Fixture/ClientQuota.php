@@ -53,7 +53,7 @@ use RuntimeException;
  * {@see self::isSupported()} tells whether a broker is configured at all (`KAFKA_BOOTSTRAP_SERVERS`), so that a
  * suite which runs without one skips those tests instead of failing them.
  *
- * @see docs/protocol/3.9.md, section "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, section "Quotas and throttle time"
  */
 final class ClientQuota
 {

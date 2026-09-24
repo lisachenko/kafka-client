@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * constant: the version 3 is what a broker below Kafka 3.3 is asked with, and its answer carries no total and no
  * usable bytes per directory ({@see DescribeLogDirsResponseV3}).
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class DescribeLogDirsRequestV3 extends DescribeLogDirsRequest
 {

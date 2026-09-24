@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * so the class of the entries is derived from {@see OffsetsResponseTopic::VERSION}, which
  * {@see OffsetsResponseTopicV0} lowers.
  *
- * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  */
 class OffsetsResponseTopic implements BinarySchemaInterface
 {

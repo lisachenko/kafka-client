@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Common;
  * 12 can a request name a topic by its id alone and only then can the broker fail to resolve one, see
  * {@see TopicMetadata}.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Topic ids (v10, KIP-516)"
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)" and "Topic ids (v10, KIP-516)"
  */
 final class TopicMetadataV10 extends TopicMetadata
 {

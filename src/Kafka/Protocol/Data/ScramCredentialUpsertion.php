@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `kafka-configs.sh --alter --add-config 'SCRAM-SHA-256=[password=…]'` does exactly this before it sends the
  * request.
  *
- * @see docs/protocol/3.9.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/4.3.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 class ScramCredentialUpsertion implements BinarySchemaInterface
 {

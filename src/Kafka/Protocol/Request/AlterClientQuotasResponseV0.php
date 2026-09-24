@@ -16,7 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 /**
  * AlterClientQuotas response, version 0 - the plain frame Kafka 2.6 added (key 49)
  *
- * @see docs/protocol/3.9.md, section "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "AlterClientQuotas API (key 49, v0 and v1)"
  */
 class AlterClientQuotasResponseV0 extends AlterClientQuotasResponse
 {

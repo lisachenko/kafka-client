@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * repeated on every requested partition, and {@see AddPartitionsToTxnResponse::resultOf()} reads it as one
  * transaction all the same.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 final class AddPartitionsToTxnResponseV3 extends AddPartitionsToTxnResponse
 {

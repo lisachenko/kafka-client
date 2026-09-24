@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see MetadataResponse::topicClass()} and, through it,
  * {@see \Protocol\Kafka\Common\TopicMetadata::partitionClass()} follow.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class MetadataResponseV4 extends MetadataResponse
 {

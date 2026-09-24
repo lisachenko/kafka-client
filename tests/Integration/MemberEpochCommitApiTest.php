@@ -30,8 +30,10 @@ use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -53,14 +55,21 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group and topic of this class carries the `t3-36-` prefix of the Kafka 3.6 wave and is removed again in
  * {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/3.9.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * **Kafka 4.2** added the version 10, which names every topic by its id (KIP-848): the last tests of the class drive
+ * it for a classic member, a member of a KIP-848 group, an id the node does not know and a topic deleted under
+ * the group, next to the version 9 of the same questions.
+ *
+ * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV8::class)]
+#[CoversClass(OffsetCommitRequestV9::class)]
 #[CoversClass(OffsetCommitResponse::class)]
 #[CoversClass(OffsetCommitResponseV8::class)]
+#[CoversClass(OffsetCommitResponseV9::class)]
 final class MemberEpochCommitApiTest extends IntegrationTestCase
 {
     private const string CLIENT_ID = 'kafka-client-t3-36';
@@ -129,8 +138,8 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
 
         $answer = $this->commit(
             $stream,
-            OffsetCommitRequest::class,
-            OffsetCommitResponse::class,
+            OffsetCommitRequestV9::class,
+            OffsetCommitResponseV9::class,
             $groupId,
             $joined->generationId,
             $joined->memberId,
@@ -139,7 +148,7 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
             3601
         );
 
-        self::assertSame(9, OffsetCommitRequest::VERSION, 'the version this client sends since Kafka 3.6');
+        self::assertSame(9, OffsetCommitRequestV9::VERSION, 'the version of KIP-848 in Kafka 3.6');
         self::assertSame(KafkaException::NO_ERROR, $answer->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $answer->throttleTimeMs);
 
@@ -177,7 +186,7 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
         $stream  = $this->coordinatorStream($groupId);
         $joined  = $this->joinAndSync($stream, $groupId, $topic);
 
-        foreach ([[OffsetCommitRequest::class, OffsetCommitResponse::class, 3603],
+        foreach ([[OffsetCommitRequestV9::class, OffsetCommitResponseV9::class, 3603],
             [OffsetCommitRequestV8::class, OffsetCommitResponseV8::class, 3604]] as [$request, $response, $id]) {
             $answer = $this->commit(
                 $stream,
@@ -209,7 +218,7 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
         $stream  = $this->coordinatorStream($groupId);
         $joined  = $this->joinAndSync($stream, $groupId, $topic);
 
-        foreach ([[OffsetCommitRequest::class, OffsetCommitResponse::class, 3605],
+        foreach ([[OffsetCommitRequestV9::class, OffsetCommitResponseV9::class, 3605],
             [OffsetCommitRequestV8::class, OffsetCommitResponseV8::class, 3606]] as [$request, $response, $id]) {
             $answer = $this->commit(
                 $stream,
@@ -242,8 +251,8 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
 
         $version9 = $this->commit(
             $stream,
-            OffsetCommitRequest::class,
-            OffsetCommitResponse::class,
+            OffsetCommitRequestV9::class,
+            OffsetCommitResponseV9::class,
             $groupId,
             1,
             't3-36-nobody',
@@ -309,8 +318,8 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
 
         $answer = $this->commit(
             $stream,
-            OffsetCommitRequest::class,
-            OffsetCommitResponse::class,
+            OffsetCommitRequestV9::class,
+            OffsetCommitResponseV9::class,
             $groupId,
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
@@ -339,8 +348,8 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
 
         $accepted = $this->commit(
             $stream,
-            OffsetCommitRequest::class,
-            OffsetCommitResponse::class,
+            OffsetCommitRequestV9::class,
+            OffsetCommitResponseV9::class,
             $groupId,
             $epoch,
             $member,
@@ -358,8 +367,8 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
         foreach ([$epoch - 1 => 3611, $epoch + 1 => 3612] as $wrongEpoch => $correlationId) {
             $answer = $this->commit(
                 $stream,
-                OffsetCommitRequest::class,
-                OffsetCommitResponse::class,
+                OffsetCommitRequestV9::class,
+                OffsetCommitResponseV9::class,
                 $groupId,
                 $wrongEpoch,
                 $member,
@@ -411,6 +420,177 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
     }
 
     /**
+     * Version 10 (Kafka 4.2, KIP-848): the commit of a classic member names its topic by id, and nothing else moves
+     */
+    public function testAClassicMemberCommitsByTopicIdWithTheVersionTen(): void
+    {
+        $topic   = $this->topic();
+        $groupId = $this->uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+        $joined  = $this->joinAndSync($stream, $groupId, $topic);
+
+        $answer = $this->commit(
+            $stream,
+            OffsetCommitRequest::class,
+            OffsetCommitResponse::class,
+            $groupId,
+            $joined->generationId,
+            $joined->memberId,
+            $topic,
+            31,
+            3620
+        );
+
+        self::assertSame(10, OffsetCommitRequest::VERSION, 'the version Kafka 4.2 added');
+        self::assertSame(self::topicIdOf($topic), $answer->topics[$topic]->topicId, 'the answer names the id');
+        self::assertSame(KafkaException::NO_ERROR, $answer->topics[$topic]->partitions[0]->errorCode);
+
+        $wrongGeneration = $this->commit(
+            $stream,
+            OffsetCommitRequest::class,
+            OffsetCommitResponse::class,
+            $groupId,
+            $joined->generationId + 5,
+            $joined->memberId,
+            $topic,
+            32,
+            3621
+        );
+        self::assertSame(
+            KafkaException::ILLEGAL_GENERATION,
+            $wrongGeneration->topics[$topic]->partitions[0]->errorCode,
+            'the generation check of a classic group is the one of version 9'
+        );
+
+        self::assertSame(
+            [$topic => [0 => 31]],
+            $this->client()->fetchGroupOffsets($this->coordinator($groupId), $groupId, [$topic => [0]])
+        );
+    }
+
+    /**
+     * Version 10 keeps the member epoch checks of version 9 for a member of a KIP-848 group
+     */
+    public function testAMemberOfAKip848GroupCommitsByTopicIdWithItsMemberEpoch(): void
+    {
+        $topic   = $this->topic();
+        $groupId = $this->uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+        $member  = 't3-42-' . bin2hex(random_bytes(8));
+        $epoch   = $this->joinWithAHeartbeat($groupId, $member, $topic);
+
+        foreach ([$epoch => KafkaException::NO_ERROR, $epoch - 1 => KafkaException::STALE_MEMBER_EPOCH,
+            $epoch + 1 => KafkaException::STALE_MEMBER_EPOCH] as $memberEpoch => $expected) {
+            $answer = $this->commit(
+                $stream,
+                OffsetCommitRequest::class,
+                OffsetCommitResponse::class,
+                $groupId,
+                $memberEpoch,
+                $member,
+                $topic,
+                13,
+                3622 + $memberEpoch - $epoch + 1
+            );
+
+            self::assertSame(
+                $expected,
+                $answer->topics[$topic]->partitions[0]->errorCode,
+                "The epoch {$memberEpoch} against the current {$epoch}"
+            );
+        }
+
+        $this->leaveWithAHeartbeat($groupId, $member);
+    }
+
+    /**
+     * An id the node does not know is the 100 of the partition at version 10; a name it does not know is the 3 at 9
+     */
+    public function testAnIdTheNodeDoesNotKnowIsTheHundredAndANameItDoesNotKnowTheThree(): void
+    {
+        $topic   = $this->topic();
+        $groupId = $this->uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+
+        $byId = $this->commit(
+            $stream,
+            OffsetCommitRequest::class,
+            OffsetCommitResponse::class,
+            $groupId,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            $topic,
+            5,
+            3626,
+            random_bytes(16)
+        );
+        self::assertSame(KafkaException::UNKNOWN_TOPIC_ID, $byId->topics[$topic]->partitions[0]->errorCode);
+
+        $byName = $this->commit(
+            $stream,
+            OffsetCommitRequestV9::class,
+            OffsetCommitResponseV9::class,
+            $groupId,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            't3-42-no-such-topic',
+            5,
+            3627
+        );
+        self::assertSame(
+            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+            $byName->topics['t3-42-no-such-topic']->partitions[0]->errorCode,
+            'a 4.x node refuses the commit of a topic it does not have at version 9 as well'
+        );
+    }
+
+    /**
+     * The id of a topic deleted under the group is the 100, and the client commits by the id it resolved
+     */
+    public function testTheIdOfADeletedTopicIsTheHundred(): void
+    {
+        $topic   = $this->topic();
+        $topicId = self::topicIdOf($topic);
+        $groupId = $this->uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+        $admin   = new AdminClient($this->cluster(), $this->configuration());
+
+        $this->client()->commitGroupOffsets(
+            $this->coordinator($groupId),
+            $groupId,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            [$topic => [0 => 9]],
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME
+        );
+        $admin->deleteTopics([$topic]);
+
+        $deadline = microtime(true) + 30.0;
+        do {
+            $answer = $this->commit(
+                $stream,
+                OffsetCommitRequest::class,
+                OffsetCommitResponse::class,
+                $groupId,
+                OffsetCommitRequest::DEFAULT_GENERATION_ID,
+                OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+                $topic,
+                10,
+                3628,
+                $topicId
+            );
+            $code = $answer->topics[$topic]->partitions[0]->errorCode;
+            if ($code === KafkaException::UNKNOWN_TOPIC_ID) {
+                break;
+            }
+            // The metadata cache of the node forgets the topic a moment after the controller deleted it
+            usleep(250000);
+        } while (microtime(true) < $deadline);
+
+        self::assertSame(KafkaException::UNKNOWN_TOPIC_ID, $code);
+    }
+
+    /**
      * Sends one OffsetCommit of the given version and returns the answer
      *
      * @param class-string<OffsetCommitRequest>  $requestClass
@@ -425,8 +605,10 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
         string $memberId,
         string $topic,
         int $offset,
-        int $correlationId
+        int $correlationId,
+        ?string $topicId = null
     ): OffsetCommitResponse {
+        $topicIds = [$topic => $topicId ?? ($requestClass::VERSION >= 10 ? self::topicIdOf($topic) : '')];
         new $requestClass(
             $groupId,
             $generationId,
@@ -434,10 +616,16 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
             OffsetCommitRequest::DEFAULT_RETENTION_TIME,
             [$topic => [0 => $offset]],
             self::CLIENT_ID,
-            $correlationId
+            $correlationId,
+            null,
+            array_filter($topicIds)
         )->writeTo($stream);
 
-        return $responseClass::unpack($stream);
+        $answer = $responseClass::unpack($stream);
+        // A version 10 answer names the topic by its id alone; the tests read every answer by name
+        $answer->topics = $answer->topicsByName(array_filter($topicIds));
+
+        return $answer;
     }
 
     /**

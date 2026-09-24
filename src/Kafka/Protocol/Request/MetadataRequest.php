@@ -97,7 +97,13 @@ use Protocol\Kafka\Protocol\Data\MetadataRequestTopicV9;
  * From version 12 an entry may carry a real id with a `null` name and the broker resolves it, which is what
  * {@see self::byTopicIds()} sends and what the Java `describeTopics(TopicCollection.ofTopicIds(...))` does; the
  * ANSWER of the same version makes its topic name nullable for the entry of an id it could not resolve, see
- * {@see MetadataResponse}. This class is version 12; {@see MetadataRequestV11} keeps the version below it.
+ * {@see MetadataResponse}. {@see MetadataRequestV12} keeps that version, {@see MetadataRequestV11} the one below it.
+ *
+ * **Version 13 (Kafka 4.0, KIP-1102) sends the version 12 body once more**, and this class is version 13.
+ * `MetadataRequest.json` @ 4.0.0 adds no field with it - its whole comment is "Version 13 supports top-level error
+ * code in the response" - so what the number states is that the client reads the `error_code` the ANSWER gained at
+ * the end of its body, and with it the **129** `REBOOTSTRAP_REQUIRED` of KIP-1102: "Client metadata is stale. The
+ * client should rebootstrap to obtain new metadata", see {@see MetadataResponse::$errorCode}.
  *
  * The flag is `true` by default here, which is the behaviour of every version below 4 and of
  * {@see \Protocol\Kafka\Common\Cluster}, whose consumers and producers expect a named topic to spring into
@@ -105,7 +111,8 @@ use Protocol\Kafka\Protocol\Data\MetadataRequestTopicV9;
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Metadata by topic id (v12, KIP-516)"
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)", "Metadata by topic id (v12, KIP-516)" and
+ *      "The top-level error code of KIP-1102 (v13)"
  */
 class MetadataRequest extends AbstractRequest
 {
@@ -117,7 +124,7 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 12;
+    public const int VERSION = 13;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

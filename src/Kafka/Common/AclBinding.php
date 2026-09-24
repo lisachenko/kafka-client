@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * of a CreateAcls request as well, where the seven fields are flat: the two halves are embedded with an
  * {@see InlineStruct} and the entry of the array carries the one tagged-field section of the flexible version.
  *
- * @see docs/protocol/3.9.md, section "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateAcls API (key 30, v0 to v3)"
  */
 class AclBinding implements BinarySchemaInterface
 {

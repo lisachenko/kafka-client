@@ -31,7 +31,7 @@ use Protocol\Kafka\Admin\UpgradeType;
  * as the boolean, so {@see UpgradeType::SafeDowngrade} and {@see UpgradeType::UnsafeDowngrade} are the same frame
  * here - which is exactly why KIP-778 needed the byte.
  *
- * @see docs/protocol/3.9.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 to v2)" and "The upgrade type and the dry
  *      run of KIP-778 (v1)"
  */
 final class FeatureUpdateKeyV0 extends FeatureUpdateKey

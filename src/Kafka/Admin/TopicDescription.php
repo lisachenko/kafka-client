@@ -30,7 +30,7 @@ use Protocol\Kafka\Common\Uuid;
  * `include_topic_authorized_operations` flag in the request - so {@see self::authorizedOperations()} never
  * answers the empty list of an {@see AclOperation::NOT_REQUESTED}.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 final class TopicDescription
 {

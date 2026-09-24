@@ -1,0 +1,160 @@
+{
+    "api": "write-share-group-state",
+    "apiKey": 85,
+    "section": "WriteShareGroupState API (key 85, v0 and v1)",
+    "description": "Wire vectors of the WriteShareGroupState API (key 85, v0 and v1), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "writesharegroupstate.request.v0.no-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteShareGroupStateRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "WriteShareGroupState **v0** (key 85) with one topic id and no partition - a frame that writes nothing.",
+            "hex": "0000004b005500000000126000126b61666b612d636c69656e742d74312d3431001a74312d34312d6e6f2d737563682d73686172652d67726f7570021d5d10c01ac6490d8b5b1faa8c75c66c010000",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 85,
+                "apiVersion": 0,
+                "correlationId": 4704,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "groupId": "t1-41-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "writesharegroupstate.response.v0.no-partition",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteShareGroupStateResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "The empty result array.",
+            "hex": "0000000700001260000100",
+            "fields": {
+                "messageSize": 7,
+                "correlationId": 4704,
+                "headerTaggedFields": [],
+                "results": []
+            }
+        },
+        {
+            "id": "writesharegroupstate.request.v1.uninitialized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteShareGroupStateRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "WriteShareGroupState **v1** (key 85, Kafka 4.2, KIP-1226) of the partition 0 of a topic of the capture (deleted afterwards) for the share group `t1-42-no-such-share-group`, which does not exist: the state epoch 0, the leader epoch 0, the start offset 0, the **`DeliveryCompleteCount` 2** that version 1 puts between the start offset and the batches, and one batch - the offsets 0 and 1, acknowledged (`02`), delivered once.",
+            "hex": "00000079005500010000107500126b61666b612d636c69656e742d74312d3432001a74312d34322d6e6f2d737563682d73686172652d67726f7570022851a90357c046bfb222a2188345333e02000000000000000000000000000000000000000000000002020000000000000000000000000000000102000100000000",
+            "fields": {
+                "messageSize": 121,
+                "apiKey": 85,
+                "apiVersion": 1,
+                "correlationId": 4213,
+                "clientId": "kafka-client-t1-42",
+                "headerTaggedFields": [],
+                "groupId": "t1-42-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "2851a90357c046bfb222a2188345333e"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "stateEpoch": 0,
+                                "leaderEpoch": 0,
+                                "startOffset": 0,
+                                "deliveryCompleteCount": 2,
+                                "stateBatches": [
+                                    {
+                                        "firstOffset": 0,
+                                        "lastOffset": 1,
+                                        "deliveryState": 2,
+                                        "deliveryCount": 1
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "writesharegroupstate.response.v1.uninitialized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteShareGroupStateResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The per-partition **42** (`InvalidRequest`) of `ShareCoordinatorShard.writeState` @ 4.3.1: `Write operation on uninitialized share partition not allowed.` A partition the coordinator has no state for cannot be written - it is initialized by the group coordinator (83) first - and nothing is appended to `__share_group_state`. The frame of the answer is the one of version 0.",
+            "hex": "0000005e0000107500022851a90357c046bfb222a2188345333e0200000000002a3e5772697465206f7065726174696f6e206f6e20756e696e697469616c697a656420736861726520706172746974696f6e206e6f7420616c6c6f7765642e000000",
+            "fields": {
+                "messageSize": 94,
+                "correlationId": 4213,
+                "headerTaggedFields": [],
+                "results": [
+                    {
+                        "topicId": {
+                            "$bytes": "2851a90357c046bfb222a2188345333e"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 42,
+                                "errorMessage": "Write operation on uninitialized share partition not allowed."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "writesharegroupstate.request.v1.no-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteShareGroupStateRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "WriteShareGroupState **v1** with one topic id and no partition: the frame of version 0, because the new field lives in a partition.",
+            "hex": "0000004b005500010000107600126b61666b612d636c69656e742d74312d3432001a74312d34322d6e6f2d737563682d73686172652d67726f7570022851a90357c046bfb222a2188345333e010000",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 85,
+                "apiVersion": 1,
+                "correlationId": 4214,
+                "clientId": "kafka-client-t1-42",
+                "headerTaggedFields": [],
+                "groupId": "t1-42-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "2851a90357c046bfb222a2188345333e"
+                        },
+                        "partitions": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "writesharegroupstate.response.v1.no-partition",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteShareGroupStateResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The empty result array, seven bytes behind the size field, as at version 0.",
+            "hex": "0000000700001076000100",
+            "fields": {
+                "messageSize": 7,
+                "correlationId": 4214,
+                "headerTaggedFields": [],
+                "results": []
+            }
+        }
+    ]
+}

@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `This server does not host this topic-partition.` for exactly that case, and with the **empty string** - not
  * with a null - when there was no error at all.
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 class DescribeQuorumResponsePartition implements BinarySchemaInterface
 {

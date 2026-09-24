@@ -40,8 +40,8 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
  * the one-node cluster of the integration suite guarantees; `$awaitServingLeaders = false` keeps the metadata-only
  * behaviour for a cluster where it is not.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
- * @see docs/protocol/3.9.md, section "Cluster readiness"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
+ * @see docs/protocol/4.3.md, section "Cluster readiness"
  */
 final class TopicMetadataProbe
 {

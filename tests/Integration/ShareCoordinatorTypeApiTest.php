@@ -17,7 +17,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
-use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
+use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Security\SaslMechanism;
 use Protocol\Kafka\Common\Security\SecurityProtocol;
@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV5;
 use RuntimeException;
 
 /**
- * What Kafka 3.9 added to the group apis, against the 3.9.2 KRaft node: **FindCoordinator v6** (KIP-932).
+ * What Kafka 3.9 added to the group apis, against the 4.3.1 KRaft node: **FindCoordinator v6** (KIP-932).
  *
  * The version adds no field to either half of the api - *"Version 6 adds support for share groups (KIP-932)"*
  * stands over `FindCoordinatorRequest.json` and `FindCoordinatorResponse.json` @ 3.9.2 and the field lists below
@@ -40,21 +40,25 @@ use RuntimeException;
  * @ 3.9.2 is `GROUP(0)`, `TRANSACTION(1)`, `SHARE(2)`, and the type 2 is refused with the error code 42 while
  * `apiVersion < 6`.
  *
- * Share groups themselves are **out of this line** by the owner's decision, so
- * {@see GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE} is a constant and this class is what it is for: the
- * measurement of what the node really answers a legal share lookup, which is not what reading the KIP would
- * suggest. Three things are driven here:
+ * The 3.9.2 node of the 3.x line answered every legal share lookup the **15** `CoordinatorNotAvailable`, because
+ * it had no share coordinator; a 4.3.1 node has one (`share.version` 1), and what it answers is decided by the key.
+ * A share coordinator is not the coordinator of a GROUP but of one **share partition**: `KafkaApis.getCoordinator`
+ * @ 4.3.1 validates the key with `SharePartitionKey.validate`, which takes `<group id>:<topic id>:<partition>`
+ * only, and answers anything else the **42** `InvalidRequest`; a valid key is hashed onto a partition of the
+ * internal `__share_group_state` and answered its leader - the 15 of a node that has not created that topic yet
+ * is the retriable one of a first lookup. Share groups themselves are the 4.1 wave of this line. Four things are
+ * driven here:
  *
  * * the version gate, at the versions 4, 5 and 6 of the same frame, which puts it exactly at the 6;
- * * the **15** `CoordinatorNotAvailable` a 3.9.2 node answers a type 2 lookup it is allowed to serve - a
- *   *retriable* code that means "never", because the share coordinator arrives with Kafka 4;
+ * * the 42 of a key that is not a share-partition key, and the coordinator of one that is;
+ * * {@see CoordinatorLookup}, which waits out the 15 and reports the 42 at once;
  * * the three resources the three types are authorized against, measured with the SASL user `acltest`, the one
  *   principal of the image that `super.users` does not name.
  *
  * Every key of this class is named `t3-39-share-…`; not one of them is ever created, because a coordinator
  * lookup registers nothing - the broker only hashes the key onto a partition of an internal topic.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 #[CoversClass(GroupCoordinatorRequest::class)]
 #[CoversClass(GroupCoordinatorRequestV4::class)]
@@ -119,42 +123,71 @@ final class ShareCoordinatorTypeApiTest extends IntegrationTestCase
     }
 
     /**
-     * At the version the type exists for, the node answers the 15 of a coordinator that is not there at all
+     * At the version the type exists for, a key that is not a share-partition key is the 42 of the key validation
      */
-    public function testVersionSixAnswersAShareLookupWithTheCoordinatorNotAvailable(): void
+    public function testVersionSixRefusesAKeyThatIsNotASharePartitionKeyWithTheFortyTwo(): void
     {
         $stream = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => self::REQUEST_TIMEOUT_MS]);
 
-        $entry = $this->lookup($stream, GroupCoordinatorRequest::class, GroupCoordinatorResponse::class, 4002);
+        foreach ([$this->key, $this->key . ':not-a-uuid:0', $this->sharePartitionKey() . 'x'] as $index => $key) {
+            GroupCoordinatorRequest::forKeys(
+                [$key],
+                GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE,
+                self::CLIENT_ID,
+                4002 + $index
+            )->writeTo($stream);
+            $entry = GroupCoordinatorResponse::unpack($stream)->coordinatorOf($key);
 
-        self::assertSame(
-            KafkaException::GROUP_COORDINATOR_NOT_AVAILABLE,
-            $entry->errorCode,
-            'the `CoordinatorType.SHARE` branch of `getCoordinator` @ 3.9.2 returns the 15 and nothing else: '
-            . 'the share coordinator of KIP-932 does not exist on a 3.9.2 node'
-        );
-        self::assertSame('', $entry->errorMessage);
-        self::assertSame(-1, $entry->nodeId, 'with the placeholder coordinator of an error');
-        self::assertSame('', $entry->host);
-        self::assertSame(-1, $entry->port);
+            self::assertSame(
+                KafkaException::INVALID_REQUEST,
+                $entry->errorCode,
+                "`SharePartitionKey.validate` @ 4.3.1 wants <group>:<topic id>:<partition>, {$key} is not one"
+            );
+            self::assertSame('', $entry->errorMessage, 'the refusal comes out of the ordinary handler');
+            self::assertSame(-1, $entry->nodeId, 'with the placeholder coordinator of an error');
+            self::assertSame('', $entry->host);
+            self::assertSame(-1, $entry->port);
+        }
     }
 
     /**
-     * The type is one field in front of the batch, so every key of a share lookup gets the same treatment
+     * A share-partition key is answered the node that leads its partition of `__share_group_state`
+     */
+    public function testVersionSixAnswersASharePartitionKeyWithItsCoordinator(): void
+    {
+        $key   = $this->sharePartitionKey();
+        $entry = $this->shareCoordinatorOf($key);
+
+        self::assertSame(KafkaException::NO_ERROR, $entry->errorCode);
+        self::assertSame('', $entry->errorMessage);
+        self::assertGreaterThanOrEqual(0, $entry->nodeId, 'the share coordinator of KIP-932 exists on a 4.x node');
+        self::assertNotSame('', $entry->host);
+        self::assertGreaterThan(0, $entry->port);
+    }
+
+    /**
+     * The type is one field in front of the batch, so every key of a share lookup gets its own answer
      */
     public function testEveryKeyOfAShareBatchIsAnsweredSeparately(): void
     {
-        $stream = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => self::REQUEST_TIMEOUT_MS]);
-        $keys   = [$this->key, $this->key . '-second'];
+        // the internal topic of the share coordinator exists once one lookup has been answered
+        $this->shareCoordinatorOf($this->sharePartitionKey());
 
-        GroupCoordinatorRequest::forKeys($keys, GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE, self::CLIENT_ID, 4003)
+        $stream = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => self::REQUEST_TIMEOUT_MS]);
+        $keys   = [$this->sharePartitionKey(0), $this->sharePartitionKey(1), $this->key];
+
+        GroupCoordinatorRequest::forKeys($keys, GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE, self::CLIENT_ID, 4010)
             ->writeTo($stream);
         $answer = GroupCoordinatorResponse::unpack($stream);
 
         self::assertSame($keys, array_keys($answer->coordinators), 'every key of the batch is answered');
-        foreach ($answer->coordinators as $entry) {
-            self::assertSame(KafkaException::GROUP_COORDINATOR_NOT_AVAILABLE, $entry->errorCode);
-        }
+        self::assertSame(KafkaException::NO_ERROR, $answer->coordinators[$keys[0]]->errorCode);
+        self::assertSame(KafkaException::NO_ERROR, $answer->coordinators[$keys[1]]->errorCode);
+        self::assertSame(
+            KafkaException::INVALID_REQUEST,
+            $answer->coordinators[$keys[2]]->errorCode,
+            'and the plain group id of the same batch is refused on its own'
+        );
     }
 
     /**
@@ -218,17 +251,25 @@ final class ShareCoordinatorTypeApiTest extends IntegrationTestCase
     }
 
     /**
-     * The 15 of a share lookup is retriable, which is what makes it a trap: {@see CoordinatorLookup} repeats the
-     * request until the given timeout runs out and then reports a coordinator that never became available
+     * {@see CoordinatorLookup} finds the share coordinator of a share-partition key - waiting out the retriable 15
+     * of a node that is still creating `__share_group_state` - and reports the 42 of any other key at once
      */
-    public function testTheRetriableFifteenOfAShareLookupRunsIntoTheTimeout(): void
+    public function testTheCoordinatorLookupFindsTheShareCoordinatorOfASharePartitionKey(): void
     {
         $lookup = new CoordinatorLookup(
             Cluster::bootstrap($this->configuration()),
             $this->configuration()
         );
 
-        $this->expectException(GroupCoordinatorNotAvailableException::class);
+        $node = $lookup->findCoordinator(
+            $this->sharePartitionKey(),
+            GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE,
+            self::REQUEST_TIMEOUT_MS
+        );
+
+        self::assertGreaterThanOrEqual(0, $node->nodeId);
+
+        $this->expectException(InvalidRequestException::class);
 
         $lookup->findCoordinator($this->key, GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE, 300);
     }
@@ -280,6 +321,43 @@ final class ShareCoordinatorTypeApiTest extends IntegrationTestCase
         );
 
         self::assertSame(KafkaException::INVALID_REQUEST, $entry->errorCode);
+    }
+
+    /**
+     * Builds a share-partition key of the group of this test: `<group id>:<topic id>:<partition>`
+     *
+     * The topic id is a random one - the coordinator validates the format and hashes the key, it does not look the
+     * topic up - in the URL-safe base64 of Kafka's `Uuid.toString()`, which `Uuid.fromString` parses back.
+     */
+    private function sharePartitionKey(int $partition = 0): string
+    {
+        static $topicId = null;
+        $topicId ??= rtrim(strtr(base64_encode(random_bytes(16)), '+/', '-_'), '=');
+
+        return "{$this->key}:{$topicId}:{$partition}";
+    }
+
+    /**
+     * Looks the share coordinator of a key up until the node has created `__share_group_state` and answers it
+     */
+    private function shareCoordinatorOf(string $key): FindCoordinatorResponseCoordinator
+    {
+        $stream   = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => self::REQUEST_TIMEOUT_MS]);
+        $deadline = microtime(true) + self::REQUEST_TIMEOUT_MS / 1000;
+
+        while (true) {
+            GroupCoordinatorRequest::forKeys(
+                [$key],
+                GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE,
+                self::CLIENT_ID,
+                4020
+            )->writeTo($stream);
+            $entry = GroupCoordinatorResponse::unpack($stream)->coordinatorOf($key);
+            if ($entry->errorCode !== KafkaException::GROUP_COORDINATOR_NOT_AVAILABLE || microtime(true) > $deadline) {
+                return $entry;
+            }
+            usleep(250000);
+        }
     }
 
     /**

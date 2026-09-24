@@ -51,7 +51,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group of this class is named `t3-25-…`, so that the tests can run next to the other suites on the shared
  * container.
  *
- * @see docs/protocol/3.9.md, sections "The protocol type and name of KIP-559 (Kafka 2.5)", "JoinGroup API (key 11,
+ * @see docs/protocol/4.3.md, sections "The protocol type and name of KIP-559 (Kafka 2.5)", "JoinGroup API (key 11,
  *      v0 to v7)" and "SyncGroup API (key 14, v0 to v5)"
  */
 #[CoversClass(JoinGroupRequest::class)]

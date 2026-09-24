@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The layout of the resource itself never changed; what the version decides is the class of its entries, which
  * {@see DescribeConfigsResponseResource::entryClass()} picks from the version constant this class lowers.
  *
- * @see docs/protocol/3.9.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class DescribeConfigsResponseResourceV1 extends DescribeConfigsResponseResource
 {

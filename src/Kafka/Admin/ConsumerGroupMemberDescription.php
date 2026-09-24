@@ -27,7 +27,13 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember;
  * a reconciliation: it has been told to give partitions up or to take partitions over and has not acknowledged
  * the change yet. {@see self::isReconciled()} is that question.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * The **member type** of KIP-1099 (ConsumerGroupDescribe v1, Kafka 4.0) says which protocol the member speaks:
+ * {@see ConsumerGroupDescribeMember::MEMBER_TYPE_CONSUMER} for a member of the consumer protocol and
+ * {@see ConsumerGroupDescribeMember::MEMBER_TYPE_CLASSIC} for a classic member that joined a group of the consumer
+ * protocol with JoinGroup - the online upgrade of KIP-848. {@see self::upgraded()} is the `upgraded()` of the
+ * Java `MemberDescription` @ 4.0.0 that reports it.
+ *
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 final class ConsumerGroupMemberDescription
 {
@@ -42,6 +48,8 @@ final class ConsumerGroupMemberDescription
      * @param string|null              $subscribedTopicRegex Pattern it subscribed with, null when it named topics
      * @param array<string, list<int>> $assignment           Partitions it owns, by topic name
      * @param array<string, list<int>> $targetAssignment     Partitions it is meant to own, by topic name
+     * @param int                      $memberType           Protocol of the member, one of the `MEMBER_TYPE_*`
+     *        constants of {@see ConsumerGroupDescribeMember} (KIP-1099, version 1), -1 when the answer does not say
      */
     public function __construct(
         public readonly string $memberId,
@@ -53,7 +61,8 @@ final class ConsumerGroupMemberDescription
         public readonly array $subscribedTopicNames,
         public readonly ?string $subscribedTopicRegex,
         public readonly array $assignment,
-        public readonly array $targetAssignment
+        public readonly array $targetAssignment,
+        public readonly int $memberType = ConsumerGroupDescribeMember::MEMBER_TYPE_UNKNOWN
     ) {}
 
     /**
@@ -71,8 +80,22 @@ final class ConsumerGroupMemberDescription
             $member->subscribedTopicNames,
             $member->subscribedTopicRegex,
             $member->assignment->partitionsByTopic(),
-            $member->targetAssignment->partitionsByTopic()
+            $member->targetAssignment->partitionsByTopic(),
+            $member->memberType
         );
+    }
+
+    /**
+     * Tells whether this member speaks the consumer protocol of KIP-848, null when the answer does not say
+     *
+     * The `upgraded()` of the Java `MemberDescription` @ 4.0.0: true for a member of the consumer protocol, false
+     * for a classic member of a `consumer` group, and null for the member type -1 of an answer below version 1.
+     */
+    public function upgraded(): ?bool
+    {
+        return $this->memberType === ConsumerGroupDescribeMember::MEMBER_TYPE_UNKNOWN
+            ? null
+            : $this->memberType === ConsumerGroupDescribeMember::MEMBER_TYPE_CONSUMER;
     }
 
     /**

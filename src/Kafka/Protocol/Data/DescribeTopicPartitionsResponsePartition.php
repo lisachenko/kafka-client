@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `eligible.leader.replicas.version` feature is not enabled - `Replicas.toList(partition.elr)` @ 3.9.2 turns the
  * empty replica array of the metadata image into an empty list, never into a null.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 class DescribeTopicPartitionsResponsePartition implements BinarySchemaInterface
 {

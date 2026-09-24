@@ -17,23 +17,26 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\InvalidRegularExpressionException;
 use Protocol\Kafka\Common\Errors\KafkaException;
-use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\ConsumerRebalanceListener;
 use Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator;
 use Protocol\Kafka\Consumer\KafkaConsumer;
 use Protocol\Kafka\Consumer\OffsetResetStrategy;
+use Protocol\Kafka\Consumer\SubscriptionPattern;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribedGroup;
-use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
-use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * A real consumer of this client with `group.protocol=consumer`, end to end against the 3.9.2 node.
+ * A real consumer of this client with `group.protocol=consumer`, end to end against the 4.3.1 node.
  *
  * This is the wave's own question: does the KIP-848 path of {@see KafkaConsumer} really consume - join, receive a
  * server-side assignment, fetch, commit with the **member epoch** in the `generation_id_or_member_epoch` of an
@@ -41,10 +44,12 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the heartbeat of the epoch -1 - and does the coordinator describe what it sent?
  *
  * The classic path of the same consumer is untouched and is covered by {@see ConsumerGroupTest}; the two are
- * compared here only where the difference is the point, i.e. at the incremental rebalance.
+ * compared here only where the difference is the point, i.e. at the incremental rebalance. Kafka 4.0 added the
+ * subscription by a regular expression the coordinator matches (ConsumerGroupHeartbeat v1), which
+ * {@see KafkaConsumer::subscribeByPattern()} sends and which this suite consumes with as well.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
- * @see docs/protocol/3.9.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(ConsumerGroupHeartbeatCoordinator::class)]
@@ -189,8 +194,70 @@ final class Kip848ConsumerTest extends IntegrationTestCase
         self::assertSame('consumer', $listed[$groupId]->groupType, 'the group type of KIP-848 (ListGroups v5)');
         self::assertSame('consumer', $listed[$groupId]->protocolType, 'which is NOT the protocol type');
 
-        // and the classic describe has nothing to say about it, which is the routing rule of an admin client
-        self::assertSame('Dead', $this->admin()->describeGroup($groupId)->state);
+        // and the classic describe refuses it: DescribeGroups v6 (KIP-1043) answers the 69 of a group that is not
+        // a classic one, where the version 5 of the 3.x line answered the state `Dead`
+        try {
+            $this->admin()->describeGroup($groupId);
+            self::fail('the classic describe of Kafka 4.0 refuses a group of the consumer protocol');
+        } catch (GroupIdNotFoundException $exception) {
+            self::assertStringContainsString('is not a classic group', $exception->getMessage());
+        }
+    }
+
+    /**
+     * A subscription by a regular expression: the coordinator matches it and assigns what matched (Kafka 4.0)
+     */
+    public function testAPatternSubscriptionConsumesTheTopicsTheCoordinatorMatched(): void
+    {
+        $groupId = $this->uniqueGroupName();
+        $this->produce(0, ['by-pattern-0']);
+        $this->produce(2, ['by-pattern-2']);
+
+        $consumer = $this->consumer($groupId);
+        $consumer->subscribeByPattern(new SubscriptionPattern(preg_quote($this->topic, '/') . '.*'));
+
+        self::assertSame([], $consumer->subscription(), 'the topics are the coordinator\'s to find, not a list');
+
+        $records = $this->pollUntil($consumer, 2);
+
+        self::assertSame([0, 1, 2], $this->assignedPartitions($consumer), 'the one topic the regex matches');
+        self::assertSame(['by-pattern-0'], array_map(self::valueOf(...), $records[0] ?? []));
+        self::assertSame(['by-pattern-2'], array_map(self::valueOf(...), $records[2] ?? []));
+
+        $member = $this->admin()->describeConsumerGroup($groupId)->members[$consumer->groupMetadata()->memberId];
+
+        self::assertSame(preg_quote($this->topic, '/') . '.*', $member->subscribedTopicRegex);
+        self::assertSame([], $member->subscribedTopicNames);
+        self::assertMatchesRegularExpression(
+            '/^[A-Za-z0-9_][A-Za-z0-9_-]{21}$/',
+            $member->memberId,
+            'the base64 uuid the consumer generated for itself (KIP-1082)'
+        );
+    }
+
+    /**
+     * A regex the coordinator cannot compile reaches the caller as the 128, and the classic protocol has none
+     */
+    public function testAnInvalidPatternIsRefusedAndTheClassicProtocolHasNoPatternAtAll(): void
+    {
+        $consumer = $this->consumer($this->uniqueGroupName());
+        $consumer->subscribeByPattern(new SubscriptionPattern('t3-848-e2e-(unclosed'));
+
+        try {
+            $consumer->poll(250);
+            self::fail('the coordinator cannot compile the regex');
+        } catch (InvalidRegularExpressionException $exception) {
+            self::assertStringContainsString('missing closing )', $exception->getMessage());
+        }
+
+        $classic = $this->consumer(
+            $this->uniqueGroupName(),
+            [ConsumerConfig::GROUP_PROTOCOL => ConsumerConfig::GROUP_PROTOCOL_CLASSIC]
+        );
+
+        $this->expectException(InvalidConfigurationException::class);
+
+        $classic->subscribeByPattern(new SubscriptionPattern('.*'));
     }
 
     /**
@@ -280,23 +347,24 @@ final class Kip848ConsumerTest extends IntegrationTestCase
      */
     private function produce(int $partition, array $values): void
     {
-        $messageSet = MessageSet::fromRecords(array_map(
-            static fn(string $value): Record => new Record($value),
+        // A record batch of the message format v2: a 4.x node refuses the Produce v2 of a message set (KIP-896)
+        $batch = RecordBatch::fromRecords(array_map(
+            static fn(string $value): Record => new Record($value, null, 0, null, (int) (microtime(true) * 1000)),
             $values
         ));
         $deadline   = microtime(true) + self::TOPIC_TIMEOUT;
 
         do {
             $stream = $this->connect();
-            new ProduceRequestV2(
-                [$this->topic => [$partition => $messageSet]],
+            new ProduceRequestV10(
+                [$this->topic => [$partition => $batch]],
                 1,
                 self::PRODUCE_TIMEOUT_MS,
                 self::CLIENT_ID,
                 1
             )->writeTo($stream);
 
-            $errorCode = ProduceResponseV2::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+            $errorCode = ProduceResponseV10::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
             if ($errorCode === KafkaException::NO_ERROR) {
                 return;
             }

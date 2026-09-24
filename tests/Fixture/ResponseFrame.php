@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Tests\Fixture;
  * The correlation id given here is only a placeholder: {@see BrokerConnection} replaces it with the one of the
  * request it answers, the same way a broker echoes it back.
  *
- * @see docs/protocol/3.9.md
+ * @see docs/protocol/4.3.md
  */
 final class ResponseFrame
 {
@@ -109,7 +109,7 @@ final class ResponseFrame
     public const int NOT_REQUESTED = -2147483648;
 
     /**
-     * Builds a Metadata response (api key 3, v5 - the version this client sends)
+     * Builds a Metadata response (api key 3, v13 - the version this client sends)
      *
      * <pre>
      *   MetadataResponse => ThrottleTimeMs [Broker] ClusterId ControllerId [TopicMetadata]
@@ -145,6 +145,8 @@ final class ResponseFrame
      * @param array<string, array<int, int>> $leaderEpochs Leader epoch of a partition, the field version 7
      *        (Kafka 2.1, KIP-320) added; 0 by default, which is the epoch of a partition that has been led by the
      *        same broker since it was created
+     * @param int                            $errorCode Top-level error code of the answer, the field version 13
+     *        (Kafka 4.0, KIP-1102) appended to the end of the body; 0 by default, which is all a 4.3.1 node writes
      */
     public static function metadata(
         int $correlationId,
@@ -157,7 +159,8 @@ final class ResponseFrame
         array $offlineReplicas = [],
         array $leaderEpochs = [],
         array $topicAuthorizedOperations = [],
-        array $topicIds = []
+        array $topicIds = [],
+        int $errorCode = 0
     ): string {
         // Version 9 (Kafka 2.4) is the first FLEXIBLE version of this api (KIP-482): every string and every
         // array announces its length as an unsigned varint of `length + 1`, and every structure - the body, a
@@ -202,11 +205,35 @@ final class ResponseFrame
         }
 
         // The `cluster_authorized_operations` of version 8 lived at the very end of the frame and is gone from
-        // version 11 on (KIP-700), so the body simply ends in its tagged-field section
-        $body .= self::tagBuffer();
+        // version 11 on (KIP-700); version 13 (Kafka 4.0, KIP-1102) put the top-level error code there instead,
+        // in front of the tagged-field section of the body
+        $body .= pack('n', $errorCode) . self::tagBuffer();
 
         // The response header v1 of a flexible api: the correlation id and a tag buffer of its own
         return self::of($correlationId, self::tagBuffer() . $body);
+    }
+
+    /**
+     * Builds an ApiVersions response (api key 18, v4 - the version this client sends)
+     *
+     * <pre>
+     *   ApiVersionsResponse => ErrorCode [ApiKey MinVersion MaxVersion TAG_BUFFER] ThrottleTimeMs TAG_BUFFER
+     * </pre>
+     *
+     * The body is flexible (compact array, tag buffers), the response header is **v0** - ApiVersions is the one api
+     * whose answer keeps the old header, so that a client can read it whatever version it asked with - and no
+     * feature is announced in the tagged fields.
+     *
+     * @param array<int, array{int, int}> $apiKeys Served versions as api key => [min version, max version]
+     */
+    public static function apiVersions(int $correlationId, array $apiKeys): string
+    {
+        $body = pack('n', 0) . self::compactArrayLength(count($apiKeys));
+        foreach ($apiKeys as $apiKey => [$minVersion, $maxVersion]) {
+            $body .= pack('nnn', $apiKey, $minVersion, $maxVersion) . self::tagBuffer();
+        }
+
+        return self::of($correlationId, $body . pack('N', 0) . self::tagBuffer());
     }
 
     /**
@@ -233,7 +260,7 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Produce response (api key 0, v5 - the version this client sends for the message format v2)
+     * Builds a Produce response (api key 0, v13 - the answer of `ProduceRequest`, its topics named by id)
      *
      * The frames of the versions 2, 3 and 4 are one and the same (`PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3`
      * is `PRODUCE_RESPONSE_V2` @ 1.1.1); version 5 (Kafka 1.0) appended `LogStartOffset` to every partition entry.
@@ -248,6 +275,8 @@ final class ResponseFrame
      *        for a topic that keeps the `CreateTime` of the producer
      * @param array<string, array<int, int>>             $logStartOffsets Log start offset of a partition, 0 by
      *        default as on a log nothing was deleted from
+     * @param array<string, string>                      $topicIds Id a topic is answered under, the 16 raw bytes of
+     *        its uuid; the stable id of {@see self::topicIdOf()} by default, the one `metadata()` names it with
      */
     public static function produce(
         int $correlationId,
@@ -255,11 +284,34 @@ final class ResponseFrame
         int $throttleTime = 0,
         int $logAppendTime = -1,
         array $logStartOffsets = [],
-        array $recordErrors = []
+        array $recordErrors = [],
+        array $topicIds = []
     ): string {
         // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it, and
         // version 9 (Kafka 2.8, KIP-482) writes the whole frame with the compact types and the tagged-field
-        // sections of a flexible version, behind a response header v1
+        // sections of a flexible version, behind a response header v1. Version 13 (Kafka 4.1, KIP-516) names
+        // every topic by its id, the stable id `topicIdOf()` gives the topic in the Metadata answer of `metadata()`
+        $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets, $recordErrors, true, $topicIds)
+            . pack('N', $throttleTime) . self::tagBuffer();
+
+        return self::flexible($correlationId, $body);
+    }
+
+    /**
+     * Builds a Produce response of the versions 9 to 12, i.e. the answer of `produce()` naming its topics by name
+     *
+     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
+     * @param array<string, array<int, int>>             $logStartOffsets Log start offset of a partition
+     * @param array<string, array<int, array{0: array<int, string|null>, 1: string|null}>> $recordErrors
+     */
+    public static function produceV12(
+        int $correlationId,
+        array $topics,
+        int $throttleTime = 0,
+        int $logAppendTime = -1,
+        array $logStartOffsets = [],
+        array $recordErrors = []
+    ): string {
         $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets, $recordErrors, true)
             . pack('N', $throttleTime) . self::tagBuffer();
 
@@ -306,13 +358,17 @@ final class ResponseFrame
         ?int $logAppendTime,
         ?array $logStartOffsets,
         ?array $recordErrors = null,
-        bool $flexible = false
+        bool $flexible = false,
+        ?array $topicIds = null
     ): string {
         $body = $flexible ? self::compactCount(count($topics)) : pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= $flexible
-                ? self::compactString((string) $topic) . self::compactCount(count($partitions))
-                : self::string((string) $topic) . pack('N', count($partitions));
+            $body .= match (true) {
+                $topicIds !== null => ($topicIds[$topic] ?? self::topicIdOf((string) $topic))
+                    . self::compactCount(count($partitions)),
+                $flexible  => self::compactString((string) $topic) . self::compactCount(count($partitions)),
+                default    => self::string((string) $topic) . pack('N', count($partitions)),
+            };
             foreach ($partitions as $partitionId => [$errorCode, $baseOffset]) {
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $baseOffset);
                 if ($logAppendTime !== null) {
@@ -611,19 +667,41 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetCommit response (api key 8, v8 - the flexible version this client sends)
+     * Builds an OffsetCommit response (api key 8, v10 - Kafka 4.2, every topic named by its id, KIP-848)
      *
-     * The versions 0, 1 and 2 share one response format, version 3 (KIP-124) put the throttle time in front of it
-     * and version 8 (KIP-482, Kafka 2.4) writes the very same fields with the compact types and a tagged-field
-     * section per structure.
+     * The versions 0, 1 and 2 share one response format, version 3 (KIP-124) put the throttle time in front of it,
+     * version 8 (KIP-482, Kafka 2.4) writes the very same fields with the compact types and a tagged-field section
+     * per structure, and version 10 names every topic by its id - the stable id `topicIdOf()` gives it in the
+     * Metadata answer of `metadata()` - in place of its name. {@see self::offsetCommitV9()} is the answer by name.
      *
      * @param array<string, array<int, int>> $topics topic => partition => error code
      */
     public static function offsetCommit(int $correlationId, array $topics): string
     {
+        return self::offsetCommitFrame($correlationId, $topics, true);
+    }
+
+    /**
+     * Builds an OffsetCommit response of the versions 8 and 9, which name every topic by its name
+     *
+     * @param array<string, array<int, int>> $topics topic => partition => error code
+     */
+    public static function offsetCommitV9(int $correlationId, array $topics): string
+    {
+        return self::offsetCommitFrame($correlationId, $topics, false);
+    }
+
+    /**
+     * Builds a flexible OffsetCommit response by topic id (version 10) or by topic name (versions 8 and 9)
+     *
+     * @param array<string, array<int, int>> $topics topic => partition => error code
+     */
+    private static function offsetCommitFrame(int $correlationId, array $topics, bool $byId): string
+    {
         $body = pack('N', 0) . self::compactCount(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
+            $body .= ($byId ? self::topicIdOf((string) $topic) : self::compactString((string) $topic))
+                . self::compactCount(count($partitions));
             foreach ($partitions as $partitionId => $errorCode) {
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . self::tagBuffer();
             }
@@ -634,13 +712,15 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9, v8 - the version this client sends)
+     * Builds an OffsetFetch response (api key 9, v10 - Kafka 4.2, every topic named by its id, KIP-848)
      *
      * v0 and v1 share the response format, v2 appended the group-level error code, v3 (KIP-124) put the throttle
      * time in front of the topics - the answer therefore carries a number at each of its ends - v5 (KIP-320)
      * inserted the `committed_leader_epoch` of every partition between its offset and its metadata, and **v8**
      * (Kafka 3.0) moved the topics and the group-level error code into a `groups` array, one entry per group of
      * the request. This fixture answers the one group it is given, which is what a single-group request gets.
+     * **v10** (Kafka 4.2, KIP-848) names every topic of a group entry by its id, the stable id `topicIdOf()` gives
+     * it; {@see self::offsetFetchV9()} is the answer by name.
      *
      * @param array<string, array<int, array{int, int, string}|array{int, int, string, int}>> $topics topic =>
      *        partition => [errorCode, offset, metadata] with an optional fourth element, the committed leader
@@ -658,18 +738,35 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a batched OffsetFetch response (api key 9, v8): one entry per group of the request
+     * Builds an OffsetFetch response of the versions 8 and 9, which name every topic by its name
+     *
+     * @param array<string, array<int, array{int, int, string}|array{int, int, string, int}>> $topics topic =>
+     *        partition => [errorCode, offset, metadata(, committed leader epoch)]
+     */
+    public static function offsetFetchV9(
+        int $correlationId,
+        array $topics,
+        int $groupErrorCode = 0,
+        string $groupId = ''
+    ): string {
+        return self::offsetFetchOfGroups($correlationId, [$groupId => [$topics, $groupErrorCode]], false);
+    }
+
+    /**
+     * Builds a batched OffsetFetch response (api key 9, v10 by topic id, or v8/v9 by name): one entry per group
      *
      * @param array<string, array{array<string, array<int, array{int, int, string}|array{int, int, string, int}>>,
      *         int}> $groups group id => [topics as {@see self::offsetFetch()} takes them, group-level error code]
+     * @param bool $byId Whether the topics are named by the id of version 10, or by the name of the versions below
      */
-    public static function offsetFetchOfGroups(int $correlationId, array $groups): string
+    public static function offsetFetchOfGroups(int $correlationId, array $groups, bool $byId = true): string
     {
         $body = pack('N', 0) . self::compactCount(count($groups));
         foreach ($groups as $groupId => [$topics, $groupErrorCode]) {
             $body .= self::compactString((string) $groupId) . self::compactCount(count($topics));
             foreach ($topics as $topic => $partitions) {
-                $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
+                $body .= ($byId ? self::topicIdOf((string) $topic) : self::compactString((string) $topic))
+                    . self::compactCount(count($partitions));
                 foreach ($partitions as $partitionId => $partition) {
                     [$errorCode, $offset, $metadata] = $partition;
                     $body .= pack('N', $partitionId)
@@ -931,24 +1028,28 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a DescribeGroups response (api key 15, v1)
+     * Builds a DescribeGroups response (api key 15, v6)
      *
      * <pre>
-     *   DescribeGroupsResponse => ThrottleTimeMs [ErrorCode GroupId State ProtocolType Protocol [Member]]
-     *     Member => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+     *   DescribeGroupsResponse => ThrottleTimeMs [ErrorCode ErrorMessage GroupId State ProtocolType Protocol [Member]
+     *                             AuthorizedOperations]
+     *     Member => MemberId GroupInstanceId ClientId ClientHost MemberMetadata MemberAssignment
      * </pre>
      *
      * There is no error code for the whole request: every group carries its own, and an entry that has one is
-     * otherwise empty, exactly as a broker that is not the coordinator answers it.
+     * otherwise empty, exactly as a broker that is not the coordinator answers it. The `error_message` of version 6
+     * (KIP-1043, Kafka 4.0) is the optional sixth element of an entry, null when it is left out.
      *
-     * @param array<string, array{int, string, string, string, array<string, array{string, string}>}> $groups
-     *        group id => [errorCode, state, protocolType, protocol, member id => [metadata, assignment]]
+     * @param array<string, array{0: int, 1: string, 2: string, 3: string, 4: array<string, array{string, string}>, 5?: string|null}> $groups
+     *        group id => [errorCode, state, protocolType, protocol, member id => [metadata, assignment], errorMessage]
      */
     public static function describeGroups(int $correlationId, array $groups): string
     {
         $body = pack('N', 0) . self::compactCount(count($groups));
-        foreach ($groups as $groupId => [$errorCode, $state, $protocolType, $protocol, $members]) {
+        foreach ($groups as $groupId => $group) {
+            [$errorCode, $state, $protocolType, $protocol, $members] = $group;
             $body .= pack('n', $errorCode)
+                . self::compactString($group[5] ?? null)
                 . self::compactString((string) $groupId)
                 . self::compactString($state)
                 . self::compactString($protocolType)

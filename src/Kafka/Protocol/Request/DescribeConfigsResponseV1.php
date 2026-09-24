@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-219 changed is the MOMENT it arrives - a throttled client of version 2 is answered first and muted
  * afterwards, and waits `throttle_time_ms` out itself.
  *
- * @see docs/protocol/3.9.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class DescribeConfigsResponseV1 extends DescribeConfigsResponse
 {

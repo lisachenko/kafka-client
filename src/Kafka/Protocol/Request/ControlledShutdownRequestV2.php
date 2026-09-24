@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-380 gave the version 2 the `broker_epoch` and KIP-482 made the version 3 of Kafka 2.4 the flexible one; the
  * two int fields are the same, so only the encoding of the header and the trailing tagged-field section differ.
  *
- * @see docs/protocol/3.9.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 final class ControlledShutdownRequestV2 extends ControlledShutdownRequest
 {

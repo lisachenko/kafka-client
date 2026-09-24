@@ -73,7 +73,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * * It is answered on a SASL listener before the authentication has happened, so a client can learn the surface of
  *   the broker before it knows whether it may talk to it at all.
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 class ApiVersionsRequest extends AbstractRequest
 {
@@ -104,9 +104,9 @@ class ApiVersionsRequest extends AbstractRequest
      * Version of the client software, which for this package is the Kafka protocol line it speaks
      *
      * Every line of this repository follows the Apache Kafka release it implements instead of a semantic version of
-     * its own - `main` speaks Kafka 3.9 - so that is what a broker is told.
+     * its own - `main` speaks Kafka 4.3 - so that is what a broker is told.
      */
-    public const string CLIENT_SOFTWARE_VERSION = '3.9';
+    public const string CLIENT_SOFTWARE_VERSION = '4.3';
 
     /**
      * Name of the client software, sent from version 3 on (COMPACT_STRING, KIP-511)

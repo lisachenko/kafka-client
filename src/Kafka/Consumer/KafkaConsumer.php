@@ -135,7 +135,7 @@ use Throwable;
  * {@see \Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter} before poll() returns, because a 0.11.0.3
  * broker sends them and only names them. The default is `read_uncommitted`, which shows every record of the log.
  *
- * @see docs/protocol/3.9.md, section "Transactions"
+ * @see docs/protocol/4.3.md, section "Transactions"
  */
 class KafkaConsumer
 {
@@ -182,6 +182,14 @@ class KafkaConsumer
      * Assignor that this consumer offers as the group protocol of its JoinGroup requests
      */
     private readonly PartitionAssignorInterface $assignor;
+
+    /**
+     * Member id of this consumer in a group of the new consumer protocol, generated once (KIP-1082)
+     *
+     * `ConsumerGroupHeartbeatRequest.json` @ 4.0.0 wants the id *"kept during the entire lifetime of the consumer
+     * process"*, so a consumer that unsubscribes and subscribes again comes back under the same one.
+     */
+    private ?string $groupMemberId = null;
 
     /**
      * Callback that observes the partitions this consumer loses and receives with every rebalance
@@ -655,6 +663,54 @@ class KafkaConsumer
         $this->rebalanceListener = $listener;
         $this->subscriptionState->subscribeByTopics($topicNames);
         $this->groupCoordinator()->requestRejoin(ConsumerCoordinator::REJOIN_REASON_SUBSCRIPTION);
+    }
+
+    /**
+     * Subscribe to the topics a regular expression matches, which the **group coordinator** evaluates (KIP-848)
+     *
+     * This is `subscribe(SubscriptionPattern, ConsumerRebalanceListener)` of the Java consumer @ 4.0.0, and like
+     * there it is a subscription of the **new consumer protocol** only: the regex travels as the
+     * `subscribed_topic_regex` of ConsumerGroupHeartbeat **v1** (Kafka 4.0), the coordinator matches it against the
+     * topics of the cluster - including the ones created later - and assigns the partitions of whatever matched. The
+     * client evaluates nothing: the regex is RE2/J, not PCRE, and {@see subscription()} stays empty, because the
+     * topics are what the assignment names. A regex the coordinator cannot compile is refused on the next
+     * {@see poll()} with the **128** `InvalidRegularExpression`.
+     *
+     * The subscription replaces nothing: like every subscription it is exclusive with {@see subscribe()} and
+     * {@see assign()} until {@see unsubscribe()}. Nothing is sent here; the next poll() joins the group, or - for a
+     * member that is already in it - sends the regex in an ordinary heartbeat. The coordinator resolves a regex in
+     * the background, so the first answers of a fresh member may assign nothing yet.
+     *
+     * @param SubscriptionPattern            $pattern  Regular expression in the RE2/J syntax
+     * @param ConsumerRebalanceListener|null $listener Observer of the rebalances of this consumer, if any
+     *
+     * @throws InvalidConfigurationException When `group.protocol` is not `consumer`: the classic protocol has no
+     *                                       field for a regex
+     *
+     * @see docs/protocol/4.3.md, section "The regex subscription (v1, KIP-848)"
+     */
+    public function subscribeByPattern(SubscriptionPattern $pattern, ?ConsumerRebalanceListener $listener = null): void
+    {
+        if (!$this->usesConsumerGroupProtocol()) {
+            throw new InvalidConfigurationException(sprintf(
+                'A subscription by a SubscriptionPattern is matched by the group coordinator of the new consumer '
+                . 'protocol of KIP-848 and requires %s = "%s"; the classic protocol has no field for it.',
+                ConsumerConfig::GROUP_PROTOCOL,
+                ConsumerConfig::GROUP_PROTOCOL_CONSUMER
+            ));
+        }
+
+        $this->requireGroupId();
+        $this->requireRequestTimeoutAboveTheBlockingTimeouts();
+
+        $this->subscriptionState->subscribeByPattern($pattern->pattern());
+        $this->rebalanceListener = $listener;
+
+        $groupCoordinator = $this->groupCoordinator();
+        if ($groupCoordinator instanceof ConsumerGroupHeartbeatCoordinator) {
+            $groupCoordinator->setSubscriptionPattern($pattern->pattern());
+        }
+        $groupCoordinator->requestRejoin(ConsumerCoordinator::REJOIN_REASON_SUBSCRIPTION);
     }
 
     /**
@@ -1536,7 +1592,8 @@ class KafkaConsumer
                 (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
                 $this->groupInstanceId(),
                 $this->serverAssignor(),
-                $this->clientRack()
+                $this->clientRack(),
+                $this->groupMemberId ??= ConsumerGroupHeartbeatCoordinator::newMemberId()
             )
             : new ConsumerCoordinator(
                 $this->getClient(),

@@ -18,6 +18,8 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Security\SecurityProtocol;
 use Protocol\Kafka\Common\Security\SslProtocol;
 use Protocol\Kafka\IO\SocketStream;
@@ -27,9 +29,8 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
-use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
-use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -40,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the transport: that the handshake succeeds against the certificate of the broker, that it fails against any other
  * trust anchor, and above all *which endpoint the broker advertises* to a client that reached it over TLS.
  *
- * @see docs/protocol/3.9.md, section "Transport security (SSL)"
+ * @see docs/protocol/4.3.md, section "Transport security (SSL)"
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(SecurityProtocol::class)]
@@ -136,17 +137,22 @@ final class SslTransportTest extends IntegrationTestCase
         $stream  = $this->connectOverSsl();
         $records = [[null, 'encrypted'], ['key', 'and authenticated']];
 
-        // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/3.9.md
-        new ProduceRequestV2(
-            [$topic => [0 => SpecMessageSet::of($records)]],
+        // A record batch of the message format v2: the message set of a Produce v2 that the lines up to 3.x sent
+        // here costs the connection on a node of Kafka 4.0 or later (KIP-896), see docs/protocol/4.3.md
+        $now   = (int) round(microtime(true) * 1000);
+        $batch = RecordBatch::fromRecords(array_map(
+            static fn(array $record): Record => new Record($record[1], $record[0])->withCreateTime($now),
+            $records
+        ));
+        new ProduceRequestV12(
+            [$topic => [0 => $batch]],
             1,
             self::PRODUCE_TIMEOUT_MS,
             self::CLIENT_ID,
             201
         )->writeTo($stream);
 
-        $produced = ProduceResponseV2::unpack($stream);
+        $produced = ProduceResponseV12::unpack($stream);
         self::assertSame(201, $produced->getCorrelationId());
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->baseOffset);

@@ -17,15 +17,16 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV3;
+use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV4;
 
 /**
- * DescribeLogDirs response object, version 4 (key 35)
+ * DescribeLogDirs response object, version 5 (key 35)
  *
  * <pre>
- *   DescribeLogDirs Response (Version: 4) => throttle_time_ms error_code [log_dirs]
+ *   DescribeLogDirs Response (Version: 5) => throttle_time_ms error_code [log_dirs]
  *     throttle_time_ms => INT32
  *     error_code       => INT16                      -- since version 3
- *     log_dirs         => error_code log_dir [topics] total_bytes usable_bytes
+ *     log_dirs         => error_code log_dir [topics] total_bytes usable_bytes is_cordoned
  *       error_code => INT16
  *       log_dir    => STRING
  *       topics     => topic [partitions]
@@ -37,6 +38,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV3;
  *           is_future  => BOOLEAN
  *       total_bytes  => INT64                        -- since version 4
  *       usable_bytes => INT64                        -- since version 4
+ *       is_cordoned  => BOOLEAN                      -- since version 5
  * </pre>
  *
  * The api was born in Kafka 1.0, long after KIP-124 made `throttle_time_ms` the first field of every new answer, so
@@ -70,6 +72,15 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV3;
  * The request is unchanged, so the version alone asks for them; {@see DescribeLogDirsResponseV3} decodes the
  * answer of a broker below Kafka 3.3, whose directory entries end with their topics.
  *
+ * **Kafka 4.3 added the version 5 and with it the cordon flag of KIP-1066** ("Version 5 adds IsCordoned field" of
+ * `DescribeLogDirsResponse.json` @ 4.3.1): one `bool` at the **end of every directory entry**, behind the two
+ * sizes, that is `true` for a directory listed in the dynamic per-broker option `cordoned.log.dirs` (`*` for all
+ * of them). A cordoned directory keeps and serves what it holds, but `LogManager.nextLogDirs` @ 4.3.1 places no
+ * new replica in it and AlterReplicaLogDirs refuses it as a destination. `ReplicaManager.describeLogDirs` @ 4.3.1
+ * reports the flag only when the finalized `metadata.version` is at least `4.3-IV0`, and `false` otherwise.
+ * {@see DescribeLogDirsResponseV4} decodes the answer of a broker below Kafka 4.3, whose directory entries end
+ * with the two sizes.
+ *
  * **Kafka 2.0 added version 1** and changed nothing about the bytes: `DESCRIBE_LOG_DIRS_RESPONSE_V1 =
  * DESCRIBE_LOG_DIRS_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
  * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
@@ -77,14 +88,14 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV3;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeLogDirsResponseV0} is the same frame with the version field of Kafka 1.0.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 class DescribeLogDirsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The version 2 of Kafka 2.6 is the first flexible one of this api (KIP-482)
@@ -100,6 +111,11 @@ class DescribeLogDirsResponse extends AbstractResponse
      * The version 4 of Kafka 3.3 is the first one whose directories carry the two sizes of their volume (KIP-827)
      */
     public const int VOLUME_SIZE_VERSION = 4;
+
+    /**
+     * The version 5 of Kafka 4.3 is the first one whose directories say whether they are cordoned (KIP-1066)
+     */
+    public const int CORDONED_VERSION = 5;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation
@@ -144,8 +160,10 @@ class DescribeLogDirsResponse extends AbstractResponse
      */
     protected static function logDirClass(): string
     {
-        return static::VERSION >= self::VOLUME_SIZE_VERSION
-            ? DescribeLogDirsResponseLogDir::class
-            : DescribeLogDirsResponseLogDirV3::class;
+        return match (true) {
+            static::VERSION >= self::CORDONED_VERSION    => DescribeLogDirsResponseLogDir::class,
+            static::VERSION >= self::VOLUME_SIZE_VERSION => DescribeLogDirsResponseLogDirV4::class,
+            default                                      => DescribeLogDirsResponseLogDirV3::class,
+        };
     }
 }

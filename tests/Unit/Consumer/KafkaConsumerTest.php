@@ -41,6 +41,7 @@ use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\Consumer\OffsetResetStrategy;
 use Protocol\Kafka\Consumer\RoundRobinAssignor;
 use Protocol\Kafka\Consumer\Subscription;
+use Protocol\Kafka\Consumer\SubscriptionPattern;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -60,6 +61,7 @@ use Protocol\Kafka\Tests\Unit\Consumer\Fixture\TestKafkaConsumer;
 #[CoversClass(ConsumerRecord::class)]
 #[CoversClass(OffsetAndTimestamp::class)]
 #[CoversClass(ConsumerConfig::class)]
+#[CoversClass(SubscriptionPattern::class)]
 #[CoversClass(RecordTooLargeException::class)]
 final class KafkaConsumerTest extends TestCase
 {
@@ -92,6 +94,32 @@ final class KafkaConsumerTest extends TestCase
             ConsumerConfig::GROUP_ID           => '',
             ConsumerConfig::ENABLE_AUTO_COMMIT => true,
         ]);
+    }
+
+    /**
+     * The regex subscription of KIP-848 travels in ConsumerGroupHeartbeat v1: the classic protocol has no field for it
+     */
+    public function testAPatternSubscriptionRequiresTheConsumerProtocol(): void
+    {
+        $consumer = new TestKafkaConsumer(new FakeClient(), [
+            ConsumerConfig::GROUP_ID           => self::GROUP,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/group\.protocol/');
+
+        $consumer->subscribeByPattern(new SubscriptionPattern('t9-.*'));
+    }
+
+    public function testASubscriptionPatternIsNeverEmpty(): void
+    {
+        self::assertSame('t9-.*', new SubscriptionPattern('t9-.*')->pattern());
+        self::assertSame('t9-.*', (string) new SubscriptionPattern('t9-.*'));
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        new SubscriptionPattern('');
     }
 
     public function testAConfiguredDeserializerHasToImplementTheInterface(): void

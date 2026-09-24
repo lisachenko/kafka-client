@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  *
  * Each vector is a frame that a Kafka broker really sent or really accepted - 0.10.2.2 for everything the 0.10 line
  * added, 0.9.0.1 and 0.8.2.2 for the api versions whose frames the later lines do not change - stored as hex in
- * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/3.9.md`. For every one of them
+ * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/4.3.md`. For every one of them
  * this suite checks four things:
  *
  * 1. the frame decodes into the class that the vector names;
@@ -448,6 +448,62 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function addRaftVoterVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function removeRaftVoterVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function initializeShareGroupStateVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function readShareGroupStateVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function writeShareGroupStateVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteShareGroupStateVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function readShareGroupStateSummaryVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function describeClusterVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -512,6 +568,30 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function describeShareGroupOffsetsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterShareGroupOffsetsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteShareGroupOffsetsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function consumerGroupHeartbeatVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -521,6 +601,38 @@ final class ProtocolVectorTest extends TestCase
      * @return iterable<string, array{0: array<string, mixed>}>
      */
     public static function consumerGroupDescribeVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function shareGroupHeartbeatVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function shareGroupDescribeVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function shareFetchVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function shareAcknowledgeVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
     }
@@ -1090,6 +1202,69 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @param array<string, mixed> $vector
      */
+    #[DataProvider('addRaftVoterVectors')]
+    public function testAddRaftVoterApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('removeRaftVoterVectors')]
+    public function testRemoveRaftVoterApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('initializeShareGroupStateVectors')]
+    public function testInitializeShareGroupStateApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('readShareGroupStateVectors')]
+    public function testReadShareGroupStateApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('writeShareGroupStateVectors')]
+    public function testWriteShareGroupStateApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteShareGroupStateVectors')]
+    public function testDeleteShareGroupStateApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('readShareGroupStateSummaryVectors')]
+    public function testReadShareGroupStateSummaryApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
     #[DataProvider('describeClusterVectors')]
     public function testDescribeClusterApi(array $vector): void
     {
@@ -1162,6 +1337,33 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @param array<string, mixed> $vector
      */
+    #[DataProvider('describeShareGroupOffsetsVectors')]
+    public function testDescribeShareGroupOffsetsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterShareGroupOffsetsVectors')]
+    public function testAlterShareGroupOffsetsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteShareGroupOffsetsVectors')]
+    public function testDeleteShareGroupOffsetsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
     #[DataProvider('consumerGroupHeartbeatVectors')]
     public function testConsumerGroupHeartbeatApi(array $vector): void
     {
@@ -1173,6 +1375,42 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('consumerGroupDescribeVectors')]
     public function testConsumerGroupDescribeApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('shareGroupHeartbeatVectors')]
+    public function testShareGroupHeartbeatApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('shareGroupDescribeVectors')]
+    public function testShareGroupDescribeApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('shareFetchVectors')]
+    public function testShareFetchApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('shareAcknowledgeVectors')]
+    public function testShareAcknowledgeApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

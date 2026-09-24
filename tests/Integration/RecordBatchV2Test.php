@@ -20,32 +20,34 @@ use Protocol\Kafka\Common\Record\ControlRecordType;
 use Protocol\Kafka\Common\Record\EndTransactionMarker;
 use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\MemoryRecords;
-use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\RecordV2;
 use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\Request\FetchRequestV1;
+use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Tests\Fixture\RawRecordBatchProbe;
+use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * The record batch of the message format v2 against a real Kafka 0.11.0.3 broker.
+ * The record batch of the message format v2 against the Kafka 4.3.1 node of this line.
  *
- * The broker is the authority on the format: it validates the CRC-32C of every batch it appends, it assigns the base
- * offset and the partition leader epoch, and it converts the log back down for every client that fetches with a
- * request below version 4.
+ * The broker is the authority on the format: it validates the CRC-32C of every batch it appends and it assigns the
+ * base offset and the partition leader epoch.
  *
- * **It no longer converts a batch on write.** KIP-724 (Kafka 3.0) retired `message.format.version`: the node
- * stores the record batch v2 whatever the topic asks for - `kafka-topics.sh --config message.format.version=0.10.0`
- * is accepted with a warning and `DumpLogSegments` then shows `magic: 2` - so a log of an older format is not
- * something this line can produce any more, and the conversions it still measures all happen on the way out.
+ * **It converts nothing any more, in either direction.** KIP-724 (Kafka 3.0) retired `message.format.version` - a
+ * 3.x node stored the record batch v2 whatever the topic asked for - and Kafka 4.0 removed the key altogether
+ * ("Unknown topic config name", the 40) together with the versions that read an older format (KIP-896): Fetch v0
+ * to v3, which a 3.9.2 node answered with its log converted down to the message formats v0 and v1, close the
+ * connection on a 4.x node. Every fetch this node serves answers the batch as the log holds it.
  *
  * The apis that carry a batch - Produce v3 and Fetch v4/v5 - are not part of this ticket, so the frames are built by
  * {@see RawRecordBatchProbe}; that is also the only way to make the broker write a **control batch** without a
  * transactional producer.
  *
- * @see docs/protocol/3.9.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/4.3.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(RecordBatch::class)]
 #[CoversClass(RecordV2::class)]
@@ -261,12 +263,15 @@ final class RecordBatchV2Test extends IntegrationTestCase
             self::assertSame($batch->getMaxTimestamp(), $record->timestamp, 'every record answers the append time');
         }
 
-        // Converted down for a Fetch v3, the batch is rebuilt with a magic 1 builder, which stamps the append time
-        // and bit 3 of the attributes on every single message
-        foreach ($this->fetch(0, 3, 0, $topic)->getRecords() as $record) {
-            self::assertSame(TimestampType::LOG_APPEND_TIME, $record->timestampType);
-            self::assertSame($batch->getMaxTimestamp(), $record->timestamp);
-        }
+        // A 3.9.2 node converted the batch down for a Fetch v3, rebuilding it with a magic 1 builder that stamped
+        // the append time and bit 3 of the attributes on every single message; a 4.x node closes the connection on
+        // that version instead (KIP-896), so the one batch above is the only form the append time takes
+        self::assertSame(
+            RemovedVersionProbe::CLOSED,
+            new RemovedVersionProbe(self::firstBootstrapServer())->send(
+                new FetchRequestV3([$topic => [self::PARTITION => 0]], 100, 1, 65536, -1, self::CLIENT_ID, 3)
+            )
+        );
     }
 
     public function testTheBrokerRefusesABatchWhoseChecksumDoesNotMatchItsContents(): void
@@ -281,7 +286,7 @@ final class RecordBatchV2Test extends IntegrationTestCase
         self::assertSame(self::CORRUPT_MESSAGE, $answer['errorCode'], 'the broker validates the CRC-32C on append');
     }
 
-    public function testTheBrokerConvertsTheLogDownForEveryFetchBelowVersion4(): void
+    public function testTheBrokerNoLongerConvertsTheLogDownForAnyFetch(): void
     {
         $createTime = self::now();
         $this->produce(RecordBatch::fromRecords([
@@ -289,31 +294,28 @@ final class RecordBatchV2Test extends IntegrationTestCase
             new Record('bravo', 'key', 0, null, $createTime + 10, TimestampType::CREATE_TIME),
         ]));
 
+        // Fetch v4 is the lowest version a 4.x node serves, and it answers the batch as the log holds it
         $asV2 = $this->fetch(0, 4);
-        $asV1 = $this->fetch(0, 3);
-        $asV0 = $this->fetch(0, 1);
 
         self::assertSame(RecordBatch::MAGIC, $asV2->getMagic());
-        self::assertSame(Message::MAGIC_V1, $asV1->getMagic(), 'a Fetch v3 is answered in the message format v1');
-        self::assertSame(Message::MAGIC_V0, $asV0->getMagic(), 'a Fetch v1 is answered in the message format v0');
-
-        foreach ([$asV2, $asV1, $asV0] as $region) {
-            self::assertSame(
-                ['alpha', 'bravo'],
-                array_map(static fn(Record $r): ?string => $r->value, $region->getRecords())
-            );
-            self::assertSame([0, 1], array_map(static fn(Record $r): ?int => $r->offset, $region->getRecords()));
-        }
+        self::assertSame(['alpha', 'bravo'], array_map(static fn(Record $r): ?string => $r->value, $asV2->getRecords()));
+        self::assertSame([0, 1], array_map(static fn(Record $r): ?int => $r->offset, $asV2->getRecords()));
         self::assertSame(
             [$createTime, $createTime + 10],
-            array_map(static fn(Record $r): ?int => $r->timestamp, $asV1->getRecords())
+            array_map(static fn(Record $r): ?int => $r->timestamp, $asV2->getRecords())
         );
-        self::assertSame(
-            [null, null],
-            array_map(static fn(Record $r): ?int => $r->timestamp, $asV0->getRecords()),
-            'the message format v0 has no timestamp field at all'
-        );
-        self::assertCount(2, $asV1->getBatches(), 'a converted batch becomes one message per record');
+        self::assertCount(1, $asV2->getBatches(), 'one batch, as it was produced');
+
+        // A 3.9.2 node answered a Fetch v3 in the message format v1 and a Fetch v1 in the format v0; a 4.x node
+        // closes the connection on both (KIP-896), and the down-conversion of the log is gone with them
+        $probe = new RemovedVersionProbe(self::firstBootstrapServer());
+        foreach ([3 => FetchRequestV3::class, 1 => FetchRequestV1::class] as $version => $class) {
+            self::assertSame(
+                RemovedVersionProbe::CLOSED,
+                $probe->send(new $class([$this->topic => [self::PARTITION => 0]], 100, 1, 65536, -1, self::CLIENT_ID, 4)),
+                "a Fetch v{$version}"
+            );
+        }
     }
 
     public function testACommittedTransactionLeavesADataBatchAndAControlBatchInTheLog(): void
@@ -502,7 +504,7 @@ final class RecordBatchV2Test extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
-            'docker', 'exec', $container === false || $container === '' ? 'kafka-3-9-2' : $container,
+            'docker', 'exec', $container === false || $container === '' ? 'kafka-4-3-1' : $container,
             '/opt/kafka/bin/kafka-topics.sh', '--bootstrap-server', 'localhost:9092',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];

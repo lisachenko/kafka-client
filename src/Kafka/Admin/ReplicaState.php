@@ -32,7 +32,7 @@ use Protocol\Kafka\Common\Uuid;
  * version 2 and in an answer of a quorum whose `kraft.version` is still 0, i.e. one that is configured with the
  * static `controller.quorum.voters` of KIP-595 - which is what the node of this line is.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
  *      replica state (v1, KIP-836)"
  */
 final class ReplicaState

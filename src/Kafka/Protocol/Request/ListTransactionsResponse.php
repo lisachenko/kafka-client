@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ListTransactionsResponseTransactionState;
 
 /**
- * ListTransactions response object, version 1 (key 66, Kafka 3.0)
+ * ListTransactions response object, version 2 (key 66, Kafka 3.0)
  *
  * <pre>
- *   ListTransactions Response (Version: 0 to 1) => throttle_time_ms error_code [unknown_state_filters]
+ *   ListTransactions Response (Version: 0 to 2) => throttle_time_ms error_code [unknown_state_filters]
  *                                             [transaction_states]
  *     throttle_time_ms      => INT32
  *     error_code            => INT16
@@ -42,14 +42,19 @@ use Protocol\Kafka\Protocol\Data\ListTransactionsResponseTransactionState;
  * what the coordinator selects, not what it reports; {@see ListTransactionsResponseV0} is that identical frame
  * read at the version below.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * **Version 2 (Kafka 4.1, KIP-1152) writes the same bytes again**: `ListTransactionsResponse.json` @ 4.1.0 declares
+ * no new field and says "This API can return InvalidRegularExpression (KIP-1152)" - the **128** of a
+ * `transactional_id_pattern` the coordinator cannot compile, at the top level, with an empty list.
+ * {@see ListTransactionsResponseV1} is the same frame at the version below.
+ *
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 to v2)"
  */
 class ListTransactionsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @inheritdoc

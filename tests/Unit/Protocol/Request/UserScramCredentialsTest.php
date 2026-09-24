@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequest;
-use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
+use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponseV0;
 
 /**
  * Byte-exact tests for the three apis Kafka 2.7 added: the two SCRAM credential apis of KIP-554 (keys 50 and 51)
@@ -39,15 +39,15 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
  * one. What makes the pair of KIP-554 interesting is that the **client** does a computation before it sends
  * anything: the salted password of RFC 5802, which is the reason the broker never learns a password.
  *
- * @see docs/protocol/3.9.md, sections "DescribeUserScramCredentials API (key 50, v0)",
- *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0 and v1)"
+ * @see docs/protocol/4.3.md, sections "DescribeUserScramCredentials API (key 50, v0)",
+ *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0 to v2)"
  */
 #[CoversClass(DescribeUserScramCredentialsRequest::class)]
 #[CoversClass(DescribeUserScramCredentialsResponse::class)]
 #[CoversClass(AlterUserScramCredentialsRequest::class)]
 #[CoversClass(AlterUserScramCredentialsResponse::class)]
 #[CoversClass(UpdateFeaturesRequest::class)]
-#[CoversClass(UpdateFeaturesResponse::class)]
+#[CoversClass(UpdateFeaturesResponseV0::class)]
 #[CoversClass(ScramMechanism::class)]
 #[CoversClass(UserScramCredentialUpsertion::class)]
 #[CoversClass(UserScramCredentialDeletion::class)]
@@ -289,7 +289,7 @@ final class UserScramCredentialsTest extends TestCase
             . '00'
             . '00';
 
-        $response = UpdateFeaturesResponse::unpack(new StringStream((string) hex2bin($hex)));
+        $response = UpdateFeaturesResponseV0::unpack(new StringStream((string) hex2bin($hex)));
 
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode, 'the controller did look at the request');
         self::assertNull($response->errorMessage);

@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
  * `tests/Unit/Protocol/Request/TransactionApiTest.php` and by the wire vectors, and that a broker really behaves
  * this way by `tests/Integration/TransactionalProducerTest.php`.
  *
- * @see docs/protocol/3.9.md, section "Transactions"
+ * @see docs/protocol/4.3.md, section "Transactions"
  */
 #[CoversClass(TransactionManager::class)]
 #[CoversClass(TransactionState::class)]
@@ -239,10 +239,11 @@ final class TransactionStateMachineTest extends TestCase
         $manager = $this->manager($client);
         $manager->initTransactions();
         $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([self::TOPIC => [0 => []]]);
 
         $manager->abortTransaction();
 
-        self::assertSame([['endTxn', self::TRANSACTIONAL_ID, false]], $client->transactionCalls);
+        self::assertSame(['endTxn', self::TRANSACTIONAL_ID, false], $client->transactionCalls[1]);
         self::assertSame(TransactionState::READY, $manager->currentState());
     }
 
@@ -357,6 +358,7 @@ final class TransactionStateMachineTest extends TestCase
         ]);
         $manager->initTransactions();
         $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([self::TOPIC => [0 => []]]);
 
         try {
             $manager->commitTransaction();

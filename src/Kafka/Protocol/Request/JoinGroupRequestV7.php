@@ -21,8 +21,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * This is the same request without that field, and the {@see JoinGroupRequest::$reason} of an instance of this
  * class never reaches the wire.
  *
- * @see docs/protocol/3.9.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
+ * @see docs/protocol/4.3.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupRequestV7 extends JoinGroupRequest
 {

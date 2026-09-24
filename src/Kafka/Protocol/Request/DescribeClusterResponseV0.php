@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `endpoint_type` between the error message and the cluster id, and this is the answer below it, which always
  * describes the brokers because {@see DescribeClusterRequestV0} can ask for nothing else.
  *
- * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 to v2)" and "The endpoint type of KIP-919
  *      (v1)"
  */
 final class DescribeClusterResponseV0 extends DescribeClusterResponse

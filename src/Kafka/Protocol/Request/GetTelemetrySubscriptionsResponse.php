@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `delta_temporality` says whether a counter is pushed as the difference to the last push or as its running
  * total; a 3.9.2 node always answers **true**.
  *
- * @see docs/protocol/3.9.md, section "GetTelemetrySubscriptions API (key 71, v0)"
+ * @see docs/protocol/4.3.md, section "GetTelemetrySubscriptions API (key 71, v0)"
  */
 class GetTelemetrySubscriptionsResponse extends AbstractResponse
 {

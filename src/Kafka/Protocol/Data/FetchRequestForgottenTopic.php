@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * its name.
  *
  * @see \Protocol\Kafka\Protocol\Request\FetchMetadata
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)" and
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "Fetch sessions (v7, KIP-227)" and
  *      "The topic ids of the fetch path (v13, KIP-516)"
  */
 class FetchRequestForgottenTopic implements BinarySchemaInterface

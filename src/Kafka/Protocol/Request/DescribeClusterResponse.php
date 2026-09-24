@@ -16,12 +16,13 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Admin\EndpointType;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeClusterBroker;
+use Protocol\Kafka\Protocol\Data\DescribeClusterBrokerV1;
 
 /**
- * DescribeCluster response object, version 1 (key 60, Kafka 2.8, KIP-700)
+ * DescribeCluster response object, version 2 (key 60, Kafka 2.8, KIP-700)
  *
  * <pre>
- *   DescribeCluster Response (Version: 0 to 1) => throttle_time_ms error_code error_message endpoint_type
+ *   DescribeCluster Response (Version: 0 to 2) => throttle_time_ms error_code error_message endpoint_type
  *                                                 cluster_id controller_id [brokers]
  *                                                 cluster_authorized_operations
  *     throttle_time_ms              => INT32
@@ -30,7 +31,7 @@ use Protocol\Kafka\Protocol\Data\DescribeClusterBroker;
  *     endpoint_type                 => INT8    -- since version 1, 1 = brokers, 2 = controllers
  *     cluster_id                    => COMPACT_STRING
  *     controller_id                 => INT32   (-1 while the cluster has no controller)
- *     brokers                       => broker_id host port rack
+ *     brokers                       => broker_id host port rack is_fenced  -- is_fenced since version 2
  *     cluster_authorized_operations => INT32
  * </pre>
  *
@@ -47,8 +48,13 @@ use Protocol\Kafka\Protocol\Data\DescribeClusterBroker;
  * `"default": "1"` of the schema and says nothing. {@see DescribeClusterResponseV0} is the answer one version
  * lower, which has no type at all.
  *
- * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
- *      (v1)"
+ * **Version 2 (KIP-1073, Kafka 4.0) appends `is_fenced` to every broker** ({@see DescribeClusterBroker}) and lists
+ * the fenced brokers when the request asked for them with `include_fenced_brokers`; nothing else of the answer
+ * changed. {@see DescribeClusterResponseV1} is the answer below it, whose brokers are
+ * {@see DescribeClusterBrokerV1} entries.
+ *
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
+ *      (v1)" and "The fenced brokers of KIP-1073 (v2)"
  */
 class DescribeClusterResponse extends AbstractResponse
 {
@@ -60,7 +66,7 @@ class DescribeClusterResponse extends AbstractResponse
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @inheritdoc
@@ -130,7 +136,9 @@ class DescribeClusterResponse extends AbstractResponse
         return $header + $body + [
             'clusterId'                   => BinarySchema::TYPE_STRING,
             'controllerId'                => BinarySchema::TYPE_INT32,
-            'brokers'                     => ['brokerId' => DescribeClusterBroker::class],
+            'brokers'                     => [
+                'brokerId' => static::VERSION >= 2 ? DescribeClusterBroker::class : DescribeClusterBrokerV1::class,
+            ],
             'clusterAuthorizedOperations' => BinarySchema::TYPE_INT32,
         ];
     }

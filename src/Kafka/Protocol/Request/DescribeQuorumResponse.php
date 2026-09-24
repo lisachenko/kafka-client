@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Data\DescribeQuorumResponseTopicV1;
  * of the same KIP need: a replica state names a voter by its id and its directory id, and the endpoint of that id
  * is only here. {@see DescribeQuorumResponseV1} reads the answer without any of the four.
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 class DescribeQuorumResponse extends AbstractResponse
 {

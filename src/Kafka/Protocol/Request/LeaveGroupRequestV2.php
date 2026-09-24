@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see LeaveGroupRequest} sends; this class is the last version of the single-member frame, and the highest one
  * a broker below Kafka 2.4 serves.
  *
- * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
+ * @see docs/protocol/4.3.md, section "The batch leave of KIP-345 (v3)"
  */
 final class LeaveGroupRequestV2 extends LeaveGroupRequest
 {

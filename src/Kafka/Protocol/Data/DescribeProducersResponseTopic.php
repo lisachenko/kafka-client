@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     Partitions => COMPACT_ARRAY of {@see DescribeProducersResponsePartition}
  * </pre>
  *
- * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeProducers API (key 61, v0)"
  */
 class DescribeProducersResponseTopic implements BinarySchemaInterface
 {

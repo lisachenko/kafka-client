@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * a frame recorded at version 0 is replayed through the class of version 0 - and because a caller that sends a
  * {@see ListTransactionsRequestV0} has to read its answer with the matching version.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 to v2)"
  */
 final class ListTransactionsResponseV0 extends ListTransactionsResponse
 {

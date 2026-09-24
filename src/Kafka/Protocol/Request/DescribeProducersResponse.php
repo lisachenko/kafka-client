@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\DescribeProducersResponseTopic;
  * **There is no top-level error code**: every partition of the request carries one of its own, and a partition
  * without producer state is the code 0 with an empty producer array.
  *
- * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeProducers API (key 61, v0)"
  */
 class DescribeProducersResponse extends AbstractResponse
 {

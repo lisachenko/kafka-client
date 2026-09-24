@@ -22,6 +22,7 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\FencedMemberEpochException;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
+use Protocol\Kafka\Common\Errors\InvalidRegularExpressionException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
@@ -33,12 +34,15 @@ use Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember;
 use Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatRequest;
+use Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatRequestV0;
 use Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatResponse;
+use Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatResponseV0;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * ConsumerGroupHeartbeat (key 68, Kafka 3.5, KIP-848) against the 3.9.2 KRaft node.
+ * ConsumerGroupHeartbeat (key 68, Kafka 3.5, KIP-848) against the 4.3.1 KRaft node, at its version 1 (Kafka 4.0).
  *
  * The api is the whole membership protocol of the new consumer in one frame, and every rule of it is a rule about
  * the **delta encoding** of that frame: what a null field means, what the empty array means, what the member
@@ -46,17 +50,24 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * (`group.coordinator.rebalance.protocols=classic,consumer`).
  *
  * The suite is the one place that observes the codes **110**, **111** and **112** of KIP-848, which no api of the
- * lines below can produce, and the **69** with which the node keeps the two protocols apart.
+ * lines below can produce, the **128** `InvalidRegularExpression` of the regex subscription of version 1, and the
+ * **69** of a classic group the node cannot upgrade. Two things of the 4.3.1 coordinator shape it: a classic group
+ * of the consumer protocol is **upgraded online** by the first heartbeat that names it
+ * (`group.consumer.migration.policy`, `bidirectional` by default since Kafka 4.0), and the target assignment is
+ * computed off the heartbeat path at most once per `group.consumer.assignment.interval.ms` (Kafka 4.3), so a test
+ * that waits for an assignment heartbeats until it arrives.
  *
  * Every group of this class carries the `t3-848-hb-` prefix and is removed in
  * {@see self::tearDownAfterClass()} - every member with a leave heartbeat of the epoch -1 first, because a group
  * that still holds one is not deletable.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(ConsumerGroupHeartbeatRequest::class)]
+#[CoversClass(ConsumerGroupHeartbeatRequestV0::class)]
 #[CoversClass(ConsumerGroupHeartbeatResponse::class)]
+#[CoversClass(ConsumerGroupHeartbeatResponseV0::class)]
 final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
 {
     private const string CLIENT_ID = 'kafka-client-t3-848-hb';
@@ -66,6 +77,11 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
     private const int REBALANCE_TIMEOUT_MS = 300000;
 
     private const int REQUEST_TIMEOUT_MS = 30000;
+
+    /**
+     * How long a test heartbeats for an assignment the coordinator computes in the background, in seconds
+     */
+    private const float ASSIGNMENT_TIMEOUT = 20.0;
 
     private static ?Cluster $sharedCluster = null;
 
@@ -367,11 +383,10 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
             'an EMPTY one: it owns nothing while the first member still holds everything'
         );
 
-        // the first member is told what it loses, on its next heartbeat and only once
-        $revoked = $client->consumerGroupHeartbeat($node, $groupId, $first, $firstEpoch);
-
-        self::assertNotNull($revoked->assignment);
-        $kept = $revoked->assignment->partitionsByTopicId()[$topicId] ?? [];
+        // the first member is told what it loses, on a heartbeat after the coordinator computed the new target
+        // assignment - once per group.consumer.assignment.interval.ms on a 4.3 node - and only once
+        $revoked = $this->heartbeatUntilAssigned($groupId, $first, $firstEpoch);
+        $kept    = $revoked->assignment?->partitionsByTopicId()[$topicId] ?? [];
         self::assertNotSame([0, 1, 2], $kept, 'the first member has to give partitions up');
         self::assertNotSame([], $kept, 'and keeps some of them - three partitions over two members');
 
@@ -390,7 +405,7 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::NO_ERROR, $acknowledged->errorCode);
 
-        $handedOver = $client->consumerGroupHeartbeat($node, $groupId, $second, $joined->memberEpoch);
+        $handedOver = $this->heartbeatUntilAssigned($groupId, $second, $waiting->memberEpoch);
 
         self::assertNotNull($handedOver->assignment, 'now the coordinator hands them over');
         self::assertSame(
@@ -419,7 +434,12 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
         );
 
         self::assertSame(KafkaException::NO_ERROR, $answer->errorCode);
-        self::assertGreaterThan($epoch, $answer->memberEpoch, 'the change earned the member a new epoch');
+
+        // the new epoch comes with the assignment the change produced, which a 4.3 node computes in the background
+        $assigned = $this->heartbeatUntilAssigned($groupId, $member, $answer->memberEpoch);
+
+        self::assertGreaterThan($epoch, $assigned->memberEpoch, 'the change earned the member a new epoch');
+        self::assertCount(2, $assigned->assignment?->partitionsByTopicId() ?? [], 'and the second topic');
     }
 
     /**
@@ -520,13 +540,50 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
     }
 
     /**
-     * A group the classic protocol created cannot be spoken to with this api
+     * A live classic group of the consumer protocol is UPGRADED by the first heartbeat that names it (Kafka 4.0)
+     *
+     * `group.consumer.migration.policy` is `bidirectional` by default since Kafka 4.0 (it was `disabled` on the
+     * 3.9.2 node, which refused this very frame with the 69): `GroupMetadataManager.getOrMaybeCreateConsumerGroup`
+     * @ 4.3.1 converts the classic group into a consumer group, and its classic member stays in it as a member of
+     * the type 0 of KIP-1099.
      */
-    public function testAGroupOfTheClassicProtocolIsRefusedWithTheSixtyNine(): void
+    public function testALiveClassicGroupIsUpgradedOnlineByAHeartbeat(): void
     {
         $topic   = $this->topic(1);
         $groupId = $this->uniqueGroupName();
-        $this->classicGroup($groupId, $topic);
+        $classic = $this->classicGroup($groupId, $topic);
+
+        $member = ConsumerGroupHeartbeatCoordinator::newMemberId();
+        $answer = $this->send($this->coordinatorStream($groupId), ConsumerGroupHeartbeatRequest::forJoin(
+            $groupId,
+            $member,
+            [$topic],
+            self::REBALANCE_TIMEOUT_MS,
+            clientId: self::CLIENT_ID
+        ));
+        self::$members[] = [$groupId, $member];
+
+        self::assertSame(KafkaException::NO_ERROR, $answer->errorCode, 'the online upgrade of KIP-848');
+        self::assertGreaterThan(0, $answer->memberEpoch);
+
+        $admin = new AdminClient($this->cluster(), $this->configuration());
+
+        self::assertSame('consumer', $admin->listAllGroups()[$groupId]->groupType, 'the group is a consumer group now');
+
+        $members = $admin->describeConsumerGroup($groupId)->members;
+
+        self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CLASSIC, $members[$classic]->memberType);
+        self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CONSUMER, $members[$member]->memberType);
+    }
+
+    /**
+     * A classic group of another protocol type cannot be upgraded, and that is the 69 of this api
+     */
+    public function testAClassicGroupOfAnotherProtocolTypeIsRefusedWithTheSixtyNine(): void
+    {
+        $topic   = $this->topic(1);
+        $groupId = $this->uniqueGroupName();
+        $this->classicGroup($groupId, $topic, 'connect');
 
         $answer = $this->send($this->coordinatorStream($groupId), ConsumerGroupHeartbeatRequest::forJoin(
             $groupId,
@@ -537,7 +594,12 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
         ));
 
         self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $answer->errorCode);
-        self::assertSame("Group {$groupId} is not a consumer group.", $answer->errorMessage);
+        self::assertSame(
+            "Cannot upgrade classic group {$groupId} to consumer group because the group does not use the consumer "
+            . 'embedded protocol.',
+            $answer->errorMessage,
+            '`GroupMetadataManager.validateOnlineUpgrade` @ 4.3.1'
+        );
 
         $this->expectException(GroupIdNotFoundException::class);
 
@@ -547,6 +609,118 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
             ConsumerGroupHeartbeatCoordinator::newMemberId(),
             [$topic],
             self::REBALANCE_TIMEOUT_MS
+        );
+    }
+
+    /**
+     * Version 1 (KIP-1082) wants the member id the consumer generated, and refuses a frame without one with the 42
+     */
+    public function testAJoinWithoutAMemberIdIsTheFortyTwoFromVersionOneOn(): void
+    {
+        $topic   = $this->topic(1);
+        $groupId = $this->uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+
+        $refused = $this->send($stream, ConsumerGroupHeartbeatRequest::forJoin(
+            $groupId,
+            '',
+            [$topic],
+            self::REBALANCE_TIMEOUT_MS,
+            clientId: self::CLIENT_ID
+        ));
+
+        self::assertSame(KafkaException::INVALID_REQUEST, $refused->errorCode);
+        self::assertSame("MemberId can't be empty.", $refused->errorMessage);
+
+        // version 0, which a 4.3.1 node still serves, generates the id for such a member
+        ConsumerGroupHeartbeatRequestV0::forJoin(
+            $groupId,
+            '',
+            [$topic],
+            self::REBALANCE_TIMEOUT_MS,
+            clientId: self::CLIENT_ID
+        )->writeTo($stream);
+        $generated = ConsumerGroupHeartbeatResponseV0::unpack($stream);
+
+        self::assertSame(KafkaException::NO_ERROR, $generated->errorCode);
+        self::assertNotNull($generated->memberId);
+        self::assertMatchesRegularExpression(
+            '/^[A-Za-z0-9_-]{22}$/',
+            $generated->memberId,
+            'the base64 uuid of the coordinator, the same format the Java consumer generates for itself'
+        );
+        self::$members[] = [$groupId, $generated->memberId];
+    }
+
+    /**
+     * The regex subscription of version 1: the coordinator matches it and assigns what matched
+     */
+    public function testARegexSubscriptionIsResolvedByTheCoordinator(): void
+    {
+        $topic   = $this->topic(2);
+        $groupId = $this->uniqueGroupName();
+        $member  = ConsumerGroupHeartbeatCoordinator::newMemberId();
+        $regex   = preg_quote($topic, '/') . '.*';
+
+        $joined = $this->client()->joinConsumerGroup(
+            $this->coordinator($groupId),
+            $groupId,
+            $member,
+            [],
+            self::REBALANCE_TIMEOUT_MS,
+            subscribedTopicRegex: $regex
+        );
+        self::$members[] = [$groupId, $member];
+
+        self::assertSame(KafkaException::NO_ERROR, $joined->errorCode);
+
+        $assignment = $joined->assignment?->partitionsByTopicId() ?? [];
+        if ($assignment === []) {
+            // the coordinator resolves a regex in the background: the join itself may assign nothing yet
+            $assignment = $this->heartbeatUntilAssigned($groupId, $member, $joined->memberEpoch)
+                ->assignment?->partitionsByTopicId() ?? [];
+        }
+
+        self::assertSame([$this->topicIdOf($topic) => [0, 1]], $assignment, 'the one topic the regex matches');
+
+        $described = new AdminClient($this->cluster(), $this->configuration())
+            ->describeConsumerGroup($groupId)->members[$member];
+
+        self::assertSame($regex, $described->subscribedTopicRegex);
+        self::assertSame([], $described->subscribedTopicNames, 'the member named no topic');
+    }
+
+    /**
+     * A regex the coordinator cannot compile is the 128 of Kafka 4.0, with the sentence of RE2/J
+     */
+    public function testAnInvalidRegexIsTheOneHundredAndTwentyEight(): void
+    {
+        $groupId = $this->uniqueGroupName();
+
+        $answer = $this->send($this->coordinatorStream($groupId), ConsumerGroupHeartbeatRequest::forJoin(
+            $groupId,
+            ConsumerGroupHeartbeatCoordinator::newMemberId(),
+            [],
+            self::REBALANCE_TIMEOUT_MS,
+            clientId: self::CLIENT_ID,
+            subscribedTopicRegex: 't3-848-hb-(unclosed'
+        ));
+
+        self::assertSame(KafkaException::INVALID_REGULAR_EXPRESSION, $answer->errorCode);
+        self::assertSame(
+            'SubscribedTopicRegex `t3-848-hb-(unclosed` is not a valid regular expression: missing closing ).',
+            $answer->errorMessage
+        );
+
+        $this->expectException(InvalidRegularExpressionException::class);
+
+        $this->client()->joinConsumerGroup(
+            $this->coordinator($groupId),
+            $groupId,
+            ConsumerGroupHeartbeatCoordinator::newMemberId(),
+            [],
+            self::REBALANCE_TIMEOUT_MS,
+            subscribedTopicRegex: '[unclosed'
         );
     }
 
@@ -673,8 +847,10 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
 
     /**
      * Creates a group of the CLASSIC protocol, so that the two can be asked about each other
+     *
+     * @return string Member id of its one member
      */
-    private function classicGroup(string $groupId, string $topic): void
+    private function classicGroup(string $groupId, string $topic, string $protocolType = 'consumer'): string
     {
         $client = $this->client();
         $node   = $this->coordinator($groupId);
@@ -684,7 +860,7 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
                 $node,
                 $groupId,
                 '',
-                'consumer',
+                $protocolType,
                 ['range' => new Subscription([$topic])->pack()],
                 self::REBALANCE_TIMEOUT_MS
             );
@@ -693,7 +869,7 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
                 $node,
                 $groupId,
                 (string) ($needsId->getContext()['assignedMemberId'] ?? ''),
-                'consumer',
+                $protocolType,
                 ['range' => new Subscription([$topic])->pack()],
                 self::REBALANCE_TIMEOUT_MS
             );
@@ -706,11 +882,31 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
             $join->generationId,
             [$join->memberId => new MemberAssignment([$topic => [0]])->pack()],
             null,
-            'consumer',
+            $protocolType,
             $join->groupProtocol
         );
 
         self::$members[] = [$groupId, $join->memberId];
+
+        return $join->memberId;
+    }
+
+    /**
+     * Heartbeats a member until an answer carries an assignment, which a 4.3 coordinator computes in the background
+     */
+    private function heartbeatUntilAssigned(string $groupId, string $memberId, int $epoch): ConsumerGroupHeartbeatResponse
+    {
+        $deadline = microtime(true) + self::ASSIGNMENT_TIMEOUT;
+        $node     = $this->coordinator($groupId);
+
+        while (true) {
+            $answer = $this->client()->consumerGroupHeartbeat($node, $groupId, $memberId, $epoch);
+            if ($answer->assignment !== null || microtime(true) >= $deadline) {
+                return $answer;
+            }
+            $epoch = $answer->memberEpoch;
+            usleep(200000);
+        }
     }
 
     /**

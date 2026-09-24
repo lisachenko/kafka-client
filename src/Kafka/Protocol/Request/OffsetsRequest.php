@@ -21,14 +21,14 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
 
 /**
- * Offsets API (key 2, v9), a.k.a. ListOffset
+ * Offsets API (key 2, v11), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 9) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 11) => replica_id isolation_level [topics] timeout_ms
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
@@ -37,6 +37,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  *         partition            => INT32
  *         current_leader_epoch => INT32     -- since version 4
  *         timestamp            => INT64
+ *     timeout_ms      => INT32      -- since version 10
  * </pre>
  *
  * Kafka 0.10.1 added version 1 with KIP-79, on top of the message timestamps of the format v1: the broker now
@@ -121,16 +122,41 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * other end of the range `-4` names the beginning of. The two together are what tells a client of a tiered
  * cluster which part of a partition is served from the object store and which part from the disks of the broker.
  *
- * The five special values keep their meaning in every version that knows them: {@see self::LATEST} (`-1`) asks for
+ * **Version 10 (Kafka 4.0, KIP-1075) appends a `timeout_ms` to the end of the body**, and this class is version
+ * 10: `ListOffsetsRequest.json` @ 4.0.0, "Version 10 enables async remote list offsets support (KIP-1075)",
+ * `{ "name": "TimeoutMs", "type": "int32", "versions": "10+", "ignorable": true }` - "the timeout to await a response
+ * in milliseconds for requests that require reading from remote storage for topics enabled with tiered storage". A
+ * broker of that release looks a timestamp up in the remote part of a log asynchronously and answers the partition
+ * when the lookup is done or this timeout is over; a topic without remote storage - every topic of the node of this
+ * line - is answered at once, whatever the value. The Java consumer sends its `request.timeout.ms`
+ * (`OffsetFetcher.sendListOffsetRequest` @ 4.0.0), and so does {@see \Protocol\Kafka\Client}, see
+ * {@see self::$timeoutMs}. {@see OffsetsRequestV9} keeps the version without it; the answer did not change.
+ *
+ * **Version 11 (Kafka 4.2, KIP-1023) is the version 10 frame once more and a sixth question**, and this class is
+ * version 11: `ListOffsetsRequest.json` @ 4.2.0 declares no field for it - "Version 11 enables listing offsets by
+ * earliest pending upload offset (KIP-1023)" is its whole comment - so {@see OffsetsRequestV10} writes the same bytes
+ * with another number in its header. What it buys is the special target time
+ * {@see self::EARLIEST_PENDING_UPLOAD_TIMESTAMP} (`-6`): "the first offset of this partition that has **not yet** been
+ * copied to remote storage", i.e. the first offset behind the tiered part `-5` ends at. `ReplicaManager` @ 4.2.0 adds
+ * `EARLIEST_PENDING_UPLOAD_TIMESTAMP -> 11` to its `timestampMinSupportedVersion`, so a version 10 request that asks
+ * for it is answered **35** for that partition, and a broker without tiered storage answers it the offset -1 with
+ * the error code 0, exactly as it answers `-5`.
+ *
+ * **Kafka 4.0 also removed version 0 (KIP-896)**: "Version 0 was removed in Apache Kafka 4.0, Version 1 is the new
+ * baseline", and a 4.x node closes the connection on a frame of it. {@see OffsetsRequestV0} stays, for the wire
+ * vectors of the lines below and for a peer of Kafka 3.x.
+ *
+ * The six special values keep their meaning in every version that knows them: {@see self::LATEST} (`-1`) asks for
  * the end of the log - the offset the next produced message will get, capped as the isolation level prescribes -
  * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk, {@see self::MAX_TIMESTAMP} (`-3`,
  * version 7) for the offset of the record with the largest timestamp, {@see self::EARLIEST_LOCAL_TIMESTAMP}
- * (`-4`, version 8) for the start of the local log and {@see self::LATEST_TIERED_TIMESTAMP} (`-5`, version 9) for
- * the end of the tiered part of it. Only the third is answered with a real timestamp; the other four do not read
- * a message and are answered with the timestamp -1.
+ * (`-4`, version 8) for the start of the local log, {@see self::LATEST_TIERED_TIMESTAMP} (`-5`, version 9) for
+ * the end of the tiered part of it and {@see self::EARLIEST_PENDING_UPLOAD_TIMESTAMP} (`-6`, version 11) for the
+ * first offset behind that end. Only the third is answered with a real timestamp; the other five do not read a
+ * message and are answered with the timestamp -1.
  *
- * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v9), a.k.a. ListOffset" and
- *      "The leader epoch (KIP-320)"
+ * @see docs/protocol/4.3.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
+ *      KIP-1075 (v10)", "The earliest pending upload offset of KIP-1023 (v11)" and "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest
 {
@@ -142,7 +168,7 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 9;
+    public const int VERSION = 11;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -217,6 +243,31 @@ class OffsetsRequest extends AbstractRequest
     public const int LATEST_TIERED_TIMESTAMP = -5;
 
     /**
+     * Special value for the first offset that is **pending upload** to remote storage,
+     * `ListOffsetsRequest.EARLIEST_PENDING_UPLOAD_TIMESTAMP` @ 4.2.0 (Kafka 4.2, KIP-1023), which **version 11 and
+     * above** of the api accept
+     *
+     * It names the first offset of the part of a partition that is still only on the broker's disk: the offset
+     * behind the end of the tiered part {@see self::LATEST_TIERED_TIMESTAMP} answers, or the log start offset when
+     * that is higher. `UnifiedLog.fetchEarliestPendingUploadOffset` @ 4.2.0 answers it as
+     * `max(highestOffsetInRemoteStorage() + 1, logStartOffset())` on a topic with remote storage - the log start
+     * offset when nothing was uploaded yet, and the offset -1 while the leader does not know yet what an earlier
+     * leader uploaded - and with the literal `TimestampAndOffset(NO_TIMESTAMP, -1L, Optional.of(-1))` when
+     * `remoteLogEnabled()` is false, which is every topic of the node of this line: the offset `-1` with the
+     * timestamp `-1` and the error code 0, "nothing of this partition is pending upload", and not an error.
+     *
+     * A request below version 11 that asks for it is answered **35** `UNSUPPORTED_VERSION` for that partition, see
+     * {@see OffsetsRequestV10}; a broker below Kafka 4.2 does not know the value at all and answers the same 35 at
+     * every version.
+     *
+     * It is the `OffsetSpec.earliestPendingUpload()` of the Java admin client, which has no consumer counterpart:
+     * {@see \Protocol\Kafka\Admin\AdminClient::listEarliestPendingUploadOffsets()} is where this client names it.
+     *
+     * @since Version 11 of protocol
+     */
+    public const int EARLIEST_PENDING_UPLOAD_TIMESTAMP = -6;
+
+    /**
      * Replica id of an ordinary consumer, `ListOffsetRequest.CONSUMER_REPLICA_ID` @ 0.10.2.2.
      *
      * A consumer never sees an offset above the high watermark of the partition: the broker caps the answer of such
@@ -233,6 +284,12 @@ class OffsetsRequest extends AbstractRequest
     public const int DEBUGGING_REPLICA_ID = -2;
 
     /**
+     * Timeout of a remote lookup when the caller names none: the default `request.timeout.ms` of the Java consumer,
+     * whose `OffsetFetcher.sendListOffsetRequest` @ 4.0.0 sends exactly that value (KIP-1075)
+     */
+    public const int DEFAULT_TIMEOUT_MS = 30000;
+
+    /**
      * Topics to list the offsets of, indexed by the topic name
      *
      * @var array<string, OffsetsRequestTopic>
@@ -244,14 +301,16 @@ class OffsetsRequest extends AbstractRequest
      *
      * @param array<string, array<int, int>|OffsetsRequestTopic> $topicPartitions Target time of every partition, as
      *        topic => partition => time, where the time is a timestamp in milliseconds, {@see self::LATEST},
-     *        {@see self::EARLIEST}, {@see self::MAX_TIMESTAMP}, {@see self::EARLIEST_LOCAL_TIMESTAMP} or
-     *        {@see self::LATEST_TIERED_TIMESTAMP}
+     *        {@see self::EARLIEST}, {@see self::MAX_TIMESTAMP}, {@see self::EARLIEST_LOCAL_TIMESTAMP},
+     *        {@see self::LATEST_TIERED_TIMESTAMP} or {@see self::EARLIEST_PENDING_UPLOAD_TIMESTAMP}
      * @param int    $replicaId      The node id of the replica that initiates this request. Ordinary consumers send
      *                               {@see self::CONSUMER_REPLICA_ID}, as they have no node id.
      * @param int    $isolationLevel {@see FetchRequest::READ_UNCOMMITTED} or {@see FetchRequest::READ_COMMITTED},
      *                               not on the wire below version 2
      * @param string $clientId       Unique client identifier
      * @param int    $correlationId  Correlated request id
+     * @param int    $timeoutMs      How long the broker may wait for a lookup in remote storage, not on the wire
+     *                               below version 10
      */
     public function __construct(
         array $topicPartitions,
@@ -263,7 +322,20 @@ class OffsetsRequest extends AbstractRequest
          */
         protected readonly int $isolationLevel = FetchRequest::READ_UNCOMMITTED,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Milliseconds the broker may wait for a lookup that has to read from remote storage (KIP-1075).
+         *
+         * A partition of a topic with tiered storage whose target time lies in the remote part of its log is looked
+         * up asynchronously from Kafka 4.0 on, and this is how long the broker waits for that lookup before it
+         * answers the partition with **7** `REQUEST_TIMED_OUT` (`DelayedRemoteListOffsets` @ 4.0.0); a topic without
+         * remote storage is answered at once. A value that is not above 0 leaves the wait to the broker's
+         * `remote.list.offsets.request.timeout.ms` (`ReplicaManager.fetchOffset` @ 4.0.0). The field is the last
+         * one of the body.
+         *
+         * @since Version 10 of protocol (Kafka 4.0, KIP-1075)
+         */
+        protected readonly int $timeoutMs = self::DEFAULT_TIMEOUT_MS
     ) {
         $topicClass            = static::topicClass();
         $packedTopicPartitions = [];
@@ -290,14 +362,16 @@ class OffsetsRequest extends AbstractRequest
         int $replicaId = self::CONSUMER_REPLICA_ID,
         int $isolationLevel = FetchRequest::READ_UNCOMMITTED,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        int $timeoutMs = self::DEFAULT_TIMEOUT_MS
     ): static {
         return new static(
             self::partitionTimestamps($topicPartitions, $timestamp),
             $replicaId,
             $isolationLevel,
             $clientId,
-            $correlationId
+            $correlationId,
+            $timeoutMs
         );
     }
 
@@ -314,8 +388,20 @@ class OffsetsRequest extends AbstractRequest
             $body['isolationLevel'] = BinarySchema::TYPE_INT8;
         }
         $body['topicPartitions'] = ['topic' => static::topicClass()];
+        // KIP-1075 put the timeout of a remote lookup at the very END of the body, behind the topics
+        if (static::VERSION >= 10) {
+            $body['timeoutMs'] = BinarySchema::TYPE_INT32;
+        }
 
         return $header + $body;
+    }
+
+    /**
+     * Returns how long the broker may wait for a lookup in remote storage, in milliseconds (KIP-1075)
+     */
+    public function getTimeoutMs(): int
+    {
+        return $this->timeoutMs;
     }
 
     /**

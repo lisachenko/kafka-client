@@ -19,8 +19,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 4 (Kafka 2.4, KIP-482) added no field: it is this frame written with the **compact** types and a
  * tagged-field section per structure, which {@see SyncGroupRequestV4} sends.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "SyncGroup API (key 14, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "SyncGroup API (key 14, v0 to v5)"
  */
 final class SyncGroupRequestV3 extends SyncGroupRequest
 {

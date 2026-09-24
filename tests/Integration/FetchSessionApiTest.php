@@ -22,8 +22,8 @@ use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -36,7 +36,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * still sends session-less full fetches ({@see \Protocol\Kafka\Client::fetchPartitions()}), so this is the only
  * place where the session half of the frame meets a broker.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -386,7 +386,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
         }
 
         $stream = $this->connect();
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$this->topic => [$partition => RecordBatch::fromRecords($records)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -394,7 +394,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
             $this->correlationId++
         )->writeTo($stream);
 
-        $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+        $errorCode = ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
         if ($errorCode !== KafkaException::NO_ERROR) {
             throw KafkaException::fromCode($errorCode, ['topic' => $this->topic, 'partitionId' => $partition]);
         }

@@ -21,8 +21,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * by this class carries the entries of {@see \Protocol\Kafka\Protocol\Data\LeaveGroupRequestMemberV3}, so a
  * reason a caller names never reaches the wire.
  *
- * @see docs/protocol/3.9.md, section "The leave reason of KIP-800 (v5)"
- * @see docs/protocol/3.9.md, section "LeaveGroup API (key 13, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "The leave reason of KIP-800 (v5)"
+ * @see docs/protocol/4.3.md, section "LeaveGroup API (key 13, v0 to v5)"
  */
 final class LeaveGroupRequestV4 extends LeaveGroupRequest
 {

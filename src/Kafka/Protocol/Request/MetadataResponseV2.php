@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * added is not, so this class only lowers the version constant that {@see MetadataResponse::getScheme()} follows.
  * Reading such an answer with the version 3 class would take the broker count for a throttle time.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class MetadataResponseV2 extends MetadataResponse
 {

@@ -38,6 +38,8 @@ use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
+use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
@@ -52,7 +54,9 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Tests\Compliance\VectorFile;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
@@ -67,7 +71,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * disagree about what a broker says. The scripted connection echoes the correlation id of each request the way a
  * broker does, which is what the client validates the answer against.
  *
- * @see docs/protocol/3.9.md, section "Wire vectors"
+ * @see docs/protocol/4.3.md, section "Wire vectors"
  */
 #[CoversClass(AdminClient::class)]
 final class AdminClientTest extends TestCase
@@ -112,14 +116,16 @@ final class AdminClientTest extends TestCase
         . '00';
 
     /**
-     * DescribeGroups answer v1 of a broker that is not the coordinator of `t4-vectors-group`: group error 16
+     * DescribeGroups answer v6 of a broker that is not the coordinator of `t4-vectors-group`: group error 16
      */
-    private const string NOT_COORDINATOR_RESPONSE = '00000027'
+    private const string NOT_COORDINATOR_RESPONSE = '00000028'
         . '00000000'
         . '00'
         . '00000000'
         . '02'
         . '0010'
+        // the `error_message` of version 6 (KIP-1043, Kafka 4.0): null
+        . '00'
         . '11' . '74342d766563746f72732d67726f7570'
         . '01' . '01' . '01'
         . '01'
@@ -270,18 +276,49 @@ final class AdminClientTest extends TestCase
         $this->adminClient()->listOffsets([self::TOPIC => [0]], 1600000000000);
     }
 
+    public function testListEarliestPendingUploadOffsetsAsksForTheTargetTimeMinusSixOfKip1023(): void
+    {
+        // `OffsetSpec.earliestPendingUpload()` of the Java admin client @ 4.2.0: the target time -6 at version 11,
+        // answered -1 with the code 0 by a broker without tiered storage - "nothing is pending upload"
+        $broker = $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [0, -1, -1]]]));
+
+        $offsets = $this->adminClient()->listEarliestPendingUploadOffsets([self::TOPIC => [0]]);
+
+        self::assertSame([self::TOPIC => [0 => -1]], $offsets, 'nothing is pending upload, and that is not an error');
+        $request = new OffsetsRequest(
+            [self::TOPIC => [0 => OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP]],
+            OffsetsRequest::CONSUMER_REPLICA_ID,
+            FetchRequest::READ_UNCOMMITTED,
+            't10',
+            $broker->getReceivedCorrelationIds()[0]
+        );
+        self::assertSame([self::requestFrame($request)], $broker->getReceivedFrames());
+        self::assertSame(11, $request->getApiVersion(), 'the version Kafka 4.2 added (KIP-1023)');
+    }
+
+    public function testListEarliestPendingUploadOffsetsThrowsTheThirtyFiveOfABrokerBeforeKafka42(): void
+    {
+        // A broker of Kafka 4.0 or 4.1 does not know the target time -6 and refuses it per partition with the 35
+        $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [35, -1, -1]]]));
+
+        $this->expectException(UnsupportedVersionException::class);
+
+        $this->adminClient()->listEarliestPendingUploadOffsets([self::TOPIC => [0]]);
+    }
+
     public function testListGroupOffsetsAsksTheCoordinatorAndReturnsTheCommittedOffsets(): void
     {
         $broker = $this->scriptBroker(
             ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
         );
 
-        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::TOPIC => [0]]);
 
-        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
-        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
-        self::assertSame(0, $topics[self::VECTOR_TOPIC]->partitions[0]->errorCode);
+        self::assertSame([self::TOPIC], array_keys($topics), 'the version 10 answer is named back by the request');
+        self::assertSame(self::TOPIC, $topics[self::TOPIC]->topic);
+        self::assertSame(1, $topics[self::TOPIC]->partitions[0]->offset);
+        self::assertSame(0, $topics[self::TOPIC]->partitions[0]->errorCode);
 
         [$lookupId, $fetchId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
@@ -292,10 +329,18 @@ final class AdminClientTest extends TestCase
                     't10',
                     $lookupId
                 )),
-                self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::VECTOR_TOPIC => [0]], 't10', $fetchId)),
+                self::requestFrame(new OffsetFetchRequest(
+                    self::GROUP,
+                    [self::TOPIC => [0]],
+                    't10',
+                    $fetchId,
+                    false,
+                    null,
+                    [self::TOPIC => ResponseFrame::topicIdOf(self::TOPIC)]
+                )),
             ],
             $broker->getReceivedFrames(),
-            'the coordinator lookup comes first, the OffsetFetch v2 goes to the coordinator it named'
+            'the coordinator lookup comes first, the OffsetFetch v10 by topic id goes to the coordinator it named'
         );
         self::assertNotSame($lookupId, $fetchId, 'every request carries its own correlation id');
     }
@@ -304,14 +349,15 @@ final class AdminClientTest extends TestCase
     {
         $broker = $this->scriptBroker(
             ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
         );
 
-        // main's shape: the group alone, which the nullable topic array of the version 2 makes possible
+        // main's shape: the group alone, which the nullable topic array of the version 2 makes possible; the answer
+        // of version 10 names the topic by its id alone, which the metadata of the cluster names back
         $topics = $this->adminClient()->listGroupOffsets(self::GROUP);
 
-        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
-        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+        self::assertSame([self::TOPIC], array_keys($topics));
+        self::assertSame(1, $topics[self::TOPIC]->partitions[0]->offset);
 
         [, $fetchId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
@@ -339,13 +385,68 @@ final class AdminClientTest extends TestCase
         // the error code 0, and the entry is handed back as it is
         $this->scriptBroker(
             ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [1 => [0, -1, '']]], 0, self::GROUP)
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [1 => [0, -1, '']]], 0, self::GROUP)
         );
 
-        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [1]]);
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::TOPIC => [1]]);
 
-        self::assertSame(-1, $topics[self::VECTOR_TOPIC]->partitions[1]->offset);
-        self::assertSame(0, $topics[self::VECTOR_TOPIC]->partitions[1]->errorCode);
+        self::assertSame(-1, $topics[self::TOPIC]->partitions[1]->offset);
+        self::assertSame(0, $topics[self::TOPIC]->partitions[1]->errorCode);
+    }
+
+    /**
+     * A topic the cluster has no id for can not be named by version 10, so the request goes out as version 9
+     */
+    public function testListGroupOffsetsNamesATopicWithoutAnIdWithTheVersionNine(): void
+    {
+        $broker = $this->scriptBroker(
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::offsetFetchV9(0, [self::VECTOR_TOPIC => [0 => [0, -1, '']]], 0, self::GROUP)
+        );
+
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
+
+        self::assertSame(-1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+        [, $fetchId] = $broker->getReceivedCorrelationIds();
+        self::assertSame(
+            self::requestFrame(new OffsetFetchRequestV9(self::GROUP, [self::VECTOR_TOPIC => [0]], 't10', $fetchId)),
+            $broker->getReceivedFrames()[1]
+        );
+    }
+
+    public function testAlterConsumerGroupOffsetsCommitsWithoutAMembershipByTopicId(): void
+    {
+        $broker = $this->scriptBroker(
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => 0, 1 => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]])
+        );
+
+        $admin  = $this->adminClient();
+        $result = $admin->alterConsumerGroupOffsets(
+            self::GROUP,
+            [self::TOPIC => [0 => 5, 1 => new OffsetAndMetadata(7, 'meta')]]
+        );
+
+        self::assertNull($result[self::TOPIC][0]);
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[self::TOPIC][1]);
+
+        [, $commitId] = $broker->getReceivedCorrelationIds();
+        self::assertSame(
+            self::requestFrame(new OffsetCommitRequest(
+                self::GROUP,
+                OffsetCommitRequest::DEFAULT_GENERATION_ID,
+                OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+                OffsetCommitRequest::DEFAULT_RETENTION_TIME,
+                [self::TOPIC => [0 => 5, 1 => new OffsetAndMetadata(7, 'meta')]],
+                't10',
+                $commitId,
+                null,
+                [self::TOPIC => ResponseFrame::topicIdOf(self::TOPIC)]
+            )),
+            $broker->getReceivedFrames()[1],
+            'the generation -1 and the empty member id of a commit without a membership, the topic by its id'
+        );
+        self::assertSame([], $admin->alterConsumerGroupOffsets(self::GROUP, []), 'nothing to commit, nothing sent');
     }
 
     public function testFindCoordinatorResolvesTheNodeOfTheCluster(): void
@@ -562,18 +663,26 @@ final class AdminClientTest extends TestCase
         );
     }
 
-    public function testDescribeGroupReportsAnUnknownGroupAsDead(): void
+    /**
+     * DescribeGroups v6 (KIP-1043, Kafka 4.0) answers a group the coordinator does not hold with the 69, where the
+     * versions below answered the state `Dead` with the error code 0 - and the admin client reports the 69
+     */
+    public function testDescribeGroupThrowsTheSixtyNineOfAnUnknownGroup(): void
     {
         $this->scriptBroker(
             ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
-            ResponseFrame::describeGroups(0, [self::UNKNOWN_GROUP => [0, 'Dead', '', '', []]])
+            ResponseFrame::describeGroups(
+                0,
+                [self::UNKNOWN_GROUP => [69, 'Dead', '', '', [], 'Group ' . self::UNKNOWN_GROUP . ' not found.']]
+            )
         );
 
-        $group = $this->adminClient()->describeGroup(self::UNKNOWN_GROUP);
-
-        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $group->state, 'this is not an error');
-        self::assertSame(0, $group->errorCode);
-        self::assertSame([], $group->members);
+        try {
+            $this->adminClient()->describeGroup(self::UNKNOWN_GROUP);
+            self::fail('an unknown group is an error from version 6 on');
+        } catch (GroupIdNotFoundException $exception) {
+            self::assertStringContainsString('Group ' . self::UNKNOWN_GROUP . ' not found.', $exception->getMessage());
+        }
     }
 
     public function testDescribeGroupThrowsTheErrorCodeOfTheGroup(): void

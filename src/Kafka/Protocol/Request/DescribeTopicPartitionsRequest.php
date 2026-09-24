@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\NullableStruct;
  * This api is served by **any broker** - it reads the metadata cache, not a coordinator - and it is a
  * `broker`-only api: a KRaft controller does not serve it.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 class DescribeTopicPartitionsRequest extends AbstractRequest
 {

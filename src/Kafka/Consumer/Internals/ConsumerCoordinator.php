@@ -77,7 +77,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * threads: the Java consumer leaves the group by itself when the application does not come back to poll() in time,
  * this one simply stops sending heartbeats and is dropped when its session timeout expires.
  *
- * @see docs/protocol/3.9.md, sections "Group membership protocol (keys 11 to 14)" and
+ * @see docs/protocol/4.3.md, sections "Group membership protocol (keys 11 to 14)" and
  *      "Consumer group protocol (protocol_type = consumer)"
  * @see \Protocol\Kafka\Consumer\KafkaConsumer::poll()
  */

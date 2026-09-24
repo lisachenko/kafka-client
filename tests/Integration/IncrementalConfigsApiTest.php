@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
  * nothing it changes can reach another suite of the shared container; the only broker resource it names is asked
  * with `validate_only`, which validates the change and writes nothing.
  *
- * @see docs/protocol/3.9.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(AlterConfigOp::class)]
@@ -310,8 +310,9 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         )[$key];
 
         self::assertInstanceOf(InvalidRequestException::class, $error);
+        // A Java list since the node of the 4.x line; the 2.8.2 and the 3.9.2 broker wrote the Scala `Set(log.dirs)`
         self::assertStringContainsString(
-            'Cannot update these configs dynamically: Set(log.dirs)',
+            'Cannot update these configs dynamically: [log.dirs]',
             (string) $error->getContext()['error']
         );
 

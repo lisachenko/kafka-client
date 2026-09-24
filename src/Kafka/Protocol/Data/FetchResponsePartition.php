@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * (KIP-107) added `LogStartOffset` between the two, which is what {@see FetchResponsePartitionV4} and
  * {@see FetchResponsePartitionV0} lower the version constant for.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "MessageSet and Message" and
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 class FetchResponsePartition implements BinarySchemaInterface

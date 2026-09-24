@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * the **tagged** `current_leader`, see {@see self::$currentLeader}, which is the only difference between this
  * entry and {@see ProduceResponsePartitionV8}.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The leader discovery of KIP-951 (v10)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {
@@ -123,7 +123,7 @@ class ProduceResponsePartition implements BinarySchemaInterface
      * those answers carries a throttle time of its own.
      *
      * @see \Protocol\Kafka\Producer\RecordMetadata::$throttleTimeMs
-     * @see docs/protocol/3.9.md, section "Quotas and throttle time"
+     * @see docs/protocol/4.3.md, section "Quotas and throttle time"
      */
     public int $throttleTimeMs = 0;
 

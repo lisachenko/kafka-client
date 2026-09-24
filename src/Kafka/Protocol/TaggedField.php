@@ -44,7 +44,7 @@ namespace Protocol\Kafka\Protocol;
  * A structure of a flexible version that declares no tagged field at all still ends in the section - as the empty
  * count `00` - and needs no declaration for that: the engine appends it to every structure of a flexible version.
  *
- * @see docs/protocol/3.9.md, sections "Protocol primitive types" and "Implementation model"
+ * @see docs/protocol/4.3.md, sections "Protocol primitive types" and "Implementation model"
  */
 final class TaggedField
 {

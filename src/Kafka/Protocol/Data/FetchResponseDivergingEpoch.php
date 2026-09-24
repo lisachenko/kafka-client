@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Both fields default to `-1`, and the whole structure is left out of an answer that has nothing to report,
  * which is what a tagged field is for.
  *
- * @see docs/protocol/3.9.md, section "Epoch validation in the fetch itself (v12, KIP-595)"
+ * @see docs/protocol/4.3.md, section "Epoch validation in the fetch itself (v12, KIP-595)"
  */
 class FetchResponseDivergingEpoch implements BinarySchemaInterface
 {

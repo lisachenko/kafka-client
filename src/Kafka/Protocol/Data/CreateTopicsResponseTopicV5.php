@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Kafka 2.8 inserted the **`topic_id`** of KIP-516 between the name and the error code with the version 7; every
  * version below it has no such field, which is what this class only lowers the version constant for.
  *
- * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/4.3.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsResponseTopicV5 extends CreateTopicsResponseTopic
 {

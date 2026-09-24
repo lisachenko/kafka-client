@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The three fields are fields of the request around them, not a structure of the specification, so they are
  * embedded with an {@see \Protocol\Kafka\Protocol\InlineStruct} and carry no tagged-field section.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 class ResourcePatternFilter implements BinarySchemaInterface
 {

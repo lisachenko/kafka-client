@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the controller answers and the list of the container is always empty. The shape above is therefore documented
  * from the sources and from the Java client, and the wire vectors of this api are the empty answer.
  *
- * @see docs/protocol/3.9.md, section "ListPartitionReassignments API (key 46, v0)"
+ * @see docs/protocol/4.3.md, section "ListPartitionReassignments API (key 46, v0)"
  */
 class OngoingPartitionReassignment implements BinarySchemaInterface
 {

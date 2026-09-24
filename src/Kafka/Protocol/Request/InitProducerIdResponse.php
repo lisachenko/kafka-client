@@ -64,7 +64,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * for the transactional id - while the last epoch itself is read as the retry of a bump and answered the code 0
  * with the current pair. {@see InitProducerIdResponseV4} is the same frame with the version of Kafka 2.7.
  *
- * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 class InitProducerIdResponse extends AbstractResponse
 {

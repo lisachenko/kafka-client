@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Admin;
  * byte that is neither 1 nor 2 and which no client sends; a server that is asked for it answers **115**
  * (`UnsupportedEndpointType`).
  *
- * @see docs/protocol/3.9.md, section "The endpoint type of KIP-919 (v1)"
+ * @see docs/protocol/4.3.md, section "The endpoint type of KIP-919 (v1)"
  */
 enum EndpointType: int
 {

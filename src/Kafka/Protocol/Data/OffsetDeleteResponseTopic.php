@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The coordinator groups the partitions it answered by their topic, so the order of this array is the order of
  * that map and not the order of the request - the answer is read by name here, never by position.
  *
- * @see docs/protocol/3.9.md, section "OffsetDelete API (key 47, v0)"
+ * @see docs/protocol/4.3.md, section "OffsetDelete API (key 47, v0)"
  */
 class OffsetDeleteResponseTopic implements BinarySchemaInterface
 {

@@ -19,7 +19,7 @@ use RecursiveIteratorIterator;
 use SplFileInfo;
 
 /**
- * Keeps `docs/protocol/3.9.md` and `docs/protocol/vectors/*.json` from drifting apart.
+ * Keeps `docs/protocol/4.3.md` and `docs/protocol/vectors/*.json` from drifting apart.
  *
  * Every vector is documented twice: as an annotated hex dump in the protocol document, introduced by an
  * `<!-- vector: <id> -->` marker, and as raw hex plus decoded fields in the vector file that {@see ProtocolVectorTest}
@@ -37,9 +37,15 @@ final class DocumentationSyncTest extends TestCase
      * Matches a section reference of a docblock: the name of the protocol document, `, section` or `, sections`,
      * the rest of the line, which is where the quoted heading - or the two of an `"a" and "b"` reference - sits,
      * and every following docblock line that continues the list with a quoted heading (a reference wrapped at
-     * the line length: ` * "..."` or ` * and "..."`)
+     * the line length: ` * "..."` or ` * and "..."`). The `%s` is the file name of the protocol document of the line,
+     * quoted by {@see self::sectionReferencePattern()}: the pattern follows the document when a line renames it
      */
-    private const string SECTION_REFERENCE_PATTERN = '/3\.9\.md, sections? (?P<sections>.+(?:\R[ \t]*\*[ \t]+(?:and[ \t]+)?"[^\n]*)*)$/m';
+    private const string SECTION_REFERENCE_PATTERN = '/%s, sections? (?P<sections>.+(?:\R[ \t]*\*[ \t]+(?:and[ \t]+)?"[^\n]*)*)$/m';
+
+    /**
+     * Matches the name of any protocol document in a section reference, whatever line it belongs to
+     */
+    private const string ANY_DOCUMENT_REFERENCE_PATTERN = '/docs\/protocol\/(?P<document>[0-9.]+\.md), sections? "/';
 
     /**
      * Directories whose PHP files may reference a section of the protocol document
@@ -91,15 +97,18 @@ final class DocumentationSyncTest extends TestCase
         $headings = self::headings();
         $missing  = [];
 
+        $checked  = 0;
+
         foreach (self::phpFiles() as $file) {
             $source = (string) file_get_contents($file);
-            if (preg_match_all(self::SECTION_REFERENCE_PATTERN, $source, $references) === 0) {
+            if (preg_match_all(self::sectionReferencePattern(), $source, $references) === 0) {
                 continue;
             }
 
             foreach ($references['sections'] as $reference) {
                 preg_match_all('/"(?P<name>[^"]+)"/', $reference, $names);
                 foreach ($names['name'] as $name) {
+                    $checked++;
                     if (!in_array($name, $headings, true)) {
                         $missing[] = substr($file, strlen(dirname(__DIR__, 2)) + 1) . ': "' . $name . '"';
                     }
@@ -112,6 +121,34 @@ final class DocumentationSyncTest extends TestCase
             array_values(array_unique($missing)),
             'A docblock references a section that the protocol document does not have as a heading'
         );
+        self::assertGreaterThan(
+            1000,
+            $checked,
+            'The pattern found (almost) no section reference: it does not name the protocol document of this line'
+        );
+    }
+
+    /**
+     * A section reference names the protocol document of this line and no other
+     *
+     * The document is renamed with every line (`docs/protocol/3.9.md` became `docs/protocol/4.3.md`), and a
+     * reference that still names the old file is a reference nothing checks.
+     */
+    public function testEverySectionReferenceNamesTheProtocolDocumentOfThisLine(): void
+    {
+        $document = basename(VectorFile::PROTOCOL_DOCUMENT);
+        $foreign  = [];
+
+        foreach (self::phpFiles() as $file) {
+            preg_match_all(self::ANY_DOCUMENT_REFERENCE_PATTERN, (string) file_get_contents($file), $references);
+            foreach ($references['document'] as $name) {
+                if ($name !== $document) {
+                    $foreign[] = substr($file, strlen(dirname(__DIR__, 2)) + 1) . ': ' . $name;
+                }
+            }
+        }
+
+        self::assertSame([], array_values(array_unique($foreign)), "A section reference names another document than {$document}");
     }
 
     public function testEveryDocumentedVectorIdIsUnique(): void
@@ -189,6 +226,14 @@ final class DocumentationSyncTest extends TestCase
         sort($files);
 
         return $files;
+    }
+
+    /**
+     * Returns the section-reference pattern for the file name of the protocol document of this line
+     */
+    private static function sectionReferencePattern(): string
+    {
+        return sprintf(self::SECTION_REFERENCE_PATTERN, preg_quote(basename(VectorFile::PROTOCOL_DOCUMENT), '/'));
     }
 
     /**

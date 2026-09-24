@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
 
 /**
- * TxnOffsetCommit response object, version 4 (key 28)
+ * TxnOffsetCommit response object, version 5 (key 28)
  *
  * <pre>
  *   TxnOffsetCommit Response (Version: 0 to 2) => throttle_time_ms [topics]
@@ -61,14 +61,20 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
  * `TransactionAbortable` at the version 4 where the version 3 is answered the **48** `InvalidTxnState`.
  * {@see TxnOffsetCommitResponseV3} is the frame of Kafka 2.5, and the one that still gets the 48.
  *
- * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
+ * **Kafka 4.0 added the version 5** (KIP-890 part 2): *"Version 5 is the same with version 3 (KIP-890)"*
+ * (`TxnOffsetCommitResponse.json` @ 4.0.0) - no field. What changes is the request behind it: a version 5 enrols
+ * the `__consumer_offsets` partition of the group into the transaction of the protocol v2 itself, so the commit
+ * that the version 4 is refused the **120** for - no AddOffsetsToTxn in front of it - is answered **0** at the
+ * version 5. {@see TxnOffsetCommitResponseV4} is the answer of Kafka 3.8.
+ *
+ * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * @inheritdoc

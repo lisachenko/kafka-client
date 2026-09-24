@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * same pair the request of that version has to carry; both are null in an answer that reports an error, and both
  * name what the coordinator settled on in an answer that does not.
  *
- * @see docs/protocol/3.9.md, sections "SyncGroup API (key 14, v0 to v5)" and "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, sections "SyncGroup API (key 14, v0 to v5)" and "Quotas and throttle time"
  */
 class SyncGroupResponse extends AbstractResponse
 {

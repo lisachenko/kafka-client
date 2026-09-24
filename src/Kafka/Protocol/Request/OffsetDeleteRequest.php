@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\OffsetDeleteRequestTopic;
  * The Java admin client calls the call `deleteConsumerGroupOffsets()`, which is the name
  * {@see \Protocol\Kafka\Admin\AdminClient::deleteConsumerGroupOffsets()} carries.
  *
- * @see docs/protocol/3.9.md, section "OffsetDelete API (key 47, v0)"
+ * @see docs/protocol/4.3.md, section "OffsetDelete API (key 47, v0)"
  */
 class OffsetDeleteRequest extends AbstractRequest
 {

@@ -59,7 +59,7 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopicV5;
  * **Kafka 2.4 added the version 4** (KIP-482): the same fields in the flexible encoding, with a tagged-field
  * section at the end of the body and of every topic result. {@see DeleteTopicsResponseV3} is the frame of Kafka 2.1.
  *
- * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 class DeleteTopicsResponse extends AbstractResponse
 {

@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `"default": -1` of the field - `ListTransactionsRequestData.durationFilter()` @ 3.9.2 gives that default to
  * every version 0 request - so "no duration filter" and "version 0" are the same listing.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 to v2)"
  */
 final class ListTransactionsRequestV0 extends ListTransactionsRequest
 {

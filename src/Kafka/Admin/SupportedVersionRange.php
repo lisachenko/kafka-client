@@ -18,7 +18,7 @@ namespace Protocol\Kafka\Admin;
  *
  * `SupportedVersionRange` of the Java admin client.
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 final class SupportedVersionRange
 {

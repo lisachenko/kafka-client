@@ -71,7 +71,7 @@ use UnexpectedValueException;
  * the version 4 on a 3.9.2 node, the 120 of a `verify_only` included: the code belongs to the coordinator, not to
  * the version. {@see AddPartitionsToTxnResponseV4} keeps the frame of Kafka 3.5.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 class AddPartitionsToTxnResponse extends AbstractResponse
 {

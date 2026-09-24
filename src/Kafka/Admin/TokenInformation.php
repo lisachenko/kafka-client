@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
  * of the two describe and create apis (KIP-373). It is the owner itself for every token a principal issued for
  * itself - and for every token described by a broker below Kafka 3.3, which has no field for it.
  *
- * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 final class TokenInformation
 {

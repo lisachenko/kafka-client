@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * itself and which lets the coordinator fence an older instance of it with the error code 82
  * (`FencedInstanceId`); {@see HeartbeatRequest} sends that frame.
  *
- * @see docs/protocol/3.9.md, section "Static membership (KIP-345)"
+ * @see docs/protocol/4.3.md, section "Static membership (KIP-345)"
  */
 final class HeartbeatRequestV2 extends HeartbeatRequest
 {

@@ -18,8 +18,8 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * Version 4 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding, see {@see HeartbeatResponse}.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "Heartbeat API (key 12, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "Heartbeat API (key 12, v0 to v4)"
  */
 final class HeartbeatResponseV3 extends HeartbeatResponse
 {

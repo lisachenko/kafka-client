@@ -1,0 +1,179 @@
+{
+    "api": "share-group-describe",
+    "apiKey": 77,
+    "section": "ShareGroupDescribe API (key 77, v1)",
+    "description": "Wire vectors of the ShareGroupDescribe API (key 77, v1, KIP-932), captured on the 4.3.1 node and replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "sharegroupdescribe.v1.stable.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupDescribeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ShareGroupDescribe of the group of one member, with `include_authorized_operations` on.",
+            "hex": "00000034004d00010000a02f00126b61666b612d636c69656e742d74332d343100021474332d34312d766563746f72732d67726f75700100",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 77,
+                "apiVersion": 1,
+                "correlationId": 41007,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-41-vectors-group"
+                ],
+                "includeAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "sharegroupdescribe.v1.stable.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupDescribeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The state `Stable`, the group epoch and the assignment epoch, the assignor `simple` - the one assignor of share groups - and the member with its epoch, client id and host, subscription and assignment, the topic named by id **and** name. The authorized operations of the anonymous super user are 3400 (`READ`, `DELETE`, `DESCRIBE`, `DESCRIBE_CONFIGS`, `ALTER_CONFIGS`), as for every group type.",
+            "hex": "000000af0000a02f0000000000020000001474332d34312d766563746f72732d67726f757007537461626c6500000003000000030773696d706c6502173642357161364748514b53626d324c6d4a52517243670000000003136b61666b612d636c69656e742d74332d34310c2f3137322e31382e302e31020e74332d34312d766563746f727302d8993093d5c34700a265f08673aea7540e74332d34312d766563746f7273020000000000000000000d480000",
+            "fields": {
+                "messageSize": 175,
+                "correlationId": 41007,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-41-vectors-group": {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "groupId": "t3-41-vectors-group",
+                        "groupState": "Stable",
+                        "groupEpoch": 3,
+                        "assignmentEpoch": 3,
+                        "assignorName": "simple",
+                        "members": {
+                            "6B5qa6GHQKSbm2LmJRQrCg": {
+                                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                                "rackId": null,
+                                "memberEpoch": 3,
+                                "clientId": "kafka-client-t3-41",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [
+                                    "t3-41-vectors"
+                                ],
+                                "assignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "d8993093d5c34700a265f08673aea754"
+                                            },
+                                            "topicName": "t3-41-vectors",
+                                            "partitions": [
+                                                0
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "authorizedOperations": 3400
+                    }
+                }
+            }
+        },
+        {
+            "id": "sharegroupdescribe.v1.unknown-group.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupDescribeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ShareGroupDescribe of a group the coordinator has never heard of.",
+            "hex": "00000033004d00010000a03000126b61666b612d636c69656e742d74332d343100021374332d34312d766563746f72732d6e6f6e650000",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 77,
+                "apiVersion": 1,
+                "correlationId": 41008,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-41-vectors-none"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "sharegroupdescribe.v1.unknown-group.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupDescribeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **69** `GroupIdNotFound` inside the entry with the sentence \"Group t3-41-vectors-none not found.\", the empty state, the epochs 0, the empty assignor and no member. The authorized operations are the -2147483648 of \"not requested\".",
+            "hex": "000000540000a03000000000000200452447726f75702074332d34312d766563746f72732d6e6f6e65206e6f7420666f756e642e1374332d34312d766563746f72732d6e6f6e650100000000000000000101800000000000",
+            "fields": {
+                "messageSize": 84,
+                "correlationId": 41008,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-41-vectors-none": {
+                        "errorCode": 69,
+                        "errorMessage": "Group t3-41-vectors-none not found.",
+                        "groupId": "t3-41-vectors-none",
+                        "groupState": "",
+                        "groupEpoch": 0,
+                        "assignmentEpoch": 0,
+                        "assignorName": "",
+                        "members": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "sharegroupdescribe.v1.empty.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupDescribeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ShareGroupDescribe of the group after the leave of its one member.",
+            "hex": "00000034004d00010000a03c00126b61666b612d636c69656e742d74332d343100021474332d34312d766563746f72732d67726f75700000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 77,
+                "apiVersion": 1,
+                "correlationId": 41020,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-41-vectors-group"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "sharegroupdescribe.v1.empty.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupDescribeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The state `Empty`, a group epoch one above the assignment epoch and no member. DeleteGroups (key 42) deletes the group now, after which this answer is the 69 of an unknown group.",
+            "hex": "0000003d0000a03c0000000000020000001474332d34312d766563746f72732d67726f757006456d70747900000004000000030773696d706c6501800000000000",
+            "fields": {
+                "messageSize": 61,
+                "correlationId": 41020,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-41-vectors-group": {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "groupId": "t3-41-vectors-group",
+                        "groupState": "Empty",
+                        "groupEpoch": 4,
+                        "assignmentEpoch": 3,
+                        "assignorName": "simple",
+                        "members": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        }
+    ]
+}

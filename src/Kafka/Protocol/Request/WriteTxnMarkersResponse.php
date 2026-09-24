@@ -16,7 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
 
 /**
- * WriteTxnMarkers response object, version 0 (key 27)
+ * WriteTxnMarkers response object (key 27, v0 to v2)
  *
  * <pre>
  *   WriteTxnMarkers Response (Version: 0) => [transaction_markers]
@@ -37,14 +37,18 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
  * An empty request is answered with an empty array, which is what the api probe of this branch sends to check that
  * the key is served at all.
  *
- * @see docs/protocol/3.9.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
+ * The version 2 of Kafka 4.2 (*"Version 2 matches WriteTxnMarkersRequest version 2 (KIP-1228)"* in
+ * `WriteTxnMarkersResponse.json` @ 4.2.0) changed no field of the answer; {@see WriteTxnMarkersResponseV1} keeps
+ * the version 1.
+ *
+ * @see docs/protocol/4.3.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 class WriteTxnMarkersResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * The version 1 of Kafka 2.8 is the first flexible one of this api (KIP-482)

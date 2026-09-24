@@ -21,18 +21,21 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMemberV0;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadataV0;
+use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadataV4;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV3;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV4;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV5;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV1;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV2;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV3;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV4;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV5;
 
 /**
  * Byte-exact tests for the DescribeGroups API of Kafka 0.9 (api key 15), raised to version 1 by KIP-124.
@@ -43,7 +46,10 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV4;
  * Version 3 (KIP-430, Kafka 2.3) is the first one that changed either half: the request gained the boolean
  * `include_authorized_operations` and every group entry of the answer the 32-bit `authorized_operations`.
  *
- * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * Version 6 (KIP-1043, Kafka 4.0) is the request of version 5 again; its answer puts an `error_message` behind the
+ * error code of every entry, and describes a group the coordinator does not hold with the 69 rather than `Dead`.
+ *
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 #[CoversClass(DescribeGroupsRequest::class)]
 #[CoversClass(DescribeGroupsRequestV0::class)]
@@ -51,24 +57,28 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV4;
 #[CoversClass(DescribeGroupsRequestV2::class)]
 #[CoversClass(DescribeGroupsRequestV3::class)]
 #[CoversClass(DescribeGroupsRequestV4::class)]
+#[CoversClass(DescribeGroupsRequestV5::class)]
 #[CoversClass(DescribeGroupsResponse::class)]
 #[CoversClass(DescribeGroupsResponseV0::class)]
 #[CoversClass(DescribeGroupsResponseV1::class)]
 #[CoversClass(DescribeGroupsResponseV2::class)]
 #[CoversClass(DescribeGroupsResponseV3::class)]
 #[CoversClass(DescribeGroupsResponseV4::class)]
+#[CoversClass(DescribeGroupsResponseV5::class)]
 #[CoversClass(DescribeGroupResponseMetadata::class)]
 #[CoversClass(DescribeGroupResponseMetadataV0::class)]
+#[CoversClass(DescribeGroupResponseMetadataV4::class)]
 #[CoversClass(DescribeGroupResponseMember::class)]
 #[CoversClass(DescribeGroupResponseMemberV0::class)]
 final class DescribeGroupsTest extends TestCase
 {
     /**
-     * DescribeGroups request v5 (Kafka 2.4, KIP-482) for two groups, which does not ask for the operations.
+     * DescribeGroups request v6 (Kafka 4.0, KIP-1043) for two groups, which does not ask for the operations - the
+     * frame of version 5 (Kafka 2.4, KIP-482) with another api version.
      *
      *   Size                        => 00 00 00 26 (38 bytes)
      *   ApiKey                      => 00 0f (15)
-     *   ApiVersion                  => 00 05
+     *   ApiVersion                  => 00 06
      *   CorrelationId               => 00 00 00 01
      *   ClientId                    => 00 04 "test" (never compact)
      *   TAG_BUFFER                  => 00 (of the request header v2)
@@ -80,7 +90,7 @@ final class DescribeGroupsTest extends TestCase
      */
     private const string REQUEST_HEX = '00000026'
         . '000f'
-        . '0005'
+        . '0006'
         . '00000001'
         . '0004' . '74657374'
         . '00'
@@ -95,7 +105,7 @@ final class DescribeGroupsTest extends TestCase
      */
     private const string REQUEST_WITH_OPERATIONS_HEX = '00000026'
         . '000f'
-        . '0005'
+        . '0006'
         . '00000001'
         . '0004' . '74657374'
         . '00'
@@ -229,10 +239,20 @@ final class DescribeGroupsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DESCRIBE_GROUPS, $request->getApiKey());
-        self::assertSame(5, $request->getApiVersion(), 'KIP-482 makes the version this client sends 5');
+        self::assertSame(6, $request->getApiVersion(), 'KIP-1043 makes the version this client sends 6');
         self::assertSame(['my-group', 'other-grou'], $request->getGroups());
         self::assertFalse($request->includesAuthorizedOperations(), 'the flag defaults to false');
         self::assertTrue(DescribeGroupsRequest::isFlexible());
+    }
+
+    public function testTheVersionFiveRequestIsTheFrameOfVersionSix(): void
+    {
+        $request = new DescribeGroupsRequestV5(['my-group', 'other-grou'], 'test', 1);
+
+        self::assertSame(str_replace('000f0006', '000f0005', self::REQUEST_HEX), bin2hex((string) $request));
+        self::assertSame(5, $request->getApiVersion());
+        self::assertTrue(DescribeGroupsRequestV5::isFlexible(), 'version 5 is the first flexible version');
+        self::assertSame(DescribeGroupsRequest::getScheme(), DescribeGroupsRequestV5::getScheme());
     }
 
     public function testTheVersionThreeRequestIsThePlainEncodingOfTheSameFields(): void
@@ -294,7 +314,7 @@ final class DescribeGroupsTest extends TestCase
         $request = new DescribeGroupsRequest([], '', 0);
 
         self::assertSame(
-            '0000000e' . '000f' . '0005' . '00000000' . '0000' . '00' . '01' . '00' . '00',
+            '0000000e' . '000f' . '0006' . '00000000' . '0000' . '00' . '01' . '00' . '00',
             bin2hex((string) $request),
             'an empty compact array is the unsigned varint 1'
         );
@@ -468,5 +488,64 @@ final class DescribeGroupsTest extends TestCase
             'the entry of the versions 0 to 3 has no such field'
         );
         self::assertArrayHasKey('groupInstanceId', DescribeGroupResponseMember::getScheme());
+    }
+
+    /**
+     * The version 6 answer of a group the coordinator does not hold (KIP-1043): the state `Dead` as before, but
+     * the error code 69 and the sentence of the `GroupIdNotFoundException` behind it
+     */
+    public function testTheVersionSixAnswerDescribesAnUnknownGroupWithTheSixtyNineAndAMessage(): void
+    {
+        $message = 'Group my-group not found.';
+        $body    = '00000001'                                  // correlationId
+            . '00'                                             // TAG_BUFFER of the response header v1
+            . '00000000'                                       // throttleTimeMs
+            . '02'                                             // groups: 1 item (compact: 1 + 1)
+            . '0045'                                           // errorCode = 69
+            . sprintf('%02x', strlen($message) + 1) . bin2hex($message)
+            . '09' . bin2hex('my-group')
+            . '05' . bin2hex('Dead')
+            . '01'                                             // protocolType = ""
+            . '01'                                             // protocol = ""
+            . '01'                                             // members: 0 items
+            . '80000000'                                       // authorizedOperations: not asked for
+            . '00'                                             // TAG_BUFFER of the group entry
+            . '00';                                            // TAG_BUFFER of the body
+        $frame   = sprintf('%08x', strlen($body) / 2) . $body;
+
+        $response = DescribeGroupsResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $group    = $response->groups['my-group'];
+
+        self::assertSame(69, $group->errorCode);
+        self::assertSame($message, $group->errorMessage);
+        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $group->state, 'the state is still Dead');
+        self::assertSame([], $group->members);
+        self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
+        self::assertSame(6, DescribeGroupsResponse::VERSION);
+    }
+
+    /**
+     * The entries of the versions 4 and 5 have no `error_message`; the one of version 6 has it right behind the
+     * error code, and a message that is not there stays null
+     */
+    public function testOnlyTheVersionSixEntryCarriesAnErrorMessage(): void
+    {
+        self::assertSame(
+            ['errorCode', 'errorMessage', 'groupId'],
+            array_slice(array_keys(DescribeGroupResponseMetadata::getScheme()), 0, 3)
+        );
+        self::assertArrayNotHasKey('errorMessage', DescribeGroupResponseMetadataV4::getScheme());
+        self::assertArrayNotHasKey('errorMessage', DescribeGroupResponseMetadataV0::getScheme());
+
+        $body  = '00000001' . '00' . '00000000' . '02'
+            . '0000' . '09' . bin2hex('my-group') . '07' . bin2hex('Stable') . '09' . bin2hex('consumer')
+            . '06' . bin2hex('range') . '01' . '80000000' . '00' . '00';
+        $frame = sprintf('%08x', strlen($body) / 2) . $body;
+
+        $response = DescribeGroupsResponseV5::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertInstanceOf(DescribeGroupResponseMetadataV4::class, $response->groups['my-group']);
+        self::assertNull($response->groups['my-group']->errorMessage, 'the property keeps its default');
+        self::assertSame($frame, bin2hex((string) $response));
     }
 }

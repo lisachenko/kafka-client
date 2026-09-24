@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * whose seven fields are all concrete; anything else may match many, which is why a DeleteAcls answer reports
  * every matching acl per filter instead of a count.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 class AclBindingFilter implements BinarySchemaInterface
 {

@@ -46,8 +46,8 @@ use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
  * join reason of the same KIP has. {@see LeaveGroupRequestMemberV3} is the entry of the versions 3 and 4, which
  * have no such field.
  *
- * @see docs/protocol/3.9.md, section "The leave reason of KIP-800 (v5)"
- * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
+ * @see docs/protocol/4.3.md, section "The leave reason of KIP-800 (v5)"
+ * @see docs/protocol/4.3.md, section "The batch leave of KIP-345 (v3)"
  */
 class LeaveGroupRequestMember implements BinarySchemaInterface
 {

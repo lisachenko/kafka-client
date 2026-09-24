@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * 3.2.3, because KIP-800 changed the request alone - so this class and {@see LeaveGroupResponse} decode the same
  * frame, one api version apart, and only {@see LeaveGroupRequestV4} and {@see LeaveGroupRequest} differ.
  *
- * @see docs/protocol/3.9.md, section "The leave reason of KIP-800 (v5)"
- * @see docs/protocol/3.9.md, section "LeaveGroup API (key 13, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "The leave reason of KIP-800 (v5)"
+ * @see docs/protocol/4.3.md, section "LeaveGroup API (key 13, v0 to v5)"
  */
 final class LeaveGroupResponseV4 extends LeaveGroupResponse
 {

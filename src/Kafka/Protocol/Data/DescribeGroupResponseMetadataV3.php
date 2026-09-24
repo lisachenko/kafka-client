@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Version 3 (KIP-430) appended the `authorized_operations` of the group, and version 4 (KIP-345) gave every
  * **member** entry a `group_instance_id`; this is the entry with the first and without the second.
  *
- * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 final class DescribeGroupResponseMetadataV3 extends DescribeGroupResponseMetadata
 {

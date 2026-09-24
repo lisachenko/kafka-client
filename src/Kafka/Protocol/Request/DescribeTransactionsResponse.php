@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\DescribeTransactionsResponseTransactionState;
  * every partition of a {@see DescribeProducersResponse} does. An id the coordinator has no state for is the code
  * **105** (`TransactionalIdNotFound`), which is the error code Kafka 3.0 added for this api.
  *
- * @see docs/protocol/3.9.md, section "DescribeTransactions API (key 65, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTransactions API (key 65, v0)"
  */
 class DescribeTransactionsResponse extends AbstractResponse
 {

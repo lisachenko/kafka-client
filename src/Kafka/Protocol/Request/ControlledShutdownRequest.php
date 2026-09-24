@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * **Kafka 2.4 added the version 3** (KIP-482), the same two fields in the flexible encoding.
  * {@see ControlledShutdownRequestV2} is the frame Kafka 2.2 introduced.
  *
- * @see docs/protocol/3.9.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 class ControlledShutdownRequest extends AbstractRequest
 {

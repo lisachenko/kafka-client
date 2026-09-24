@@ -42,7 +42,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v4)" and
+ * @see docs/protocol/4.3.md, sections "DescribeLogDirs API (key 35, v0 to v5)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
@@ -158,6 +158,48 @@ final class LogDirsAdminApiTest extends TestCase
             $directory->hasVolumeSizes(),
             'which is what every answer below the version 4 carries as well'
         );
+    }
+
+    public function testDescribeLogDirsReportsTheCordonFlagOfEveryDirectory(): void
+    {
+        // What the node answers while its dynamic `cordoned.log.dirs` is `/tmp/kafka-logs-2`: the flag of KIP-1066
+        // that the version 5 of Kafka 4.3 appended to every directory entry, behind the two volume sizes
+        $broker = new BrokerConnection(self::vector('describe-log-dirs', 'describelogdirs.response.v5.cordoned'));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_BROKER, $broker)
+            ->install();
+
+        $directories = $this->adminClient()->describeLogDirs([0], ['t4-43-vectors' => [0]])[0];
+
+        self::assertSame(
+            '00230005',
+            substr(bin2hex($broker->getReceivedFrames()[0]), 0, 8),
+            'the request goes out as the version 5 of Kafka 4.3, the one that asks for the flag'
+        );
+        self::assertFalse($directories[self::FIRST_DIR]->isCordoned);
+        self::assertTrue($directories[self::SECOND_DIR]->isCordoned, 'the directory listed in cordoned.log.dirs');
+        self::assertNotNull(
+            $directories[self::SECOND_DIR]->replica('t4-43-vectors', 0),
+            'a cordoned directory keeps the replicas it holds and still reports them'
+        );
+        self::assertTrue($directories[self::SECOND_DIR]->hasVolumeSizes(), 'and the sizes of KIP-827 stay in front');
+    }
+
+    public function testADirectoryIsNotCordonedUnlessTheBrokerSaysSo(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_BROKER, new BrokerConnection(self::describeLogDirsResponse([
+                [0, self::FIRST_DIR, []],
+                [0, self::SECOND_DIR, [], true],
+            ])))
+            ->install();
+
+        $directories = $this->adminClient()->describeLogDirs([0], [])[0];
+
+        self::assertFalse($directories[self::FIRST_DIR]->isCordoned, 'the default false of the field');
+        self::assertTrue($directories[self::SECOND_DIR]->isCordoned);
     }
 
     public function testDescribeLogDirsReportsAMovingReplicaInBothDirectories(): void
@@ -458,17 +500,19 @@ final class LogDirsAdminApiTest extends TestCase
     }
 
     /**
-     * Builds a DescribeLogDirs answer of version **4**, the one the client sends since Kafka 3.3
+     * Builds a DescribeLogDirs answer of version **5**, the version Kafka 4.3 added
      *
-     * The version 4 is the flexible frame of Kafka 2.6 with the top-level error code of Kafka 3.2 between
-     * `throttle_time_ms` and the directories and the `total_bytes`/`usable_bytes` of KIP-827 at the end of every
-     * directory entry, behind its topics; the answer of the versions 0 and 1 is the same fields in the plain
+     * The version 5 is the flexible frame of Kafka 2.6 with the top-level error code of Kafka 3.2 between
+     * `throttle_time_ms` and the directories, the `total_bytes`/`usable_bytes` of KIP-827 at the end of every
+     * directory entry, behind its topics, and the `is_cordoned` flag of KIP-1066 behind those two; the answer of
+     * the versions 0 and 1 is the same fields in the plain
      * encoding and without either addition. The wire vectors of the lower versions are replayed by
      * `tests/Compliance` through their own classes, while the scripted broker of these tests has to speak the
      * version the client sends.
      *
-     * @param list<array{0: int, 1: string, 2: array<string, list<array{0: int, 1: int, 2: int, 3: bool}>>}> $dirs
-     *        Error code, path and replicas - by topic, each `[partition, size, offsetLag, isFuture]` - per directory
+     * @param list<array{0: int, 1: string, 2: array<string, list<array{0: int, 1: int, 2: int, 3: bool}>>, 3?: bool}> $dirs
+     *        Error code, path and replicas - by topic, each `[partition, size, offsetLag, isFuture]` - per directory,
+     *        and whether the directory is cordoned (false when left out)
      * @param int $errorCode   Error of the whole request, the field the version 3 of Kafka 3.2 added
      * @param int $totalBytes  Size of the volume of every directory, the field the version 4 of Kafka 3.3 added
      * @param int $usableBytes Free bytes of that volume, the second field of KIP-827
@@ -483,7 +527,8 @@ final class LogDirsAdminApiTest extends TestCase
             . pack('n', $errorCode)                // the top-level error code of the version 3
             . self::unsignedVarint(count($dirs) + 1);
 
-        foreach ($dirs as [$errorCode, $logDir, $topics]) {
+        foreach ($dirs as $dir) {
+            [$errorCode, $logDir, $topics] = $dir;
             $body .= pack('n', $errorCode) . self::compactString($logDir)
                 . self::unsignedVarint(count($topics) + 1);
 
@@ -497,6 +542,8 @@ final class LogDirsAdminApiTest extends TestCase
             }
             // The two sizes of KIP-827 are the LAST fields of a directory entry, behind its topics
             $body .= pack('J', $totalBytes) . pack('J', $usableBytes);
+            // The cordon flag of KIP-1066 follows them, the field the version 5 of Kafka 4.3 added
+            $body .= ($dir[3] ?? false) ? "\x01" : "\x00";
             $body .= "\x00";                        // the tag buffer of the directory
         }
 

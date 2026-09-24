@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * Every topic, group and transactional id of this class is named `t3-30-…`, so that it can run next to the other
  * suites on the shared node.
  *
- * @see docs/protocol/3.9.md, sections "GroupCoordinator API (key 10, v0 to v6)" and "OffsetFetch API (key 9,
+ * @see docs/protocol/4.3.md, sections "GroupCoordinator API (key 10, v0 to v6)" and "OffsetFetch API (key 9,
  *      v0 to v8)"
  */
 #[CoversClass(GroupCoordinatorRequest::class)]

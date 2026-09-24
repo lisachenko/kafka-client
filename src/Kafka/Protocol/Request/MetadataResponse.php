@@ -89,7 +89,13 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * ({@see MetadataRequest::byTopicIds()}) and an id the cluster does not host has no name to answer with. Such an
  * entry carries the error code **100** `UnknownTopicId`, the id that was asked for and no partition, so a
  * version 12 answer may hold entries that no topic name indexes - they are appended to {@see self::$topics} with
- * an integer key, see {@see \Protocol\Kafka\Common\TopicMetadata::$topic}. This class is version 12.
+ * an integer key, see {@see \Protocol\Kafka\Common\TopicMetadata::$topic}. {@see MetadataResponseV12} decodes
+ * that answer.
+ *
+ * **Version 13 (Kafka 4.0, KIP-1102) appends a top-level `error_code` to the end of the body**, behind the topic
+ * array, and this class is version 13: `MetadataResponse.json` @ 4.0.0, "Version 13 supports top-level error code in
+ * the response", `{ "name": "ErrorCode", "type": "int16", "versions": "13+", "ignorable": true }` - a plain field, not
+ * a tagged one. What it exists for is the **129** `REBOOTSTRAP_REQUIRED` of KIP-1102, see {@see self::$errorCode}.
  *
  * `ControllerId` is the broker id of the active controller, or `-1` (`MetadataResponse.NO_CONTROLLER_ID` @
  * 1.1.1) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
@@ -100,8 +106,8 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)", "Metadata by topic id (v12, KIP-516)"
- *      and "Cluster readiness"
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)", "Metadata by topic id (v12, KIP-516)",
+ *      "The top-level error code of KIP-1102 (v13)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -110,7 +116,7 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 12;
+    public const int VERSION = 13;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -182,6 +188,22 @@ class MetadataResponse extends AbstractResponse
     public int $clusterAuthorizedOperations = AclOperation::NOT_REQUESTED;
 
     /**
+     * Error code of the whole answer, 0 when there was no error (KIP-1102)
+     *
+     * The one code it was added for is **129** `REBOOTSTRAP_REQUIRED`
+     * ({@see \Protocol\Kafka\Common\Errors\RebootstrapRequiredException}): "Client metadata is stale. The client
+     * should rebootstrap to obtain new metadata" - the brokers the client knows are not the cluster any more, so it
+     * has to start over from its `bootstrap.servers`, which is what {@see \Protocol\Kafka\Common\Cluster::reload()}
+     * does for every answer that carries a code here. No broker of Kafka 4.0 to 4.3.1 writes it:
+     * `MetadataRequest.getErrorResponse` @ 4.3.1 puts the code of a failed request into every topic entry and leaves
+     * this one 0, and only the clients read the field (`NetworkClient` and `KafkaAdminClient` @ 4.3.1), so the node
+     * of this line answers 0, see the section of the document.
+     *
+     * @since Version 13 of protocol (Kafka 4.0, KIP-1102)
+     */
+    public int $errorCode = 0;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -206,6 +228,10 @@ class MetadataResponse extends AbstractResponse
         // api: `MetadataResponse.json` @ 2.8.2 declares the field as "8-10", a closed range
         if (static::VERSION >= 8 && static::VERSION <= 10) {
             $body['clusterAuthorizedOperations'] = BinarySchema::TYPE_INT32;
+        }
+        // KIP-1102 put the top-level error code at the very END of the body, behind the topics
+        if (static::VERSION >= 13) {
+            $body['errorCode'] = BinarySchema::TYPE_INT16;
         }
 
         return $header + $body;

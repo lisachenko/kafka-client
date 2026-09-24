@@ -25,8 +25,8 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV11;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV11;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -41,8 +41,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  *
  * Every case of the table in the document is measured here, against a fresh topic whose log is at the epoch 0.
  *
- * @see docs/protocol/3.9.md, sections "Epoch validation in the fetch itself (v12, KIP-595)" and
- *      "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, sections "Epoch validation in the fetch itself (v12, KIP-595)" and
+ *      "Fetch API (key 1, v0 to v18)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
@@ -215,7 +215,7 @@ final class FetchEpochValidationTest extends IntegrationTestCase
     private function produce(string $value): void
     {
         $stream = $this->connect();
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$this->topic => [0 => RecordBatch::fromRecords(
                 [new Record($value, null, 0, null, (int) round(microtime(true) * 1000))]
             )]],
@@ -227,7 +227,7 @@ final class FetchEpochValidationTest extends IntegrationTestCase
 
         self::assertSame(
             KafkaException::NO_ERROR,
-            ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[0]->errorCode
+            ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[0]->errorCode
         );
     }
 
@@ -281,6 +281,6 @@ final class FetchEpochValidationTest extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
 
-        return $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        return $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
     }
 }

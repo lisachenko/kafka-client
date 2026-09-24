@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * with {@see DescribeQuorumResponseV0}, whose replica states carry the log end offset alone and neither
  * timestamp.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
  *      replica state (v1, KIP-836)"
  */
 final class DescribeQuorumRequestV0 extends DescribeQuorumRequest

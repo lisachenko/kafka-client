@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `leader_epoch` - version 7 (Kafka 2.1, KIP-320) inserted that field behind the leader id, see
  * {@see MetadataResponse}.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class MetadataResponseV6 extends MetadataResponse
 {

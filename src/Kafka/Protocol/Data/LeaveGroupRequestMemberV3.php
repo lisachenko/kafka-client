@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see LeaveGroupRequestMember}; this is the entry of the two versions below it, whose
  * {@see LeaveGroupRequestMember::$reason} never reaches the wire.
  *
- * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
+ * @see docs/protocol/4.3.md, section "The batch leave of KIP-345 (v3)"
  */
 final class LeaveGroupRequestMemberV3 extends LeaveGroupRequestMember
 {

@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * broker does not lead is **3** (`UnknownTopicOrPartition`), because the state lives in the log and only the
  * leader has it.
  *
- * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeProducers API (key 61, v0)"
  */
 class DescribeProducersResponsePartition implements BinarySchemaInterface
 {

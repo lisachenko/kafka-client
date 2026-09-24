@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Data\AlterClientQuotasResponseEntry;
  * is out of range - and **41** (NotController) for a request that reached a broker which does not write the quota
  * store of the cluster.
  *
- * @see docs/protocol/3.9.md, section "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "AlterClientQuotas API (key 49, v0 and v1)"
  */
 class AlterClientQuotasResponse extends AbstractResponse
 {

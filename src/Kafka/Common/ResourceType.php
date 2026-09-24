@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Common;
  * config api: `TOPIC` is 2 in both, but `GROUP` is 3 here and 8 there, and the broker resource has no ACL type at
  * all - a broker-wide permission is the {@see self::CLUSTER} resource.
  *
- * @see docs/protocol/3.9.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 final class ResourceType
 {

@@ -21,8 +21,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * the highest one a broker below Kafka 3.0 serves. {@see OffsetFetchRequestV8} is the batch without the
  * member of KIP-848, and {@see OffsetFetchRequest} the version 9 this client sends.
  *
- * @see docs/protocol/3.9.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
  */
 final class OffsetFetchRequestV7 extends OffsetFetchRequest
 {

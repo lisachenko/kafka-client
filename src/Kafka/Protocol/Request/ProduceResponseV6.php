@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * so the two classes decode the same bytes and differ only in the version of the request they belong to, see
  * {@see ProduceResponse}.
  *
- * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v11)"
+ * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v13)"
  */
 final class ProduceResponseV6 extends ProduceResponse
 {

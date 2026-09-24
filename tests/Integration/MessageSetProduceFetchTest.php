@@ -21,47 +21,50 @@ use Protocol\Kafka\Common\Record\Lz4;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\Snappy;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
-use Protocol\Kafka\Protocol\Request\FetchResponseV0;
-use Protocol\Kafka\Protocol\Request\FetchResponseV1;
-use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
-use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\FetchRequestV4;
+use Protocol\Kafka\Protocol\Request\FetchResponseV4;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
+use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Produces message sets to a real Kafka 0.10.2.2 broker and fetches them back.
+ * Produces record sets to the Kafka 4.3.1 node of this line and fetches them back.
  *
- * The broker is the authority on the message format: it validates the checksum of every message it appends, it
- * decompresses a compressed set to assign the offsets of its inner messages, and it recompresses it with the codec
- * the producer chose. A set that survives this round trip is a set that Kafka itself accepts.
+ * The broker is the authority on the record format: it validates the checksum of every batch it appends, it
+ * decompresses a compressed batch to validate its records, and it hands the batch back to a fetch as the log holds
+ * it. A batch that survives this round trip is a batch that Kafka itself accepts.
  *
- * The batches of this suite are written in message format v1 - the default of the producer - and read back with a
- * Fetch request of version 1, which makes the broker convert its answer down to message format v0: the values, the
- * keys and the offsets survive that conversion, the timestamps do not. What the log really holds and what a Fetch
- * v2 request answers is the subject of {@see MessageFormatV1Test}.
+ * **This class wrote its test data as message sets of the formats v0 and v1 through a Produce v2 on the lines up to
+ * 3.x.** Kafka 4.0 removed Produce v0 to v2 and Fetch v0 to v3 (KIP-896), which were the only versions that carry a
+ * message set, so a 4.x node can neither be given one nor be asked to convert its log into one. The round trip is
+ * therefore the one of the record batch v2, through the lowest versions the node serves - Produce v3 and Fetch v4,
+ * which answers the batch as the log holds it - and the refusal of the versions that carried message sets is
+ * measured here. The message sets themselves stay a format of this package: their classes, the vectors the lines
+ * below captured on real brokers, and the unit tests of the codecs.
  *
- * @see docs/protocol/3.9.md, section "MessageSet and Message"
+ * @see docs/protocol/4.3.md, sections "MessageSet and Message" and "The versions Kafka 4.0 removed (KIP-896)"
  */
+#[CoversClass(RecordBatch::class)]
 #[CoversClass(MessageSet::class)]
-#[CoversClass(Message::class)]
 #[CoversClass(CompressionCodec::class)]
 #[CoversClass(Snappy::class)]
 #[CoversClass(Lz4::class)]
-#[CoversClass(FetchRequestV1::class)]
-#[CoversClass(FetchRequestV0::class)]
-#[CoversClass(FetchResponseV1::class)]
-#[CoversClass(FetchResponseV0::class)]
+#[CoversClass(FetchRequestV4::class)]
+#[CoversClass(FetchResponseV4::class)]
 #[CoversClass(FetchResponsePartition::class)]
 final class MessageSetProduceFetchTest extends IntegrationTestCase
 {
     /**
      * Client id that identifies the requests of this test in the logs of the broker
      */
-    private const string CLIENT_ID = 'kafka-client-t3';
+    private const string CLIENT_ID = 'kafka-client-t2-40-record-sets';
 
     /**
      * Partition that every test of this class produces to and fetches from
@@ -82,7 +85,7 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        $this->topic = self::uniqueTopicName('t3-message-set');
+        $this->topic = self::uniqueTopicName('t2-40-record-set');
         new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, self::CLIENT_ID)
             ->awaitTopicWithLeaders($this->topic);
     }
@@ -99,22 +102,25 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     }
 
     #[DataProvider('compressionCodecs')]
-    public function testAMessageSetSurvivesTheRoundTripThroughTheBroker(int $codec): void
+    public function testARecordBatchSurvivesTheRoundTripThroughTheBroker(int $codec): void
     {
+        $now     = self::currentTimestampMs();
         $records = [
-            new Record('alpha', 'first'),
-            new Record('bravo'),
-            new Record(str_repeat('a larger payload that compresses well. ', 100), 'third'),
+            new Record('alpha', 'first')->withCreateTime($now),
+            new Record('bravo')->withCreateTime($now),
+            new Record(str_repeat('a larger payload that compresses well. ', 100), 'third')->withCreateTime($now),
         ];
 
-        $messageSet = MessageSet::fromRecords($records, $codec);
-        // The offsets of a produced set always count from 0; producing it twice shows that the broker replaces them,
-        // inside a compressed wrapper as well
-        $this->produce($messageSet);
-        $baseOffset = $this->produce($messageSet);
-        $fetched    = $this->fetch($baseOffset);
+        $batch = RecordBatch::fromRecords($records, $codec)->toBuffer();
+        // The base offset of a produced batch always counts from 0; producing it twice shows that the broker
+        // replaces it, and the offset deltas of the records inside a compressed batch stay relative to it
+        $this->produce($batch);
+        $baseOffset = $this->produce($batch);
+        $partition  = $this->fetchPartition($baseOffset);
+        $fetched    = $partition->getRecords()->getRecords();
 
-        self::assertSame(3, $baseOffset, 'the second set is appended after the three messages of the first one');
+        self::assertSame(3, $baseOffset, 'the second batch is appended after the three records of the first one');
+        self::assertSame(RecordBatch::MAGIC, $partition->getRecords()->getMagic(), 'a Fetch v4 converts nothing');
         self::assertCount(3, $fetched);
         self::assertSame(['alpha', 'bravo', $records[2]->value], array_map(
             static fn(Record $record): ?string => $record->value,
@@ -127,17 +133,22 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         self::assertSame(
             [$baseOffset, $baseOffset + 1, $baseOffset + 2],
             array_map(static fn(Record $record): ?int => $record->offset, $fetched),
-            'the broker assigns consecutive offsets, inner messages of a compressed set included'
+            'the broker assigns consecutive offsets, the records of a compressed batch included'
         );
+        self::assertSame([$now, $now, $now], array_map(
+            static fn(Record $record): ?int => $record->timestamp,
+            $fetched
+        ));
     }
 
     public function testANullValueSurvivesTheRoundTripThroughTheBroker(): void
     {
-        $baseOffset = $this->produce(MessageSet::fromRecords([
-            new Record(null, 'tombstone'),
-            new Record('', 'empty'),
-            new Record('value', null),
-        ]));
+        $now        = self::currentTimestampMs();
+        $baseOffset = $this->produce(RecordBatch::fromRecords([
+            new Record(null, 'tombstone')->withCreateTime($now),
+            new Record('', 'empty')->withCreateTime($now),
+            new Record('value', null)->withCreateTime($now),
+        ])->toBuffer());
         $fetched = $this->fetch($baseOffset);
 
         self::assertCount(3, $fetched);
@@ -148,81 +159,104 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         self::assertNull($fetched[2]->key);
     }
 
-    public function testAFetchThatDoesNotFitTheFirstMessageComesBackWithoutRecords(): void
+    public function testAFetchSmallerThanTheFirstBatchStillGetsTheWholeBatch(): void
     {
-        $baseOffset = $this->produce(MessageSet::fromRecords([new Record(str_repeat('x', 4096))]));
+        $baseOffset = $this->produce(RecordBatch::fromRecords([
+            new Record(str_repeat('x', 4096))->withCreateTime(self::currentTimestampMs()),
+        ])->toBuffer());
 
-        // MaxBytes below the size of the first message, on a Fetch v1: `hardMaxBytesLimit` is still true for a
-        // version below 3, so `ReplicaManager.readFromLog` @ 3.9.2 keeps the incomplete first entry of the log
-        // instead of replacing it with an empty set - but the log is a **record batch v2** on this node and the
-        // answer of a v1 fetch has to be down-converted. `LazyDownConversionRecords` converts whole batches only,
-        // and the slice holds no whole batch, so what reaches the client is an **empty** record set. A 2.8.2
-        // broker handed the truncated bytes of that one message out instead.
+        // MaxBytes below the size of the first batch, on a Fetch v4: from version 3 on (KIP-74) the limit is soft
+        // for the first batch of the answer, so the broker hands the whole batch out rather than a truncated slice
+        // or nothing - which is what a Fetch v0 to v2 got, and why a consumer of those versions could get stuck
+        // on a message bigger than its fetch size. Those versions are gone from a 4.x node (KIP-896)
         $partition = $this->fetchPartition($baseOffset, 64);
+        $records   = $partition->getRecords()->getRecords();
 
-        self::assertSame([], $partition->getRecords()->getRecords(), 'the partial message is dropped');
-        self::assertSame('', $partition->messageSet, 'nothing at all comes back, not even a truncated message');
+        self::assertCount(1, $records, 'the batch comes back whole');
+        self::assertSame(str_repeat('x', 4096), $records[0]->value);
         self::assertFalse($partition->getRecords()->hasPartialTrailingRecord());
-
-        // The state the client has to recognise is unchanged: no complete message below a high water mark that
-        // has one, i.e. "raise max.partition.fetch.bytes", not "fetch the same offset again"
-        self::assertTrue($partition->isSingleMessageTooLarge($baseOffset));
-        self::assertCount(1, $this->fetch($baseOffset));
+        self::assertFalse($partition->isSingleMessageTooLarge($baseOffset));
     }
 
     public function testTheBrokerAcceptsTheChecksumsThisClientComputes(): void
     {
-        // A corrupt checksum would make the broker answer with error code 2 instead of a base offset
-        $offset = $this->produce(MessageSet::fromRecords([new Record('bar', 'foo')]));
+        // A corrupt CRC-32C would make the broker answer with the error code 2 instead of a base offset
+        $offset = $this->produce(
+            RecordBatch::fromRecords([new Record('bar', 'foo')->withCreateTime(self::currentTimestampMs())])
+                ->toBuffer()
+        );
 
         self::assertGreaterThanOrEqual(0, $offset);
     }
 
-    public function testVersion1FetchAnswerIsPrefixedWithAThrottleTimeAndVersion0IsNot(): void
+    public function testTheFetchVersionsThatAnsweredAMessageSetCloseTheConnection(): void
     {
-        $baseOffset = $this->produce(MessageSet::fromRecords([new Record('throttle', 'probe')]));
-        $stream     = $this->connect();
-
-        new FetchRequestV1([$this->topic => [self::PARTITION => $baseOffset]], 1000, 1, 65536, -1, self::CLIENT_ID, 51)
-            ->writeTo($stream);
-        $versionOne = FetchResponseV1::unpack($stream);
-
-        self::assertSame(51, $versionOne->getCorrelationId());
-        self::assertSame(0, $versionOne->throttleTimeMs, 'the test broker enforces no consumer quota');
-
-        new FetchRequestV0([$this->topic => [self::PARTITION => $baseOffset]], 1000, 1, 65536, -1, self::CLIENT_ID, 52)
-            ->writeTo($stream);
-        $versionZero = FetchResponseV0::unpack($stream);
-
-        self::assertSame(52, $versionZero->getCorrelationId());
-        self::assertSame(
-            $versionOne->getMessageSize() - 4,
-            $versionZero->getMessageSize(),
-            'the ThrottleTimeMs prefix of version 1 is the only difference between the two answers'
+        // Fetch v0 and v1 were the versions this class read message sets back with, and the node down-converted its
+        // record batches for them; `FetchRequest.json` @ 4.0.0 starts at version 4, and the parser of a 4.x node
+        // refuses everything below it by closing the connection (KIP-896)
+        $baseOffset = $this->produce(
+            RecordBatch::fromRecords([new Record('throttle', 'probe')->withCreateTime(self::currentTimestampMs())])
+                ->toBuffer()
         );
-        self::assertSame(
-            bin2hex((string) $versionOne->topics[$this->topic]->partitions[self::PARTITION]->messageSet),
-            bin2hex((string) $versionZero->topics[$this->topic]->partitions[self::PARTITION]->messageSet)
-        );
+        $probe = new RemovedVersionProbe(self::firstBootstrapServer());
+
+        self::assertSame(RemovedVersionProbe::CLOSED, $probe->send(new FetchRequestV1(
+            [$this->topic => [self::PARTITION => $baseOffset]],
+            1000,
+            1,
+            65536,
+            -1,
+            self::CLIENT_ID,
+            51
+        )));
+        self::assertSame(RemovedVersionProbe::CLOSED, $probe->send(new FetchRequestV0(
+            [$this->topic => [self::PARTITION => $baseOffset]],
+            1000,
+            1,
+            65536,
+            -1,
+            self::CLIENT_ID,
+            52
+        )));
+
+        // ... while the lowest version the node serves reads the very same record
+        self::assertSame('throttle', $this->fetch($baseOffset)[0]->value);
+    }
+
+    public function testAMessageSetOfTheFormatsV0AndV1IsRefusedByEveryServedProduceVersion(): void
+    {
+        foreach ([Message::MAGIC_V0, Message::MAGIC_V1] as $magic) {
+            $stream = $this->connect();
+            new ProduceRequestV3(
+                [$this->topic => [self::PARTITION => MessageSet::fromRecords([new Record('legacy')], 0, $magic)]],
+                1,
+                self::PRODUCE_TIMEOUT_MS,
+                self::CLIENT_ID,
+                53
+            )->writeTo($stream);
+
+            $partition = ProduceResponseV3::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+            self::assertSame(KafkaException::INVALID_RECORD, $partition->errorCode, "magic {$magic}: 87");
+        }
     }
 
     /**
-     * Produces the message set into the partition under test and returns the offset of its first message
+     * Produces the record batch into the partition under test and returns the offset of its first record
+     *
+     * The request is a Produce **v3**, the lowest version a node of Kafka 4.0 or later serves (KIP-896).
      */
-    private function produce(MessageSet $messageSet): int
+    private function produce(string $recordBatch): int
     {
         $stream = $this->connect();
-        // A message set of the formats v0 and v1 may only travel in a request below version 3, see
-        // docs/protocol/3.9.md, section "Produce API (key 0, v0 to v11)"
-        new ProduceRequestV2(
-            [$this->topic => [self::PARTITION => $messageSet]],
+        new ProduceRequestV3(
+            [$this->topic => [self::PARTITION => $recordBatch]],
             1,
             self::PRODUCE_TIMEOUT_MS,
             self::CLIENT_ID,
             1
         )->writeTo($stream);
 
-        $partition = ProduceResponseV2::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+        $partition = ProduceResponseV3::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode($partition->errorCode, ['topic' => $this->topic, 'partitionId' => self::PARTITION]);
         }
@@ -241,19 +275,27 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     }
 
     /**
-     * Fetches the partition under test from the given offset
+     * Fetches the partition under test from the given offset with a Fetch **v4**, the lowest version a 4.x node serves
      */
     private function fetchPartition(int $offset, int $maxBytes = 65536): FetchResponsePartition
     {
         $stream = $this->connect();
-        new FetchRequestV1([$this->topic => [self::PARTITION => $offset]], 1000, 1, $maxBytes, -1, self::CLIENT_ID, 2)
+        new FetchRequestV4([$this->topic => [self::PARTITION => $offset]], 1000, 1, $maxBytes, -1, self::CLIENT_ID, 2)
             ->writeTo($stream);
 
-        $partition = FetchResponseV1::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+        $partition = FetchResponseV4::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode($partition->errorCode, ['topic' => $this->topic, 'partitionId' => self::PARTITION]);
         }
 
         return $partition;
+    }
+
+    /**
+     * The current time in milliseconds: a record stamped with a timestamp of the past falls to the retention
+     */
+    private static function currentTimestampMs(): int
+    {
+        return (int) round(microtime(true) * 1000);
     }
 }

@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Admin;
  * voter or an observer is an id and a directory id there, and the **address** of that id is in this map alone. It
  * is empty against a peer that only answers the version 1 or the version 0 of the api.
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 final class QuorumInfo
 {

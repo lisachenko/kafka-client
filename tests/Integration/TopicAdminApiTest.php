@@ -27,6 +27,7 @@ use Protocol\Kafka\Common\Errors\InvalidReplicationFactorException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\RequestTimedOutException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
@@ -55,7 +56,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
  * broker answered with the wording of `ZkAdminManager` and `AdminZkClient`; the messages below are the ones the
  * node really sent, and the node id of the image is **1**, not the 0 of the ZooKeeper images of the lines below.
  *
- * @see docs/protocol/3.9.md, sections "CreateTopics API (key 19, v0 to v7)", "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, sections "CreateTopics API (key 19, v0 to v7)", "DeleteTopics API (key 20, v0 to v6)"
  *      and "CreatePartitions API (key 37, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]
@@ -301,10 +302,12 @@ final class TopicAdminApiTest extends IntegrationTestCase
         // `ReplicationControlManager` @ 3.9.2 wraps whatever the replica placer throws into "Unable to replicate
         // the partition <n> time(s): <reason>", and the reason of `StripedReplicaPlacer.
         // throwInvalidReplicationFactorIfTooFewBrokers()` names the registered brokers - where `AdminUtils.
-        // assignReplicasToBrokers` @ 2.8.2 said "replication factor: 2 larger than available brokers: 1"
+        // assignReplicasToBrokers` @ 2.8.2 said "replication factor: 2 larger than available brokers: 1". Kafka 4.3
+        // added the cordoned log directories to the reason (`StripedReplicaPlacer` @ 4.3.1); 3.9.2 to 4.2.1 end
+        // the sentence at "are registered."
         self::assertSame(
             'Unable to replicate the partition 2 time(s): The target replication factor of 2 cannot be reached '
-            . 'because only 1 broker(s) are registered.',
+            . 'because only 1 broker(s) are registered or some brokers have all their log directories cordoned.',
             $result[$topic]->getContext()['error'] ?? null
         );
         self::assertNotContains($topic, $this->admin->listTopics());
@@ -770,18 +773,27 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertSame([], $this->admin->createPartitions([]));
     }
 
-    public function testVersionZeroOfCreateTopicsIsStillServedByTheBroker(): void
+    /**
+     * Kafka 4.0 removed the versions 0 and 1 of CreateTopics (KIP-896): the node closes the connection
+     *
+     * `CreateTopicsRequest.json` @ 4.0.0 declares `"validVersions": "2-7"`, and a frame below the minimum of the
+     * table is not answered - `UnsupportedVersionException: Received request for api with key 19 (CreateTopics)
+     * and unsupported version 0` in the log of the node - and nothing is created. The classes and the wire vectors
+     * of both versions stay; the 3.9.2 node of the 3.x line still created the topic of a version 0 frame and
+     * answered it without a message.
+     */
+    public function testVersionZeroOfCreateTopicsIsRefusedWithAClosedConnection(): void
     {
         $topic  = $this->topicName('v0');
         $stream = $this->connect();
         new CreateTopicsRequestV0([new NewTopic($topic, 1, 1)], 30000, 't7-topics', 7102)->writeTo($stream);
 
-        $response = CreateTopicsResponseV0::unpack($stream);
-
-        self::assertSame(7102, $response->getCorrelationId());
-        self::assertSame(KafkaException::NO_ERROR, $response->topics[$topic]->errorCode);
-        self::assertNull($response->topics[$topic]->errorMessage, 'version 0 carries no message at all');
-        $this->awaitTopic($topic);
+        try {
+            CreateTopicsResponseV0::unpack($stream);
+            self::fail('the node closes the connection of a CreateTopics v0');
+        } catch (NetworkException) {
+            $this->assertTopicStaysAway($topic);
+        }
     }
 
     /**

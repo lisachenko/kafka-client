@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   ListGroups Response (Version: 1 and 2) => throttle_time_ms error_code [groups]
  * </pre>
  *
- * @see docs/protocol/3.9.md, sections "ListGroups API (key 16, v0 to v5)" and "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, sections "ListGroups API (key 16, v0 to v5)" and "Quotas and throttle time"
  */
 final class ListGroupsResponseV1 extends ListGroupsResponse
 {

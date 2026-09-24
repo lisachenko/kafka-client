@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see FetchResponseTopic}. The partition entry is the flexible one of version 12, with the three tagged fields
  * of KIP-595 and KIP-630 ({@see FetchResponsePartition}).
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v18)"
  */
 final class FetchResponseTopicV12 extends FetchResponseTopic
 {

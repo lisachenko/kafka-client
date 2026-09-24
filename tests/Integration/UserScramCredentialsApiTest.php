@@ -59,8 +59,8 @@ use Throwable;
  * Every user of this class carries a `t1-scram-` prefix of its own and every credential it writes is removed again
  * in {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/3.9.md, sections "DescribeUserScramCredentials API (key 50, v0)",
- *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0 and v1)"
+ * @see docs/protocol/4.3.md, sections "DescribeUserScramCredentials API (key 50, v0)",
+ *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeUserScramCredentialsRequest::class)]
@@ -327,40 +327,44 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
     }
 
     /**
-     * A KRaft node finalizes `metadata.version`, and says so through the tagged fields of the ApiVersions answer
+     * The node finalizes its seven features, and says so through the tagged fields of the ApiVersions answer
      *
-     * A ZooKeeper-backed 2.8.2 cluster finalized nothing at all: all three values were empty or 0. The node of
-     * this line was formatted at `3.9-IV0`, which is the feature level **21** of `metadata.version`, and it both
-     * supports (1 to 21) and finalizes (21/21) that one feature. Since this client sends the **ApiVersions v4** of
-     * Kafka 3.9 the *supported* map also carries `kraft.version` 0 to 1, which a v3 answer hides because its
-     * minimum is 0 (KAFKA-17011); it is **not** in the finalized map, because the node has finalized it at the
-     * level 0 and a feature at level 0 is not finalized at all - its quorum is the static
-     * `controller.quorum.voters` of KIP-595. The epoch is the **offset of the metadata log** at which the
-     * agreement was written, so it grows with every write the cluster does and can only be asserted to be
-     * positive.
+     * A ZooKeeper-backed 2.8.2 cluster finalized nothing at all, and the 3.9.2 node of the 3.x line finalized
+     * `metadata.version` alone. The 4.3.1 node of this line was formatted `--standalone` with the defaults of the
+     * release, and the **ApiVersions v4** this client sends carries every feature it supports and every feature it
+     * finalized: `metadata.version` from the level 7 (`3.3-IV3`, the lowest a 4.x node accepts) to 30 (`4.3-IV0`),
+     * finalized at 30, and six features finalized above 0 - `kraft.version` 1 among them, the dynamic quorum of
+     * KIP-853, which is why it is in the finalized map now and was not on the static quorum of 3.9.2. The epoch is
+     * the **offset of the metadata log** at which the agreement was written, so it grows with every write the
+     * cluster does and can only be asserted to be positive.
      */
     public function testTheNodeFinalizesItsMetadataVersion(): void
     {
         $features = $this->admin->describeFeatures();
+        $expected = [
+            'eligible.leader.replicas.version' => [0, 1, 1],
+            'group.version'                    => [0, 1, 1],
+            'kraft.version'                    => [0, 1, 1],
+            'metadata.version'                 => [7, 30, 30],
+            'share.version'                    => [0, 1, 1],
+            'streams.version'                  => [0, 1, 1],
+            'transaction.version'              => [0, 2, 2],
+        ];
 
-        self::assertSame(
-            ['kraft.version', 'metadata.version'],
-            array_keys($features->supportedFeatures),
-            'the two features a 3.9.2 node supports; a client that sent ApiVersions v3 would see the second alone,'
-            . ' because the minimum of `kraft.version` is 0 (KAFKA-17011)'
-        );
-        self::assertSame(0, $features->supportedFeatures['kraft.version']->minVersion, 'the static voter set');
-        self::assertSame(1, $features->supportedFeatures['kraft.version']->maxVersion, 'the KIP-853 voter set');
-        self::assertSame(1, $features->supportedFeatures['metadata.version']->minVersion);
-        self::assertSame(21, $features->supportedFeatures['metadata.version']->maxVersion, '3.9-IV0');
+        $supported = array_keys($features->supportedFeatures);
+        $finalized = array_keys($features->finalizedFeatures);
+        sort($supported);
+        sort($finalized);
 
-        self::assertSame(
-            ['metadata.version'],
-            array_keys($features->finalizedFeatures),
-            '`kraft.version` is finalized at the level 0, and a feature at level 0 is not in the finalized map'
-        );
-        self::assertSame(21, $features->finalizedFeatures['metadata.version']->minVersionLevel);
-        self::assertSame(21, $features->finalizedFeatures['metadata.version']->maxVersionLevel);
+        self::assertSame(array_keys($expected), $supported, 'the seven features a 4.3.1 node supports');
+        self::assertSame(array_keys($expected), $finalized, 'and every one of them is finalized above the level 0');
+
+        foreach ($expected as $name => [$minVersion, $maxVersion, $level]) {
+            self::assertSame($minVersion, $features->supportedFeatures[$name]->minVersion, $name);
+            self::assertSame($maxVersion, $features->supportedFeatures[$name]->maxVersion, $name);
+            self::assertSame($level, $features->finalizedFeatures[$name]->minVersionLevel, $name);
+            self::assertSame($level, $features->finalizedFeatures[$name]->maxVersionLevel, $name);
+        }
 
         self::assertGreaterThan(
             0,
@@ -370,49 +374,63 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
     }
 
     /**
-     * A feature update the controller cannot make is refused per feature, with 95 and the reason
+     * A feature update the controller cannot make refuses the whole request, with 95 and the reason
      *
-     * On the 2.8.2 broker every update was the 42 (`InvalidRequest`) of a cluster that finalizes nothing - "the
-     * provided feature is not supported" for an upgrade and "Can not delete non-existing finalized feature" for a
-     * deletion. `FeatureControlManager.updateFeature` @ 3.9.2 answers **95** (`InvalidUpdateVersion`) instead, and
-     * its message names the controller and the range it knows. A **deletion** - the feature level 0 - is not
-     * refused at all any more: level 0 means "disabled" and is supported by everybody, so the controller writes a
-     * `FeatureLevelRecord` with the level 0 and answers 0, whether that feature was ever finalized or not.
+     * On the 2.8.2 broker every update was the 42 (`InvalidRequest`) of a cluster that finalizes nothing, and the
+     * 3.9.2 controller answered **95** (`InvalidUpdateVersion`) per feature. `QuorumController.updateFeatures` @
+     * 4.0.0 applies the updates atomically: the first feature it refuses is the top-level 95 of the whole request,
+     * behind the sentence `The update failed for all features since the following feature had an error:`, and
+     * `AdminClient::updateFeatures()` throws it. A **deletion** of a feature no controller knows - the level 0 that
+     * the 3.9.2 controller accepted and wrote - is refused as well: `Feature.featureFromName` @ 4.0.0 knows the
+     * features of the release and nothing else.
      */
-    public function testAFeatureUpdateIsRefusedPerFeature(): void
+    public function testAFeatureUpdateIsRefusedAsAWhole(): void
     {
-        $result = $this->admin->updateFeatures([new FeatureUpdate('t1-nonsense', 1)]);
+        $prefix  = 'The update failed for all features since the following feature had an error: ';
+        $refusal = function (FeatureUpdate $update): KafkaException {
+            try {
+                $this->admin->updateFeatures([$update]);
+            } catch (KafkaException $exception) {
+                return $exception;
+            }
 
-        self::assertInstanceOf(InvalidUpdateVersionException::class, $result['t1-nonsense']);
-        self::assertSame(KafkaException::INVALID_UPDATE_VERSION, $result['t1-nonsense']->getCode());
+            self::fail('the controller accepted ' . $update->feature);
+        };
+
+        $unknown = $refusal(new FeatureUpdate('t1-nonsense', 1));
+
+        self::assertInstanceOf(InvalidUpdateVersionException::class, $unknown);
+        self::assertSame(KafkaException::INVALID_UPDATE_VERSION, $unknown->getCode());
         self::assertSame(
-            'Invalid update version 1 for feature t1-nonsense. Local controller 1 does not support this feature.',
-            $result['t1-nonsense']->getContext()['error']
-        );
-
-        $tooHigh = $this->admin->updateFeatures([new FeatureUpdate('metadata.version', 99)]);
-
-        self::assertInstanceOf(InvalidUpdateVersionException::class, $tooHigh['metadata.version']);
-        self::assertSame(
-            'Invalid update version 99 for feature metadata.version. Local controller 1 only supports versions 1-21',
-            $tooHigh['metadata.version']->getContext()['error']
-        );
-
-        $downgrade = $this->admin->updateFeatures([new FeatureUpdate('metadata.version', 1)]);
-
-        self::assertInstanceOf(InvalidUpdateVersionException::class, $downgrade['metadata.version']);
-        self::assertSame(
-            'Invalid update version 1 for feature metadata.version. Can\'t downgrade the version of this feature'
-            . ' without setting the upgrade type to either safe or unsafe downgrade.',
-            $downgrade['metadata.version']->getContext()['error'],
-            'the `upgrade_type` of KIP-584 that would allow it is the version 1 of the api, which Kafka 3.3 added'
+            $prefix . 'Invalid update version 1 for feature t1-nonsense. Local controller 1 does not support this'
+            . ' feature.',
+            $unknown->getContext()['error']
         );
 
         self::assertSame(
-            ['t1-nonsense' => null],
-            $this->admin->updateFeatures([FeatureUpdate::delete('t1-nonsense')]),
-            'and a deletion of a feature that was never finalized is accepted: the level 0 is supported by every'
-            . ' node of the quorum, so the controller simply writes it'
+            $prefix . 'Invalid update version 99 for feature metadata.version. Local controller 1 only supports'
+            . ' versions 7-30',
+            $refusal(new FeatureUpdate('metadata.version', 99))->getContext()['error']
+        );
+
+        self::assertSame(
+            $prefix . 'Invalid update version 1 for feature metadata.version. Local controller 1 only supports'
+            . ' versions 7-30',
+            $refusal(new FeatureUpdate('metadata.version', 1))->getContext()['error'],
+            'the level 1 of 3.9.2 is below the range of a 4.x controller, which starts at 3.3-IV3'
+        );
+
+        self::assertSame(
+            $prefix . 'Invalid update version 29 for feature metadata.version. Can\'t downgrade the version of this'
+            . ' feature without setting the upgrade type to either safe or unsafe downgrade.',
+            $refusal(new FeatureUpdate('metadata.version', 29))->getContext()['error'],
+            'the `upgrade_type` of KIP-778 that would allow it is the version 1 of the api, which Kafka 3.3 added'
+        );
+
+        self::assertSame(
+            $prefix . 'Invalid update version 0 for feature t1-nonsense. Feature t1-nonsense not found.',
+            $refusal(FeatureUpdate::delete('t1-nonsense'))->getContext()['error'],
+            'and the deletion of a feature no controller knows is refused, where 3.9.2 wrote it'
         );
     }
 

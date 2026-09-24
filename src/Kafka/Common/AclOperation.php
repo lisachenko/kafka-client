@@ -37,7 +37,7 @@ namespace Protocol\Kafka\Common;
  * a super user, and the operations the acls of the principal name for everybody else - **0** for the SASL user
  * `acltest`, which no acl of the node names.
  *
- * @see docs/protocol/3.9.md, section "The authorized operations (v8, KIP-430)"
+ * @see docs/protocol/4.3.md, section "The authorized operations (v8, KIP-430)"
  */
 final class AclOperation
 {

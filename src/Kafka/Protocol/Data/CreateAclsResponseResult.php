@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * with it; a refusal of the caller is 31 (`ClusterAuthorizationFailed`), because the api asks the authorizer for
  * `ALTER` on the `CLUSTER` resource.
  *
- * @see docs/protocol/3.9.md, section "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "CreateAcls API (key 30, v0 to v3)"
  */
 class CreateAclsResponseResult implements BinarySchemaInterface
 {

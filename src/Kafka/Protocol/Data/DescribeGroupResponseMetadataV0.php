@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Version 3 (KIP-430, Kafka 2.3) appended the 32-bit `authorized_operations` bit set behind the member array,
  * see {@see DescribeGroupResponseMetadata}; this is the entry without it.
  *
- * @see docs/protocol/3.9.md, section "The authorized operations of a group (v3, KIP-430)"
+ * @see docs/protocol/4.3.md, section "The authorized operations of a group (v3, KIP-430)"
  */
 final class DescribeGroupResponseMetadataV0 extends DescribeGroupResponseMetadata
 {

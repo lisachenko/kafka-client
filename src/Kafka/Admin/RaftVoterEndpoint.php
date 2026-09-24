@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Admin;
  * the port are the address that listener is advertised at inside the cluster, which is not necessarily one a
  * client outside it can reach.
  *
- * @see docs/protocol/3.9.md, section "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, section "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 final class RaftVoterEndpoint
 {

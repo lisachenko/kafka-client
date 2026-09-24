@@ -66,7 +66,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * Every request goes out with the version this line sends, which Kafka 2.0 raised by one for all four apis without
  * changing a field (KIP-219): JoinGroup v3, SyncGroup v2, Heartbeat v2 and LeaveGroup v2.
  *
- * @see docs/protocol/3.9.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v9)",
+ * @see docs/protocol/4.3.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v9)",
  *      "SyncGroup API (key 14, v0 to v5)", "Heartbeat API (key 12, v0 to v4)" and "LeaveGroup API (key 13, v0 to v5)"
  */
 #[CoversClass(Client::class)]

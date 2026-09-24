@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * is answered with an empty group array.
  *
  * <pre>
- *   DescribeGroups Request (Version: 0 to 3) => [group_ids] include_authorized_operations
+ *   DescribeGroups Request (Version: 0 to 6) => [group_ids] include_authorized_operations
  *     group_ids                     => STRING
  *     include_authorized_operations => BOOLEAN   -- since version 3
  * </pre>
@@ -39,7 +39,15 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * leaves that bit set at {@see \Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata::OPERATIONS_NOT_REQUESTED}.
  * {@see DescribeGroupsRequestV2} is the frame without the flag.
  *
- * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * **Version 6 (Kafka 4.0, KIP-1043) is the frame of version 5 again**: what it changes is the ANSWER to a group
+ * the coordinator does not hold. Up to version 5 such a group is described as `Dead` with the error code 0, from
+ * version 6 on it carries the **69** `GroupIdNotFound` and an error message
+ * ({@see \Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata::$errorMessage}) -
+ * `GroupMetadataManager.describeGroups` @ 4.0.0 decides on `context.requestVersion() >= 6`. That includes a group
+ * of the consumer protocol of KIP-848, which is not a classic group. {@see DescribeGroupsRequestV5} is the frame
+ * of the version 5 below it.
+ *
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {
@@ -51,7 +59,7 @@ class DescribeGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

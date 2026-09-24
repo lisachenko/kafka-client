@@ -37,6 +37,7 @@ use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Errors\UnstableOffsetCommitException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Record\CompressionCodec;
@@ -72,7 +73,7 @@ use Protocol\Kafka\Tests\Unit\Fixture\TransactionalTestClient;
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
  * answers, the retries after a metadata refresh and the reporting of a partially failed request.
  *
- * @see docs/protocol/3.9.md
+ * @see docs/protocol/4.3.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(RetryPolicy::class)]
@@ -264,6 +265,107 @@ final class ClientTest extends TestCase
         );
     }
 
+    public function testAVersionThirteenRequestNamesTheTopicByTheIdOfTheMetadata(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 4]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $result = $this->client()->produce([self::TOPIC => [0 => [new Record('by id')]]]);
+
+        // Produce v13 (Kafka 4.1, KIP-516): the 16 bytes of the id the Metadata answer gave the topic stand where
+        // the compact string of its name stood, and the answer - by id as well - is reported under the name
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        self::assertStringContainsString(bin2hex(ResponseFrame::topicIdOf(self::TOPIC)), $frame);
+        self::assertStringNotContainsString(bin2hex(self::TOPIC), $frame, 'the name is not on the wire');
+        self::assertSame([self::TOPIC], array_keys($result));
+        self::assertSame(4, $result[self::TOPIC][0]->baseOffset);
+    }
+
+    public function testAStaleTopicIdIsReportedAndTheNextCallNamesTheCurrentOne(): void
+    {
+        // The topic was deleted and created again under the same name after this client read its metadata: the
+        // leader answers the id of the deleted topic with the 100 and appends nothing
+        $staleId  = str_repeat("\x5a", 16);
+        $stale    = ResponseFrame::metadata(
+            0,
+            [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
+            [self::TOPIC => [0 => 0, 1 => 1]],
+            topicIds: [self::TOPIC => $staleId]
+        );
+        $leader = new BrokerConnection(
+            ResponseFrame::produce(
+                0,
+                [self::TOPIC => [0 => [KafkaException::UNKNOWN_TOPIC_ID, -1]]],
+                topicIds: [self::TOPIC => $staleId]
+            ),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 0]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($stale), new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client = $this->client([ClientConfig::RETRIES => 0]);
+        try {
+            $client->produce([self::TOPIC => [0 => [new Record('to the deleted topic')]]]);
+            self::fail('a batch for a topic id the node does not have is expected to be reported');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(UnknownTopicIdException::class, $exception->getExceptions()[self::TOPIC][0]);
+            self::assertSame([], $exception->getPartialResult());
+        }
+        self::assertSame(
+            2,
+            $this->brokers->getConnectionCount(self::BOOTSTRAP_ADDRESS),
+            'without a retry left the metadata is reloaded all the same'
+        );
+
+        $result = $client->produce([self::TOPIC => [0 => [new Record('to the new topic')]]]);
+
+        self::assertSame(0, $result[self::TOPIC][0]->baseOffset);
+        self::assertStringContainsString(bin2hex($staleId), bin2hex($leader->getReceivedFrames()[0]));
+        self::assertStringContainsString(
+            bin2hex(ResponseFrame::topicIdOf(self::TOPIC)),
+            bin2hex($leader->getReceivedFrames()[1]),
+            'the second call names the topic by the id of the reloaded metadata'
+        );
+    }
+
+    public function testAStaleTopicIdIsSentAgainUnderTheCurrentIdWhenARetryIsLeft(): void
+    {
+        $staleId = str_repeat("\x5a", 16);
+        $stale   = ResponseFrame::metadata(
+            0,
+            [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
+            [self::TOPIC => [0 => 0, 1 => 1]],
+            topicIds: [self::TOPIC => $staleId]
+        );
+        $leader = new BrokerConnection(
+            ResponseFrame::produce(
+                0,
+                [self::TOPIC => [0 => [KafkaException::UNKNOWN_TOPIC_ID, -1]]],
+                topicIds: [self::TOPIC => $staleId]
+            ),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 0]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($stale), new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $result = $this->client([ClientConfig::RETRIES => 1])
+            ->produce([self::TOPIC => [0 => [new Record('to the new topic')]]]);
+
+        self::assertSame(0, $result[self::TOPIC][0]->baseOffset);
+        self::assertSame(2, $leader->getRequestCount(), 'the 100 is retriable: nothing was appended');
+        self::assertStringContainsString(
+            bin2hex(ResponseFrame::topicIdOf(self::TOPIC)),
+            bin2hex($leader->getReceivedFrames()[1])
+        );
+    }
+
     public function testOnlyTheFailedPartitionsAreSentAgain(): void
     {
         $leader = new BrokerConnection(
@@ -367,7 +469,10 @@ final class ClientTest extends TestCase
         string $compressionType,
         int $expectedCodec
     ): void {
-        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]));
+        $leader = new BrokerConnection(
+            self::apiVersionsOfKafka39(),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]])
+        );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -384,8 +489,9 @@ final class ClientTest extends TestCase
             ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
         ])->produce([self::TOPIC => [0 => $records]]);
 
-        // A compressed batch travels as a message set of exactly one message, whose value is the whole batch
-        $messageSetBuffer = self::messageSetOf($leader->getReceivedFrames()[0]);
+        // A compressed batch travels as a message set of exactly one message, whose value is the whole batch; the
+        // first frame the leader received is the ApiVersions request of the KIP-896 check
+        $messageSetBuffer = self::messageSetOf($leader->getReceivedFrames()[1]);
         $wrapper          = self::firstMessageOf($messageSetBuffer);
 
         self::assertTrue($wrapper->isCompressed());
@@ -406,7 +512,10 @@ final class ClientTest extends TestCase
 
     public function testABatchIsSentAsItIsWithoutACompressionType(): void
     {
-        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 1]]]));
+        $leader = new BrokerConnection(
+            self::apiVersionsOfKafka39(),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 1]]])
+        );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -415,7 +524,7 @@ final class ClientTest extends TestCase
         $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
             ->produce([self::TOPIC => [0 => [new Record('as it is', 'a key')]]]);
 
-        $wrapper = self::firstMessageOf(self::messageSetOf($leader->getReceivedFrames()[0]));
+        $wrapper = self::firstMessageOf(self::messageSetOf($leader->getReceivedFrames()[1]));
 
         self::assertFalse($wrapper->isCompressed(), 'compression.type defaults to none');
         self::assertSame('as it is', $wrapper->value);
@@ -484,6 +593,27 @@ final class ClientTest extends TestCase
         $offsets = $this->client()->fetchTopicPartitionOffsets([self::TOPIC => [0 => -1, 1 => -1]]);
 
         self::assertSame([self::TOPIC => [0 => 64, 1 => 0]], $offsets);
+    }
+
+    public function testTheListOffsetsRequestCarriesTheRequestTimeoutAsTheTimeoutOfKip1075(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::offsets(0, [self::TOPIC => [0 => [0, -1, 64]]]));
+        $this->brokers
+            ->on(
+                self::BOOTSTRAP_ADDRESS,
+                new BrokerConnection(ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], [self::TOPIC => [0 => 0]]))
+            )
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $this->client([ClientConfig::REQUEST_TIMEOUT_MS => 12345])
+            ->fetchTopicPartitionOffsets([self::TOPIC => [0 => -1]]);
+
+        // ListOffsets v10 (Kafka 4.0): `timeout_ms` is the last field of the body, in front of its tag buffer; the
+        // client sends the v11 of Kafka 4.2 (KIP-1023), the same frame with another number in its header
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        self::assertStringStartsWith('0002000b', $frame, 'ListOffsets v11');
+        self::assertStringEndsWith('00003039' . '00', $frame, 'timeout_ms = 12345, the request.timeout.ms');
     }
 
     public function testTheRecordsOfAFetchAreDecoded(): void
@@ -589,13 +719,13 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 17, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // ApiKey 1, ApiVersion 18, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
         // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch. A
-        // version 17 frame carries no `replica_id` at all (KIP-903 deprecated it in 15), so `max_wait_ms` follows
-        // the header at once; KIP-951 added nothing to the request of version 16 and the `replica_directory_id`
-        // of KIP-853 is a tagged field a consumer leaves at its zero-uuid default, so version 17 adds nothing
-        // either
-        self::assertStringStartsWith('00010011', $request, 'the Fetch api is spoken in version 17');
+        // version 18 frame carries no `replica_id` at all (KIP-903 deprecated it in 15), so `max_wait_ms` follows
+        // the header at once; KIP-951 added nothing to the request of version 16, and the `replica_directory_id`
+        // of KIP-853 (17) and the `high_watermark` of KIP-1166 (18) are tagged fields a consumer leaves at their
+        // defaults, so the versions 17 and 18 add nothing either
+        self::assertStringStartsWith('00010012', $request, 'the Fetch api is spoken in version 18');
         self::assertStringNotContainsString(
             '000974372d636c69656e7400' . 'ffffffff',
             $request,
@@ -695,9 +825,9 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 11, correlation id, client id, the tag buffer of the request header v2 and then
+        // ApiKey 0, ApiVersion 13, correlation id, client id, the tag buffer of the request header v2 and then
         // the null transactional id of a plain producer, which a flexible frame writes as the single byte 00
-        self::assertStringStartsWith('0000000b', $frame, 'the Produce api is spoken in version 11');
+        self::assertStringStartsWith('0000000d', $frame, 'the Produce api is spoken in version 13 (Kafka 4.1)');
         self::assertStringContainsString('74372d636c69656e74' . '00' . '00', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
@@ -709,7 +839,10 @@ final class ClientTest extends TestCase
 
     public function testAMessageFormatBelowTheRecordBatchIsSentAsAProduceVersionTwo(): void
     {
-        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]));
+        $leader = new BrokerConnection(
+            self::apiVersionsOfKafka39(),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]])
+        );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -719,12 +852,92 @@ final class ClientTest extends TestCase
         $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
             ->produce([self::TOPIC => [0 => [$record]]]);
 
-        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        // The leader is asked what it serves first: a node of Kafka 3.x serves Produce from version 0
+        self::assertStringStartsWith('00120004', bin2hex($leader->getReceivedFrames()[0]), 'ApiVersions v4');
+
+        $frame = bin2hex($leader->getReceivedFrames()[1]);
         self::assertStringStartsWith('00000002', $frame, 'a message set can only be sent below version 3');
 
-        $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
+        $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[1]));
         self::assertSame(Message::MAGIC_V1, $records->getMagic());
         self::assertSame([], $records->getRecords()[0]->headers, 'a message set has no place for headers');
+    }
+
+    /**
+     * @return iterable<string, array{0: array{int, int}}>
+     */
+    public static function produceRowsOfKafka4(): iterable
+    {
+        // KAFKA-18659: every node of Kafka 4.0 and later lists Produce from 0, and refuses v0 to v2 all the same
+        yield 'Kafka 4.0, v0 to v12 advertised' => [[0, 12]];
+        yield 'Kafka 4.3, v0 to v13 advertised' => [[0, 13]];
+        yield 'a row that says it itself'       => [[3, 11]];
+    }
+
+    /**
+     * @param array{int, int} $produceRow
+     */
+    #[DataProvider('produceRowsOfKafka4')]
+    public function testAMessageFormatBelowTheRecordBatchIsRefusedBeforeItReachesANodeOfKafka4(array $produceRow): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::apiVersions(0, [0 => $produceRow, 1 => [4, 17]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        try {
+            $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
+                ->produce([self::TOPIC => [0 => [new Record('legacy', 'a key')]]]);
+            self::fail('a Produce v2 costs the connection on a node of Kafka 4.0 or later (KIP-896)');
+        } catch (InvalidConfigurationException $expected) {
+            self::assertStringContainsString('message.format.version 0.10.0', $expected->getMessage());
+            self::assertStringContainsString('serves Produce from version 3 only', $expected->getMessage());
+            self::assertStringContainsString('KIP-896', $expected->getMessage());
+        }
+
+        self::assertCount(1, $leader->getReceivedFrames(), 'the ApiVersions request, and no Produce request at all');
+    }
+
+    public function testTheNodeIsAskedForItsApiVersionsOncePerClient(): void
+    {
+        $leader = new BrokerConnection(
+            self::apiVersionsOfKafka39(),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]),
+            ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 6]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client = $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_9_0]);
+        $client->produce([self::TOPIC => [0 => [new Record('first')]]]);
+        $client->produce([self::TOPIC => [0 => [new Record('second')]]]);
+
+        self::assertCount(3, $leader->getReceivedFrames(), 'one ApiVersions request and two Produce v2 requests');
+        self::assertStringStartsWith('00000002', bin2hex($leader->getReceivedFrames()[2]));
+    }
+
+    public function testTheRecordBatchNeedsNoApiVersionsRequestAtAll(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $this->client()->produce([self::TOPIC => [0 => [new Record('batch')]]]);
+
+        self::assertCount(1, $leader->getReceivedFrames(), 'the Produce v12 request alone');
+    }
+
+    /**
+     * The ApiVersions answer of a node of Kafka 3.9, whose Produce row starts at 0 and ends at 11
+     */
+    private static function apiVersionsOfKafka39(): string
+    {
+        return ResponseFrame::apiVersions(0, [0 => [0, 11], 1 => [0, 17], 2 => [0, 9], 3 => [0, 12]]);
     }
 
     public function testTheProducerStateOfABatchTravelsInItsRecordBatch(): void
@@ -1436,7 +1649,7 @@ final class ClientTest extends TestCase
         self::assertSame(FetchMetadata::INITIAL_EPOCH, $metadata->epoch);
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionNine(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionTen(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -1470,16 +1683,73 @@ final class ClientTest extends TestCase
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
         self::assertSame(
-            9,
+            10,
             $this->apiVersionOf($frames[0]),
-            'the client commits with OffsetCommit version 9 since Kafka 3.6 (KIP-848)'
+            'the client commits with OffsetCommit version 10 since Kafka 4.2 (KIP-848)'
         );
+        self::assertStringContainsString(bin2hex(ResponseFrame::topicIdOf(self::TOPIC)), bin2hex($frames[0]));
+        self::assertStringNotContainsString(bin2hex(self::TOPIC), bin2hex($frames[0]), 'the id, and no name');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
         self::assertSame(
-            9,
+            10,
             $this->apiVersionOf($frames[1]),
-            'the client reads the offsets with OffsetFetch version 9 since Kafka 3.7 (KIP-848)'
+            'the client reads the offsets with OffsetFetch version 10 since Kafka 4.2 (KIP-848)'
         );
+        self::assertStringContainsString(bin2hex(ResponseFrame::topicIdOf(self::TOPIC)), bin2hex($frames[1]));
+    }
+
+    /**
+     * A topic the cluster has no id for can not be named by version 10: the commit and the read of its offsets go
+     * out as version 9, which names it, as the Java consumer does (`CommitRequestManager` @ 4.2.0)
+     */
+    public function testATopicWithoutAnIdIsCommittedAndReadWithTheVersionNine(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::offsetCommitV9(0, ['t7-unknown' => [0 => 0]]),
+            ResponseFrame::offsetFetchV9(0, ['t7-unknown' => [0 => [0, 21, '']]], 0, 't7-group')
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client();
+        $node   = $client->getGroupCoordinator('t7-group');
+
+        $client->commitGroupOffsets($node, 't7-group', '', -1, ['t7-unknown' => [0 => 21]], -1);
+
+        self::assertSame(
+            ['t7-unknown' => [0 => 21]],
+            $client->fetchGroupOffsets($node, 't7-group', ['t7-unknown' => [0]])
+        );
+        [$commit, $fetch] = $coordinator->getReceivedFrames();
+        self::assertSame(9, $this->apiVersionOf($commit));
+        self::assertSame(9, $this->apiVersionOf($fetch));
+        self::assertStringContainsString(bin2hex('t7-unknown'), bin2hex($commit), 'version 9 names the topic');
+    }
+
+    /**
+     * The 100 of an id that went stale reloads the metadata, and the retry names the topic by its current id
+     */
+    public function testAStaleTopicIdOfACommitIsRetriedAfterTheMetadataIsReloaded(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => KafkaException::UNKNOWN_TOPIC_ID]]),
+            ResponseFrame::offsetCommit(1, [self::TOPIC => [0 => 0]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata(), $this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client([ClientConfig::RETRIES => 1]);
+        $node   = $client->getGroupCoordinator('t7-group');
+
+        $client->commitGroupOffsets($node, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
+
+        self::assertCount(2, $coordinator->getReceivedFrames(), 'the 100 is retried');
     }
 
     public function testACommitErrorOfAPartitionIsReported(): void
@@ -1516,7 +1786,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(9, $this->apiVersionOf($frame), 'the nullable topic array of the one group of the batch');
+        self::assertSame(10, $this->apiVersionOf($frame), 'the nullable topic array of the one group of the batch');
         self::assertStringEndsWith(
             '0000',
             bin2hex($frame),
@@ -1547,7 +1817,7 @@ final class ClientTest extends TestCase
 
         [$plain, $stable] = $coordinator->getReceivedFrames();
 
-        self::assertSame(9, $this->apiVersionOf($plain));
+        self::assertSame(10, $this->apiVersionOf($plain));
         self::assertStringEndsWith('0000', bin2hex($plain), 'false, then the tag buffer of the body');
         self::assertStringEndsWith('0100', bin2hex($stable), 'true, then the tag buffer of the body');
         self::assertSame(
@@ -1971,7 +2241,10 @@ final class ClientTest extends TestCase
         $offset += 2 + 4;
         $offset += $flexible ? self::compactLengthAt($frame, $offset)[1] : 4;
 
-        if ($flexible) {
+        if ($header['apiVersion'] >= 13) {
+            // The topic id of version 13 (Kafka 4.1, KIP-516) in place of the name
+            $offset += 16;
+        } elseif ($flexible) {
             [$topicLength, $read] = self::compactLengthAt($frame, $offset);
             $offset += $read + $topicLength;
         } else {

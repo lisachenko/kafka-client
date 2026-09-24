@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Admin;
  * The array is only in a **version 2** answer of DescribeQuorum: {@see QuorumInfo::$nodes} is empty after a
  * version 1 or a version 0 request, which have no such field at all.
  *
- * @see docs/protocol/3.9.md, section "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, section "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 final class QuorumNode
 {

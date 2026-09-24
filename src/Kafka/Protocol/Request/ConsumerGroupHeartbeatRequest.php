@@ -18,12 +18,12 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatTopicPartitions;
 
 /**
- * ConsumerGroupHeartbeat, version 0: the whole membership protocol of KIP-848 in one request (ApiKey 68, Kafka 3.5)
+ * ConsumerGroupHeartbeat, version 1: the whole membership protocol of KIP-848 in one request (ApiKey 68, Kafka 3.5)
  *
  * <pre>
- *   ConsumerGroupHeartbeat Request (Version: 0) => group_id member_id member_epoch instance_id rack_id
- *                                                  rebalance_timeout_ms [subscribed_topic_names] server_assignor
- *                                                  [topic_partitions]
+ *   ConsumerGroupHeartbeat Request (Version: 0 and 1) => group_id member_id member_epoch instance_id rack_id
+ *                                                        rebalance_timeout_ms [subscribed_topic_names]
+ *                                                        subscribed_topic_regex server_assignor [topic_partitions]
  *     group_id               => COMPACT_STRING
  *     member_id              => COMPACT_STRING
  *     member_epoch           => INT32
@@ -31,6 +31,7 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatTopicPartitions;
  *     rack_id                => COMPACT_NULLABLE_STRING
  *     rebalance_timeout_ms   => INT32
  *     subscribed_topic_names => COMPACT_STRING             -- NULLABLE array
+ *     subscribed_topic_regex => COMPACT_NULLABLE_STRING    -- since version 1
  *     server_assignor        => COMPACT_NULLABLE_STRING
  *     topic_partitions       => topic_id [partitions]      -- NULLABLE array
  *       topic_id   => UUID
@@ -52,8 +53,8 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatTopicPartitions;
  * * {@see self::STATIC_LEAVE_MEMBER_EPOCH} (**-2**) is the leave of a **static** member that will come back: the
  *   coordinator keeps its `group.instance.id` and its assignment instead of giving them away.
  *
- * **Everything else is a delta.** The five nullable fields `instance_id`, `rack_id`, `subscribed_topic_names`,
- * `server_assignor` and `topic_partitions` mean *"unchanged since the last heartbeat"* when they are null, and
+ * **Everything else is a delta.** The nullable fields `instance_id`, `rack_id`, `subscribed_topic_names`,
+ * `subscribed_topic_regex`, `server_assignor` and `topic_partitions` mean *"unchanged since the last heartbeat"* when they are null, and
  * `rebalance_timeout_ms` says the same with **-1** ({@see self::UNCHANGED_REBALANCE_TIMEOUT_MS}). A client that
  * re-sends everything in every heartbeat is not refused, but it makes the coordinator recompute what it already
  * knows, so the three named constructors of this class encode the rules instead of leaving them to a caller:
@@ -67,10 +68,23 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatTopicPartitions;
  *
  * The member id is the member's own: a KIP-848 consumer generates a **uuid** for itself and keeps it for its whole
  * life ({@see \Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator::newMemberId()}), which is the
- * opposite of the classic protocol, where the coordinator hands one out in the answer of a first JoinGroup. A
- * request that names none is still accepted and answered with a generated id, see the response class.
+ * opposite of the classic protocol, where the coordinator hands one out in the answer of a first JoinGroup.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * **Version 1 (Kafka 4.0) added two things**, both named by the version comment of
+ * `ConsumerGroupHeartbeatRequest.json` @ 4.0.0 - *"Version 1 adds SubscribedTopicRegex (KIP-848), and requires the
+ * consumer to generate their own Member ID (KIP-1082)"*:
+ *
+ * * the nullable string **`subscribed_topic_regex`** behind `subscribed_topic_names`: a subscription by a regular
+ *   expression that the COORDINATOR matches against the topics of the cluster, in the RE2/J syntax of
+ *   `com.google.re2j.Pattern` (the Java client's `SubscriptionPattern`). A regex the coordinator cannot compile is
+ *   the **128** `InvalidRegularExpression`, and the empty string removes a regex the member subscribed with;
+ * * the member id of every frame has to be **non-empty**: `GroupCoordinatorService.throwIfConsumerGroupHeartbeat
+ *   RequestIsInvalid` @ 4.0.0 refuses an empty one from version 1 on with the **42** "MemberId can't be empty.",
+ *   where a version 0 join without one is answered an id the coordinator generated.
+ *
+ * {@see ConsumerGroupHeartbeatRequestV0} is the frame of version 0, which has no field for the regex.
+ *
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 class ConsumerGroupHeartbeatRequest extends AbstractRequest
 {
@@ -82,7 +96,7 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * The api is flexible from its first version: it was born after KIP-482 (Kafka 2.4)
@@ -117,6 +131,14 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
     protected readonly ?array $subscribedTopicNames;
 
     /**
+     * Value of `subscribed_topic_regex` that removes the regex a member subscribed with (KIP-848, version 1)
+     *
+     * `null` is "unchanged since the last heartbeat", so a member that goes back from a regex to a list of names
+     * sends the empty string - which is what the Java consumer sends for a pattern it dropped.
+     */
+    public const string NO_SUBSCRIBED_TOPIC_REGEX = '';
+
+    /**
      * Partitions this member owns, or null when they did not change since the last heartbeat
      *
      * @var list<ConsumerGroupHeartbeatTopicPartitions>|null
@@ -137,6 +159,8 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
      *        own choice
      * @param string                        $clientId             An identifier of the client
      * @param int                           $correlationId        A value the broker passes back unmodified
+     * @param string|null                   $subscribedTopicRegex Regex subscription of the member (version 1), null
+     *        for "unchanged", the empty string to remove it; version 0 has no field for it and drops it
      */
     public function __construct(
         /**
@@ -170,7 +194,13 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
          */
         protected readonly ?string $serverAssignor = null,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Regular expression this member subscribed with, null when it did not change since the last heartbeat
+         *
+         * @since Version 1 of protocol
+         */
+        protected readonly ?string $subscribedTopicRegex = null
     ) {
         $this->subscribedTopicNames = $subscribedTopicNames === null ? null : array_values($subscribedTopicNames);
 
@@ -192,12 +222,16 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
      *
      * The empty array is not the same as the null of the default: the coordinator refuses a (re-)join whose
      * `topic_partitions` is null with the 42 and the message "TopicPartitions must be empty when (re-)joining."
+     * A join has to name a subscription: the list of topic names, a `$subscribedTopicRegex` (version 1) or both - a
+     * member that subscribes by a regex names no topic and sends the EMPTY list next to it, as the Java consumer
+     * does.
      *
      * @param list<string> $subscribedTopicNames Topics this member subscribes to, which a join has to name
      * @param int          $rebalanceTimeoutMs   `max.poll.interval.ms` of this member
      * @param string|null  $instanceId           `group.instance.id` of a static member
      * @param string|null  $rackId               `client.rack` of the member
      * @param string|null  $serverAssignor       Assignor the coordinator shall run, null for its own choice
+     * @param string|null  $subscribedTopicRegex Regex this member subscribes with (version 1), null for none
      */
     public static function forJoin(
         string $groupId,
@@ -208,9 +242,10 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
         ?string $rackId = null,
         ?string $serverAssignor = null,
         string $clientId = '',
-        int $correlationId = 0
-    ): self {
-        return new self(
+        int $correlationId = 0,
+        ?string $subscribedTopicRegex = null
+    ): static {
+        return new static(
             $groupId,
             $memberId,
             self::JOIN_MEMBER_EPOCH,
@@ -221,7 +256,8 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
             $rackId,
             $serverAssignor,
             $clientId,
-            $correlationId
+            $correlationId,
+            $subscribedTopicRegex
         );
     }
 
@@ -236,6 +272,8 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
      * @param array<string, list<int>>|null $topicPartitions      Partitions the member owns now, as topic id =>
      *        partitions, null when they did not change; this is how a member **acknowledges** an assignment
      * @param int                           $rebalanceTimeoutMs   New rebalance timeout, -1 when it did not change
+     * @param string|null                   $subscribedTopicRegex New regex subscription (version 1), null when it
+     *        did not change, {@see self::NO_SUBSCRIBED_TOPIC_REGEX} to remove it
      */
     public static function forHeartbeat(
         string $groupId,
@@ -246,9 +284,10 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
         int $rebalanceTimeoutMs = self::UNCHANGED_REBALANCE_TIMEOUT_MS,
         ?string $serverAssignor = null,
         string $clientId = '',
-        int $correlationId = 0
-    ): self {
-        return new self(
+        int $correlationId = 0,
+        ?string $subscribedTopicRegex = null
+    ): static {
+        return new static(
             $groupId,
             $memberId,
             $memberEpoch,
@@ -259,7 +298,8 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
             null,
             $serverAssignor,
             $clientId,
-            $correlationId
+            $correlationId,
+            $subscribedTopicRegex
         );
     }
 
@@ -278,8 +318,8 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
         ?string $instanceId = null,
         string $clientId = '',
         int $correlationId = 0
-    ): self {
-        return new self(
+    ): static {
+        return new static(
             $groupId,
             $memberId,
             $rejoining ? self::STATIC_LEAVE_MEMBER_EPOCH : self::LEAVE_MEMBER_EPOCH,
@@ -299,9 +339,7 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
      */
     public static function getScheme(): array
     {
-        $header = parent::getScheme();
-
-        return $header + [
+        $body = [
             'groupId'              => BinarySchema::TYPE_STRING,
             'memberId'             => BinarySchema::TYPE_STRING,
             'memberEpoch'          => BinarySchema::TYPE_INT32,
@@ -309,12 +347,17 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
             'rackId'               => BinarySchema::TYPE_NULLABLE_STRING,
             'rebalanceTimeoutMs'   => BinarySchema::TYPE_INT32,
             'subscribedTopicNames' => [BinarySchema::TYPE_STRING, BinarySchema::FLAG_NULLABLE => true],
-            'serverAssignor'       => BinarySchema::TYPE_NULLABLE_STRING,
-            'topicPartitions'      => [
-                ConsumerGroupHeartbeatTopicPartitions::class,
-                BinarySchema::FLAG_NULLABLE => true,
-            ],
         ];
+        if (static::VERSION >= 1) {
+            $body['subscribedTopicRegex'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        $body['serverAssignor']  = BinarySchema::TYPE_NULLABLE_STRING;
+        $body['topicPartitions'] = [
+            ConsumerGroupHeartbeatTopicPartitions::class,
+            BinarySchema::FLAG_NULLABLE => true,
+        ];
+
+        return parent::getScheme() + $body;
     }
 
     /**
@@ -349,6 +392,16 @@ class ConsumerGroupHeartbeatRequest extends AbstractRequest
     public function getSubscribedTopicNames(): ?array
     {
         return $this->subscribedTopicNames;
+    }
+
+    /**
+     * Returns the regex subscription this heartbeat names, null when it did not change since the last one
+     *
+     * @since Version 1 of protocol
+     */
+    public function getSubscribedTopicRegex(): ?string
+    {
+        return $this->subscribedTopicRegex;
     }
 
     /**

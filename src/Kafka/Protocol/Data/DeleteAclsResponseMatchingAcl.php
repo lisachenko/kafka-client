@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * **what** it removed: every acl a filter matched is repeated here in full, with its own error code - the deletion
  * of a single acl can fail while the others of the same filter succeed.
  *
- * @see docs/protocol/3.9.md, section "DeleteAcls API (key 31, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DeleteAcls API (key 31, v0 to v3)"
  */
 class DeleteAclsResponseMatchingAcl implements BinarySchemaInterface
 {

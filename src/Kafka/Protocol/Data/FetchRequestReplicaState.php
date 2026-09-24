@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * @since Version 15 of the Fetch API (Kafka 3.5, KIP-903)
  *
- * @see docs/protocol/3.9.md, section "The replica state of KIP-903 (v15)"
+ * @see docs/protocol/4.3.md, section "The replica state of KIP-903 (v15)"
  */
 class FetchRequestReplicaState implements BinarySchemaInterface
 {

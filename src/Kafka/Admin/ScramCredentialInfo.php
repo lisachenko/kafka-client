@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Admin;
  * `ScramCredentialInfo` of the Java admin client: the mechanism and the iteration count, and nothing else - the
  * salted password is what makes a credential a secret, and no api of Kafka ever sends it back.
  *
- * @see docs/protocol/3.9.md, section "DescribeUserScramCredentials API (key 50, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeUserScramCredentials API (key 50, v0)"
  */
 final class ScramCredentialInfo
 {

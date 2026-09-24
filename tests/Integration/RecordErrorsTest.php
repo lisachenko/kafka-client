@@ -27,8 +27,10 @@ use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponseRecordError;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV7;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV7;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -40,7 +42,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * their **batch index** and adds a partition-wide message. The condition is produced here with the cheapest
  * validation a client can trigger: a record without a key on a `cleanup.policy=compact` topic.
  *
- * @see docs/protocol/3.9.md, section "The record errors of a refused batch (v8, KIP-467)"
+ * @see docs/protocol/4.3.md, section "The record errors of a refused batch (v8, KIP-467)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
@@ -79,7 +81,7 @@ final class RecordErrorsTest extends IntegrationTestCase
 
     public function testARefusedBatchNamesItsBadRecordsByTheirBatchIndex(): void
     {
-        $partition = $this->produce(ProduceRequest::class, ProduceResponse::class, 1100);
+        $partition = $this->produce(ProduceRequestV12::class, ProduceResponseV12::class, 1100);
 
         self::assertSame(KafkaException::UNSUPPORTED_FOR_MESSAGE_FORMAT + 0, 43, 'sanity: the codes are stable');
         self::assertSame(87, KafkaException::INVALID_RECORD);
@@ -219,7 +221,7 @@ final class RecordErrorsTest extends IntegrationTestCase
     private static function deleteTopic(string $topic): void
     {
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
 
         $output   = [];
         $exitCode = 0;
@@ -248,7 +250,7 @@ final class RecordErrorsTest extends IntegrationTestCase
         }
 
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
         $command   = sprintf(
             'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create'
             . ' --if-not-exists --topic %s --partitions 1 --replication-factor 1%s 2>&1',

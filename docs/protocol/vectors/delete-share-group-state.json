@@ -1,0 +1,49 @@
+{
+    "api": "delete-share-group-state",
+    "apiKey": 86,
+    "section": "DeleteShareGroupState API (key 86, v0)",
+    "description": "Wire vectors of the DeleteShareGroupState API (key 86, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "deletesharegroupstate.request.v0.no-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteShareGroupStateRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DeleteShareGroupState **v0** (key 86) with one topic id and no partition - a frame that deletes nothing.",
+            "hex": "0000004b005600000000126100126b61666b612d636c69656e742d74312d3431001a74312d34312d6e6f2d737563682d73686172652d67726f7570021d5d10c01ac6490d8b5b1faa8c75c66c010000",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 86,
+                "apiVersion": 0,
+                "correlationId": 4705,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "groupId": "t1-41-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "deletesharegroupstate.response.v0.no-partition",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteShareGroupStateResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The empty result array.",
+            "hex": "0000000700001261000100",
+            "fields": {
+                "messageSize": 7,
+                "correlationId": 4705,
+                "headerTaggedFields": [],
+                "results": []
+            }
+        }
+    ]
+}

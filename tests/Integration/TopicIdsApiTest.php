@@ -36,8 +36,10 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV8;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV8;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -49,8 +51,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ids: Metadata **v10** (KIP-516) puts the id of a topic into every entry of the request and of the answer, and
  * Metadata **v11** (KIP-700) takes `cluster_authorized_operations` out again.
  *
- * @see docs/protocol/3.9.md, sections "Topic ids (v10, KIP-516)", "Metadata API (key 3, v0 to v12)",
- *      "Produce API (key 0, v0 to v11)" and "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, sections "Topic ids (v10, KIP-516)", "Metadata API (key 3, v0 to v13)",
+ *      "Produce API (key 0, v0 to v13)" and "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
@@ -164,7 +166,7 @@ final class TopicIdsApiTest extends IntegrationTestCase
 
         // Produce v9 against v8: the same body, written with compact types and a compact record set
         $stream = $this->connect();
-        $flexibleProduce = new ProduceRequest(
+        $flexibleProduce = new ProduceRequestV12(
             [$this->topic => [0 => $batch]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -172,7 +174,7 @@ final class TopicIdsApiTest extends IntegrationTestCase
             1005
         );
         $flexibleProduce->writeTo($stream);
-        $produced = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[0];
+        $produced = ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[0];
 
         $stream = $this->connect();
         $plainProduce = new ProduceRequestV8(
@@ -294,6 +296,6 @@ final class TopicIdsApiTest extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
 
-        return $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
+        return $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
     }
 }

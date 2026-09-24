@@ -38,7 +38,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 /**
  * The three ACL methods of the admin client, replayed against the answers the 3.9.2 KRaft node really sent.
  *
- * @see docs/protocol/3.9.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/4.3.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
  *      and "DeleteAcls API (key 31, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]

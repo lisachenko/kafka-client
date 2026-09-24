@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * refused with **76** `UNSUPPORTED_COMPRESSION_TYPE`, because a broker does not down-convert zstd for a client
  * that has not said it understands the codec.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "The leader epoch (KIP-320)"
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "The leader epoch (KIP-320)"
  */
 final class FetchRequestV9 extends FetchRequest
 {

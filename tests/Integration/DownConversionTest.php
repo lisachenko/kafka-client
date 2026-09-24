@@ -14,10 +14,13 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewTopic;
+use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\KafkaException;
-use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\Record\MemoryRecords;
-use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\IO\Stream;
@@ -25,27 +28,33 @@ use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
+use Protocol\Kafka\Protocol\Request\FetchRequestV4;
+use Protocol\Kafka\Protocol\Request\FetchRequestV9;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
-use Protocol\Kafka\Protocol\Request\FetchResponseV1;
-use Protocol\Kafka\Protocol\Request\FetchResponseV3;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\FetchResponseV4;
+use Protocol\Kafka\Protocol\Request\FetchResponseV9;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
+use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * **KIP-283** (Kafka 2.0): the down-conversion of a log for an old client, and the switch that refuses it.
+ * **KIP-283** (Kafka 2.0): the down-conversion of a log for an old client, and the switch that refused it - both gone.
  *
- * Down-conversion is what a broker does when the message format of the log is newer than the Fetch version that
- * asks for it: a record batch v2 is rewritten as a message set v1 for a Fetch v2 or v3, and as a message set v0
- * for a Fetch v0 or v1. It is the most expensive thing a broker does for a client - before Kafka 2.0 the whole
- * converted region was built in the heap before the answer was written - so KIP-283 made it lazy and chunked and
- * added a switch that refuses it outright: `message.downconversion.enable` per topic,
- * `log.message.downconversion.enable` for the broker.
+ * Down-conversion was what a broker did when the message format of the log was newer than the Fetch version that
+ * asked for it: a record batch v2 was rewritten as a message set v1 for a Fetch v2 or v3, and as a message set v0
+ * for a Fetch v0 or v1. It was the most expensive thing a broker did for a client, so KIP-283 made it lazy and
+ * chunked and added a switch that refused it outright: `message.downconversion.enable` per topic,
+ * `log.message.downconversion.enable` for the broker, which a 3.9.2 node answered per partition with the 35.
  *
- * This class measures both halves against the container: what the conversion does to a magic 2 log, and what a
- * topic with the switch off answers instead.
+ * **Kafka 4.0 removed the conversion together with the versions that needed it (KIP-896)**: `FetchRequest.json` @
+ * 4.0.0 starts at version 4, the first that reads a record batch v2, a frame of Fetch v0 to v3 closes the connection,
+ * and the switch went with them - `TopicConfig` @ 4.0.0 still names the constant, deprecated, but the node refuses
+ * the topic configuration with the **40** `InvalidConfiguration`, "Unknown topic config name:
+ * message.downconversion.enable". This class measures that, and that every version the node serves answers the log
+ * as it lies.
  *
- * @see docs/protocol/3.9.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v18)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -56,7 +65,7 @@ final class DownConversionTest extends IntegrationTestCase
     /**
      * Client id that identifies the requests of this test in the logs of the broker
      */
-    private const string CLIENT_ID = 'kafka-client-t2-downconversion';
+    private const string CLIENT_ID = 'kafka-client-t2-40-downconversion';
 
     /**
      * How long the broker may take to acknowledge a produce request, in milliseconds
@@ -69,167 +78,108 @@ final class DownConversionTest extends IntegrationTestCase
     private const int FETCH_MAX_WAIT_MS = 500;
 
     /**
-     * Topic of the current test, on the default `message.format.version` of the broker (`2.8-IV1`, magic 2)
+     * Topic of the current test, a log of record batches v2 like every log of a 4.x node
      */
     private string $topic;
-
-    /**
-     * A topic of the same format created with `message.downconversion.enable=false`
-     */
-    private string $refusingTopic;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->topic         = self::uniqueTopicName('t2-downconv');
-        $this->refusingTopic = self::uniqueTopicName('t2-downconv-off');
-
-        self::createTopic($this->topic);
-        self::createTopic($this->refusingTopic, ['message.downconversion.enable' => 'false']);
-
-        $probe = new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, self::CLIENT_ID);
-        $probe->awaitTopicWithLeaders($this->topic);
-        $probe->awaitTopicWithLeaders($this->refusingTopic);
+        $this->topic = self::uniqueTopicName('t2-40-downconv');
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, self::CLIENT_ID)
+            ->awaitTopicWithLeaders($this->topic);
     }
 
-    public function testAMagicTwoLogIsConvertedDownToTheFormatTheFetchVersionUnderstands(): void
+    public function testAFetchThatNeededAConversionCostsTheConnection(): void
     {
-        $this->produce($this->topic, 'converted');
+        $this->produce($this->topic, 'never converted');
 
-        $magic0 = $this->fetch($this->topic, FetchRequestV1::class, FetchResponseV1::class, 810);
-        $magic1 = $this->fetch($this->topic, FetchRequestV3::class, FetchResponseV3::class, 811);
-        $magic2 = $this->fetch($this->topic, FetchRequest::class, FetchResponse::class, 812);
-
-        foreach (['v1' => $magic0, 'v3' => $magic1, 'v8' => $magic2] as $version => $partition) {
-            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, "the {$version} fetch is served");
+        // A 3.9.2 node converted the log to the magic 0 for a Fetch v1 and to the magic 1 for a Fetch v3
+        $probe = new RemovedVersionProbe(self::firstBootstrapServer());
+        foreach ([1 => FetchRequestV1::class, 3 => FetchRequestV3::class] as $version => $class) {
             self::assertSame(
-                ['converted'],
-                array_map(
-                    static fn(Record $record): ?string => $record->value,
-                    $partition->getRecords()->getRecords()
-                ),
-                "the record survives the conversion for a {$version} fetch"
+                RemovedVersionProbe::CLOSED,
+                $probe->send(new $class([$this->topic => [0 => 0]], self::FETCH_MAX_WAIT_MS, 1, 65536, -1, self::CLIENT_ID, 810)),
+                "a Fetch v{$version} is not converted for any more, it is refused by the request parser"
             );
         }
-
-        // `KafkaApis.handleFetchRequest` @ 2.8.2 converts on two conditions at once, the magic of the log and the
-        // version of the request: `versionId <= 1` asks for magic 0, `versionId <= 3` for magic 1, nothing else
-        // converts at all
-        self::assertSame(Message::MAGIC_V0, $magic0->getRecords()->getMagic());
-        self::assertSame(Message::MAGIC_V1, $magic1->getRecords()->getMagic());
-        self::assertSame(RecordBatch::MAGIC, $magic2->getRecords()->getMagic());
     }
 
-    public function testATopicWithTheDownConversionSwitchedOffRefusesTheFetchWithTheErrorCode35(): void
+    public function testEveryServedVersionAnswersTheLogAsItLies(): void
     {
-        $this->produce($this->refusingTopic, 'never converted');
+        $this->produce($this->topic, 'as it lies');
 
-        $refused = $this->fetch($this->refusingTopic, FetchRequestV3::class, FetchResponseV3::class, 820);
+        $four    = $this->fetch(FetchRequestV4::class, FetchResponseV4::class, 811);
+        $nine    = $this->fetch(FetchRequestV9::class, FetchResponseV9::class, 812);
+        $highest = $this->fetch(FetchRequest::class, FetchResponse::class, 813);
 
-        // **35 UNSUPPORTED_VERSION, not 43.** `KafkaApis.handleFetchRequest` @ 3.9.2: "if down-conversion is
-        // disabled for the particular partition ... sending unsupported version response". 43
-        // UNSUPPORTED_FOR_MESSAGE_FORMAT is the code of a timestamp lookup on a log below magic 1 and never
-        // appears here.
-        self::assertSame(KafkaException::UNSUPPORTED_VERSION, $refused->errorCode);
-        self::assertSame(35, KafkaException::UNSUPPORTED_VERSION);
-        self::assertInstanceOf(
-            UnsupportedVersionException::class,
-            KafkaException::fromCode($refused->errorCode, ['topic' => $this->refusingTopic])
-        );
-        self::assertSame(-1, $refused->highWaterMarkOffset, 'the error carries no high water mark either');
-
-        // A refused partition is built by `FetchResponse.partitionResponse(tp, error)` @ 3.9.2, which sets the
-        // partition index, the error code and the high water mark and leaves `Records` at the `"default": "null"`
-        // of `FetchResponse.json`: the node writes the length **-1**, not the empty byte array the 2.8.2 broker
-        // sent. The record layer reads both as "no records at all"
-        self::assertNull($refused->messageSet, 'a null record set, not an empty one and not a converted one');
-        self::assertSame([], $refused->getRecords()->getRecords());
-    }
-
-    public function testTheSamePartitionIsServedToAFetchThatNeedsNoConversion(): void
-    {
-        $this->produce($this->refusingTopic, 'served as it lies');
-
-        $served = $this->fetch($this->refusingTopic, FetchRequest::class, FetchResponse::class, 821);
-
-        // The switch refuses the conversion, not the partition: a client that asks with a version the log already
-        // speaks is served exactly as it would be on any other topic
-        self::assertSame(KafkaException::NO_ERROR, $served->errorCode);
-        self::assertSame(RecordBatch::MAGIC, $served->getRecords()->getMagic());
+        foreach (['v4' => $four, 'v9' => $nine, 'v' . FetchRequest::VERSION => $highest] as $version => $partition) {
+            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, "the {$version} fetch is served");
+            self::assertSame(RecordBatch::MAGIC, $partition->getRecords()->getMagic(), "{$version}: the magic 2");
+            self::assertSame(
+                ['as it lies'],
+                array_map(static fn(Record $record): ?string => $record->value, $partition->getRecords()->getRecords())
+            );
+        }
         self::assertSame(
-            ['served as it lies'],
-            array_map(
-                static fn(Record $record): ?string => $record->value,
-                $served->getRecords()->getRecords()
-            )
+            bin2hex((string) $four->messageSet),
+            bin2hex((string) $highest->messageSet),
+            'the very same bytes for the lowest and the highest version'
         );
     }
 
-    public function testTheRefusalIsPerPartitionAndLeavesTheConnectionOpen(): void
+    public function testTheSwitchOfKip283IsNotATopicConfigurationAnyMore(): void
     {
-        $this->produce($this->topic, 'convertible');
-        $this->produce($this->refusingTopic, 'not convertible');
+        $topic  = self::uniqueTopicName('t2-40-downconv-off');
+        $errors = $this->admin()->createTopics([
+            new NewTopic($topic, 1, 1, [], ['message.downconversion.enable' => 'false']),
+        ]);
 
-        $stream = $this->connect();
-        new FetchRequestV3(
-            [$this->topic => [0 => 0], $this->refusingTopic => [0 => 0]],
-            self::FETCH_MAX_WAIT_MS,
-            1,
-            65536,
-            -1,
-            self::CLIENT_ID,
-            830
-        )->writeTo($stream);
+        self::assertInstanceOf(InvalidConfigException::class, $errors[$topic]);
+        self::assertSame(KafkaException::INVALID_CONFIG, $errors[$topic]->getCode());
+        self::assertStringContainsString(
+            'Unknown topic config name: message.downconversion.enable',
+            $errors[$topic]->getMessage()
+        );
+    }
 
-        $response = FetchResponseV3::unpack($stream);
+    public function testTheRefusalOfARemovedVersionIsTheConnectionNotAPartition(): void
+    {
+        // On 3.9.2 the switch refused a partition with the 35 and left the connection open, so the convertible
+        // partition of the same request was served. A 4.x node refuses the whole frame, before any partition
+        $this->produce($this->topic, 'served on the next connection');
 
-        self::assertSame(830, $response->getCorrelationId());
+        self::assertSame(
+            RemovedVersionProbe::CLOSED,
+            new RemovedVersionProbe(self::firstBootstrapServer())->send(new FetchRequestV3(
+                [$this->topic => [0 => 0]],
+                self::FETCH_MAX_WAIT_MS,
+                1,
+                65536,
+                -1,
+                self::CLIENT_ID,
+                830
+            ))
+        );
+
+        // ... and the next connection is served as if nothing had happened
         self::assertSame(
             KafkaException::NO_ERROR,
-            $response->topics[$this->topic]->partitions[0]->errorCode,
-            'the convertible partition of the same request is served'
+            $this->fetch(FetchRequestV4::class, FetchResponseV4::class, 831)->errorCode
         );
-        self::assertSame(
-            KafkaException::UNSUPPORTED_VERSION,
-            $response->topics[$this->refusingTopic]->partitions[0]->errorCode
-        );
-
-        // The connection survives it, which an unparsable frame would not
-        new FetchRequestV3([$this->topic => [0 => 0]], self::FETCH_MAX_WAIT_MS, 1, 65536, -1, self::CLIENT_ID, 831)
-            ->writeTo($stream);
-        self::assertSame(831, FetchResponseV3::unpack($stream)->getCorrelationId());
     }
 
-    /**
-     * Creates a topic with the given topic-level options through the `kafka-topics.sh` of the container
-     *
-     * @param array<string, string> $configuration Topic-level options, as `name => value`
-     */
-    private static function createTopic(string $topic, array $configuration = []): void
+    private function admin(): AdminClient
     {
-        $options = '';
-        foreach ($configuration as $name => $value) {
-            $options .= ' --config ' . escapeshellarg("{$name}={$value}");
-        }
+        $configuration = [
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => self::CLIENT_ID,
+            ClientConfig::REQUEST_TIMEOUT_MS        => 40000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+        ];
 
-        $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
-        $command   = sprintf(
-            'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create'
-            . ' --if-not-exists --topic %s --partitions 1 --replication-factor 1%s 2>&1',
-            escapeshellarg($container),
-            escapeshellarg($topic),
-            $options
-        );
-
-        $output   = [];
-        $exitCode = 0;
-        exec($command, $output, $exitCode);
-
-        if ($exitCode !== 0) {
-            self::fail("Can not create the topic {$topic}: " . implode("\n", $output));
-        }
+        return new AdminClient(Cluster::bootstrap($configuration), $configuration);
     }
 
     /**
@@ -238,7 +188,7 @@ final class DownConversionTest extends IntegrationTestCase
     private function produce(string $topic, string $value): void
     {
         $stream = $this->connect();
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$topic => [0 => RecordBatch::fromRecords(
                 [new Record($value, null, 0, null, (int) round(microtime(true) * 1000))]
             )]],
@@ -248,25 +198,21 @@ final class DownConversionTest extends IntegrationTestCase
             800
         )->writeTo($stream);
 
-        $partition = ProduceResponse::unpack($stream)->topics[$topic]->partitions[0];
+        $partition = ProduceResponseV12::unpack($stream)->topics[$topic]->partitions[0];
         self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, "the record was not appended to {$topic}");
     }
 
     /**
-     * Fetches the partition 0 of a topic from the offset 0 with the given request and response classes
+     * Fetches the partition 0 of the topic under test from the offset 0 with the given request and response classes
      *
      * @param class-string<FetchRequest>  $requestClass
      * @param class-string<FetchResponse> $responseClass
      */
-    private function fetch(
-        string $topic,
-        string $requestClass,
-        string $responseClass,
-        int $correlationId
-    ): FetchResponsePartition {
+    private function fetch(string $requestClass, string $responseClass, int $correlationId): FetchResponsePartition
+    {
         $stream = $this->connect();
         new $requestClass(
-            [$topic => [0 => 0]],
+            [$this->topic => [0 => 0]],
             self::FETCH_MAX_WAIT_MS,
             1,
             65536,
@@ -274,12 +220,12 @@ final class DownConversionTest extends IntegrationTestCase
             self::CLIENT_ID,
             $correlationId,
             // Version 13 names the topic by its id (KIP-516); every lower version ignores the map
-            topicIds: [$topic => self::topicIdOf($topic)]
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         )->writeTo($stream);
 
         $response = $responseClass::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
 
-        return self::fetchedTopic($response, $topic)->partitions[0];
+        return self::fetchedTopic($response, $this->topic)->partitions[0];
     }
 }

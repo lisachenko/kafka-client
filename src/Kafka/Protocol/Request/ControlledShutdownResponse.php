@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
  * a tagged-field section. The frame was identical in the versions 0, 1 and 2, which is why this class needed no
  * version constant until now; {@see ControlledShutdownResponseV2} is that frame.
  *
- * @see docs/protocol/3.9.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 class ControlledShutdownResponse extends AbstractResponse
 {

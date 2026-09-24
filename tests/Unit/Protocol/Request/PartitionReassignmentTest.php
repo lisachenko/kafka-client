@@ -29,7 +29,9 @@ use Protocol\Kafka\Protocol\Data\ReassignablePartitionResponse;
 use Protocol\Kafka\Protocol\Data\ReassignableTopic;
 use Protocol\Kafka\Protocol\Data\ReassignableTopicResponse;
 use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsRequest;
+use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsRequestV0;
 use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsResponse;
+use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsResponseV0;
 use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsRequest;
 use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
 
@@ -41,11 +43,13 @@ use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
  * tagged-field section at the end of every structure. That makes them the shortest illustration of what the
  * flexible encoding looks like in an api that carries strings and nested arrays.
  *
- * @see docs/protocol/3.9.md, sections "AlterPartitionReassignments API (key 45, v0)" and
+ * @see docs/protocol/4.3.md, sections "AlterPartitionReassignments API (key 45, v0 and v1)" and
  *      "ListPartitionReassignments API (key 46, v0)"
  */
 #[CoversClass(AlterPartitionReassignmentsRequest::class)]
 #[CoversClass(AlterPartitionReassignmentsResponse::class)]
+#[CoversClass(AlterPartitionReassignmentsRequestV0::class)]
+#[CoversClass(AlterPartitionReassignmentsResponseV0::class)]
 #[CoversClass(ListPartitionReassignmentsRequest::class)]
 #[CoversClass(ListPartitionReassignmentsResponse::class)]
 #[CoversClass(ReassignableTopic::class)]
@@ -152,7 +156,7 @@ final class PartitionReassignmentTest extends TestCase
 
     public function testTheAlterRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new AlterPartitionReassignmentsRequest(
+        $request = new AlterPartitionReassignmentsRequestV0(
             ['events' => [0 => new NewPartitionReassignment([0, 1]), 1 => null]],
             60000,
             'test',
@@ -175,9 +179,57 @@ final class PartitionReassignmentTest extends TestCase
      */
     public function testTheTargetReplicasCanBeGivenAsAPlainList(): void
     {
-        $request = new AlterPartitionReassignmentsRequest(['events' => [0 => [0, 1], 1 => null]], 60000, 'test', 5);
+        $request = new AlterPartitionReassignmentsRequestV0(['events' => [0 => [0, 1], 1 => null]], 60000, 'test', 5);
 
         self::assertSame(self::ALTER_REQUEST_HEX, bin2hex((string) $request));
+    }
+
+    /**
+     * Kafka 4.1: the version 1 puts `allow_replication_factor_change` between the timeout and the topics
+     */
+    public function testTheVersionOneRequestCarriesTheReplicationFactorFlagBehindTheTimeout(): void
+    {
+        $versionZero = bin2hex((string) new AlterPartitionReassignmentsRequestV0(
+            ['events' => [0 => [0, 1], 1 => null]],
+            60000,
+            'test',
+            5
+        ));
+        $forbidden   = new AlterPartitionReassignmentsRequest(['events' => [0 => [0, 1], 1 => null]], 60000, 'test', 5, false);
+        $allowed     = new AlterPartitionReassignmentsRequest(['events' => [0 => [0, 1], 1 => null]], 60000, 'test', 5);
+
+        self::assertSame(1, $forbidden->getApiVersion());
+        self::assertFalse($forbidden->isReplicationFactorChangeAllowed());
+        self::assertTrue($allowed->isReplicationFactorChangeAllowed(), 'true is the default, as the version 0 meant');
+
+        // one byte longer, the version 1 in the header, and the flag between the timeout 60000 and the topics
+        $expected = '00000033' . '002d' . '0001' . '00000005' . '000474657374' . '00' . '0000ea60' . '00'
+            . substr($versionZero, 46);
+
+        self::assertSame($expected, bin2hex((string) $forbidden));
+        self::assertSame(substr($expected, 0, 46) . '01' . substr($expected, 48), bin2hex((string) $allowed));
+        self::assertSame('00000032', substr($versionZero, 0, 8), 'the version 0 frame of the same request');
+    }
+
+    /**
+     * Kafka 4.1: the answer of the version 1 repeats the flag behind the throttle time
+     */
+    public function testTheVersionOneAnswerRepeatsTheReplicationFactorFlag(): void
+    {
+        $hex      = '0000001f' . '00000005' . '00' . '00000000' . '00' . '0000' . '01'
+            . '02' . '0665766e7473' . '02' . '00000000' . '0027' . '00' . '00' . '00' . '00';
+        $response = AlterPartitionReassignmentsResponse::unpack(new StringStream((string) hex2bin($hex)));
+
+        self::assertFalse($response->allowReplicationFactorChange);
+        self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
+        self::assertSame(39, $response->responses['evnts']->partitions[0]->errorCode);
+        self::assertSame($hex, bin2hex((string) $response));
+        self::assertTrue(
+            AlterPartitionReassignmentsResponseV0::unpack(
+                new StringStream((string) hex2bin(self::ALTER_RESPONSE_HEX))
+            )->allowReplicationFactorChange,
+            'the version 0 has no place for the flag, and the default is true'
+        );
     }
 
     public function testAnEmptyTargetReplicaSetIsRefusedBeforeItReachesTheBroker(): void
@@ -189,7 +241,7 @@ final class PartitionReassignmentTest extends TestCase
 
     public function testTheAlterAnswerCarriesOneErrorPerPartition(): void
     {
-        $response = AlterPartitionReassignmentsResponse::unpack(
+        $response = AlterPartitionReassignmentsResponseV0::unpack(
             new StringStream((string) hex2bin(self::ALTER_RESPONSE_HEX))
         );
 

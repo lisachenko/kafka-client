@@ -1,0 +1,326 @@
+{
+    "api": "share-group-heartbeat",
+    "apiKey": 76,
+    "section": "ShareGroupHeartbeat API (key 76, v1)",
+    "description": "Wire vectors of the ShareGroupHeartbeat API (key 76, v1, KIP-932), captured on the 4.3.1 node and replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "sharegroupheartbeat.v1.join-without-member-id.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "A join (epoch 0) without a member id: the `01` of the empty compact string. The frame of a share member is the group id, the member id, the epoch, the nullable rack id and the nullable subscription - nothing else.",
+            "hex": "00000047004c00010000a02800126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570010000000000020e74332d34312d766563746f727300",
+            "fields": {
+                "messageSize": 71,
+                "apiKey": 76,
+                "apiVersion": 1,
+                "correlationId": 41000,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "",
+                "memberEpoch": 0,
+                "rackId": null,
+                "subscribedTopicNames": [
+                    "t3-41-vectors"
+                ]
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.join-without-member-id.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **42** `InvalidRequest`, and the 4.3.1 node gives **no** message for it (`00`): `KafkaApis.isMemberIdValid` refuses an empty or null id, or one longer than 36 characters, before the coordinator is asked. The member id of the answer is null and the epoch 0, as in every refusal of this api.",
+            "hex": "000000170000a0280000000000002a00000000000000000000ff00",
+            "fields": {
+                "messageSize": 23,
+                "correlationId": 41000,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": null,
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.join-without-topics.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "A join with a member id but the EMPTY subscription (`01`).",
+            "hex": "0000004f004c00010000a02900126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000000000100",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 76,
+                "apiVersion": 1,
+                "correlationId": 41001,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": 0,
+                "rackId": null,
+                "subscribedTopicNames": []
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.join-without-topics.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The 42 with the sentence of the coordinator, \"SubscribedTopicNames must be set in first request.\" (`GroupCoordinatorService.throwIfShareGroupHeartbeatRequestIsInvalid` @ 4.1.0).",
+            "hex": "000000490000a0290000000000002a3353756273637269626564546f7069634e616d6573206d7573742062652073657420696e20666972737420726571756573742e000000000000000000ff00",
+            "fields": {
+                "messageSize": 73,
+                "correlationId": 41001,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": "SubscribedTopicNames must be set in first request.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.join.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The join of a share member: its own member id - 22 characters, the URL-safe base64 of a random uuid, as the Java share consumer generates it -, the epoch 0, the null rack id (`00`) and the subscription `t3-41-vectors`.",
+            "hex": "0000005d004c00010000a02a00126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a52517243670000000000020e74332d34312d766563746f727300",
+            "fields": {
+                "messageSize": 93,
+                "apiKey": 76,
+                "apiVersion": 1,
+                "correlationId": 41002,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": 0,
+                "rackId": null,
+                "subscribedTopicNames": [
+                    "t3-41-vectors"
+                ]
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.join.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The member id back, the epoch the group gave the member, the interval 5000 of `group.share.heartbeat.interval.ms` and an assignment that is present (`01`) but EMPTY: the coordinator initialises the share state of the partitions first and assigns them on a later heartbeat.",
+            "hex": "0000002f0000a02a0000000000000000173642357161364748514b53626d324c6d4a5251724367000000020000138801010000",
+            "fields": {
+                "messageSize": 47,
+                "correlationId": 41002,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": 2,
+                "heartbeatIntervalMs": 5000,
+                "assignment": {
+                    "topicPartitions": []
+                }
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.assignment.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "A later heartbeat of the member: the group id, the member id, its epoch and two nulls - the rack id and the subscription unchanged.",
+            "hex": "0000004f004c00010000a02c00126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000002000000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 76,
+                "apiVersion": 1,
+                "correlationId": 41004,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": 2,
+                "rackId": null,
+                "subscribedTopicNames": null
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.assignment.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The assignment: a new epoch and the one partition of `t3-41-vectors`, named by its topic id. A share member does not acknowledge an assignment - there is no owned-partitions field in the request.",
+            "hex": "000000450000a02c0000000000000000173642357161364748514b53626d324c6d4a525172436700000003000013880102d8993093d5c34700a265f08673aea7540200000000000000",
+            "fields": {
+                "messageSize": 69,
+                "correlationId": 41004,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": 3,
+                "heartbeatIntervalMs": 5000,
+                "assignment": {
+                    "topicPartitions": [
+                        {
+                            "topicId": {
+                                "$bytes": "d8993093d5c34700a265f08673aea754"
+                            },
+                            "partitions": [
+                                0
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.steady.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The steady state: the same heartbeat again under the epoch of the assignment.",
+            "hex": "0000004f004c00010000a02d00126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000003000000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 76,
+                "apiVersion": 1,
+                "correlationId": 41005,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": 3,
+                "rackId": null,
+                "subscribedTopicNames": null
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.steady.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The epoch unchanged and the null assignment (`ff`) of \"nothing changed\".",
+            "hex": "0000002d0000a02d0000000000000000173642357161364748514b53626d324c6d4a52517243670000000300001388ff00",
+            "fields": {
+                "messageSize": 45,
+                "correlationId": 41005,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": 3,
+                "heartbeatIntervalMs": 5000,
+                "assignment": null
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.fenced.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "A heartbeat ten epochs ahead of the one the coordinator holds.",
+            "hex": "0000004f004c00010000a02e00126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a52517243670000000d000000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 76,
+                "apiVersion": 1,
+                "correlationId": 41006,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": 13,
+                "rackId": null,
+                "subscribedTopicNames": null
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.fenced.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **110** `FencedMemberEpoch` with the sentence of `GroupMetadataManager.throwIfShareGroupMemberEpochIsInvalid` @ 4.3.1. A share member may send its previous epoch, which the coordinator accepts because the answer with the new one may have been lost.",
+            "hex": "000000b60000a02e0000000000006e9f015468652073686172652067726f7570206d656d6265722068617320612067726561746572206d656d6265722065706f63682028313329207468616e20746865206f6e65206b6e6f776e206279207468652067726f757020636f6f7264696e61746f72202833292e20546865206d656d626572206d757374206162616e646f6e20616c6c2069747320706172746974696f6e7320616e642072656a6f696e2e000000000000000000ff00",
+            "fields": {
+                "messageSize": 182,
+                "correlationId": 41006,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 110,
+                "errorMessage": "The share group member has a greater member epoch (13) than the one known by the group coordinator (3). The member must abandon all its partitions and rejoin.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.leave.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The leave: the epoch -1 under the member id, the rack id and the subscription null.",
+            "hex": "0000004f004c00010000a03b00126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a5251724367ffffffff000000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 76,
+                "apiVersion": 1,
+                "correlationId": 41019,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": -1,
+                "rackId": null,
+                "subscribedTopicNames": null
+            }
+        },
+        {
+            "id": "sharegroupheartbeat.v1.leave.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareGroupHeartbeatResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The member id and the epoch -1 back, the interval 0 and the null assignment.",
+            "hex": "0000002d0000a03b0000000000000000173642357161364748514b53626d324c6d4a5251724367ffffffff00000000ff00",
+            "fields": {
+                "messageSize": 45,
+                "correlationId": 41019,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "memberEpoch": -1,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        }
+    ]
+}

@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE} with the error code 42 (InvalidRequest) while
  * `apiVersion < 6`, measured on the node with this very class.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class GroupCoordinatorRequestV5 extends GroupCoordinatorRequest
 {

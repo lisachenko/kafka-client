@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * broker says nothing about what it did with the metrics, only whether it took them; everything else a client
  * needs is in the subscription it already has.
  *
- * @see docs/protocol/3.9.md, section "PushTelemetry API (key 72, v0)"
+ * @see docs/protocol/4.3.md, section "PushTelemetry API (key 72, v0)"
  */
 class PushTelemetryResponse extends AbstractResponse
 {

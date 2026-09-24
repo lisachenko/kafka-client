@@ -45,15 +45,31 @@ use Protocol\Kafka\Protocol\TaggedField;
  * the specification and is therefore not written at all, so a version 17 consumer entry is the version 12 entry
  * byte for byte; {@see FetchRequestTopicPartitionV12} keeps the entry of the versions 12 to 16.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "The leader epoch (KIP-320)",
- *      "Epoch validation in the fetch itself (v12, KIP-595)" and "The replica directory id of KIP-853 (v17)"
+ * **Version 18 (Kafka 4.1, KIP-1166) puts a second tagged field there**: the `high_watermark` of
+ * {@see self::$highWatermark}, tag 1, the high watermark a follower knows of the partition. Its default is
+ * `Long.MAX_VALUE`, "the feature is not supported", so a consumer entry of version 18 is again the entry of version
+ * 17 byte for byte; {@see FetchRequestTopicPartitionV17} keeps that entry. This class is the entry of version 18.
+ *
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "The leader epoch (KIP-320)",
+ *      "Epoch validation in the fetch itself (v12, KIP-595)", "The replica directory id of KIP-853 (v17)" and
+ *      "The high watermark of a follower, KIP-1166 (v18)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {
     /**
      * Version of the Fetch API that this DTO is packed for
      */
-    public const int VERSION = 17;
+    public const int VERSION = 18;
+
+    /**
+     * Default of the `high_watermark` of version 18: `Long.MAX_VALUE`, "the feature is not supported" (KIP-1166)
+     */
+    public const int HIGH_WATERMARK_NOT_SUPPORTED = PHP_INT_MAX;
+
+    /**
+     * The `high_watermark` of a follower that does not know the high watermark of the partition yet
+     */
+    public const int UNKNOWN_HIGH_WATERMARK = -1;
 
     /**
      * `LogStartOffset` of a consumer, which is not a follower and therefore has no log of its own
@@ -157,6 +173,20 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
      */
     public string $replicaDirectoryId = Uuid::ZERO;
 
+    /**
+     * High watermark of the partition that the **follower** sending this fetch knows (KIP-1166)
+     *
+     * The tagged field (tag 1) that version 18 added, `"ignorable": true` in `FetchRequest.json` @ 4.1.0: "The
+     * high-watermark known by the replica. -1 if the high-watermark is not known and 9223372036854775807 if the
+     * feature is not supported." The leader of a KRaft quorum compares it with its own high watermark and answers a
+     * follower that is behind at once instead of parking the fetch (`KafkaRaftClient.isHighWatermarkUpdated` @
+     * 4.1.0). A **consumer has nothing to say here**: {@see self::HIGH_WATERMARK_NOT_SUPPORTED} is the default of
+     * the specification and a tagged field whose value is its default is left off the wire.
+     *
+     * @since Version 18 of protocol (Kafka 4.1, KIP-1166)
+     */
+    public int $highWatermark = self::HIGH_WATERMARK_NOT_SUPPORTED;
+
     public function __construct(
         int $partition,
         int $fetchOffset,
@@ -164,7 +194,8 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
         int $logStartOffset = self::INVALID_LOG_START_OFFSET,
         int $currentLeaderEpoch = self::UNKNOWN_LEADER_EPOCH,
         int $lastFetchedEpoch = self::UNKNOWN_LAST_FETCHED_EPOCH,
-        string $replicaDirectoryId = Uuid::ZERO
+        string $replicaDirectoryId = Uuid::ZERO,
+        int $highWatermark = self::HIGH_WATERMARK_NOT_SUPPORTED
     ) {
         $this->partition          = $partition;
         $this->fetchOffset        = $fetchOffset;
@@ -173,6 +204,7 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
         $this->currentLeaderEpoch = $currentLeaderEpoch;
         $this->lastFetchedEpoch   = $lastFetchedEpoch;
         $this->replicaDirectoryId = $replicaDirectoryId;
+        $this->highWatermark      = $highWatermark;
     }
 
     /**
@@ -200,6 +232,11 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
         // the section at the end of the entry, and only when it is not the zero uuid of the specification
         if (static::VERSION >= 17) {
             $scheme['replicaDirectoryId'] = new TaggedField(0, BinarySchema::TYPE_UUID, Uuid::ZERO);
+        }
+        // The `high_watermark` of version 18 (KIP-1166) is the tag 1 of the same section, written only when it is
+        // not the Long.MAX_VALUE of the specification
+        if (static::VERSION >= 18) {
+            $scheme['highWatermark'] = new TaggedField(1, BinarySchema::TYPE_INT64, self::HIGH_WATERMARK_NOT_SUPPORTED);
         }
 
         return $scheme;

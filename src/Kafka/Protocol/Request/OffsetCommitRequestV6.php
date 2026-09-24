@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * member commits under the identity its `group.instance.id` gives it; {@see OffsetCommitRequest} sends that
  * frame, this one is the version below it and the last one a client without static membership needs.
  *
- * @see docs/protocol/3.9.md, section "Static membership (KIP-345)"
+ * @see docs/protocol/4.3.md, section "Static membership (KIP-345)"
  */
 final class OffsetCommitRequestV6 extends OffsetCommitRequest
 {

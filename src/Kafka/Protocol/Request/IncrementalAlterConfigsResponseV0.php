@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * The same fields as the version 1, written without the compact types and the tagged-field sections of KIP-482.
  *
- * @see docs/protocol/3.9.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 final class IncrementalAlterConfigsResponseV0 extends IncrementalAlterConfigsResponse
 {

@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * and version 9 (Kafka 3.6, KIP-848) is that answer with two more error codes it may carry, which
  * {@see OffsetCommitResponse} decodes.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
  */
 final class OffsetCommitResponseV7 extends OffsetCommitResponse
 {

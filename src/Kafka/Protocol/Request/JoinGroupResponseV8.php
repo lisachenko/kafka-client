@@ -22,8 +22,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * that asks at this version is never told to keep the assignment of its group, so its leader computes one on
  * every join, which is what every client below Kafka 3.2 does.
  *
- * @see docs/protocol/3.9.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The reason of KIP-800 and the skip_assignment of KIP-814 (v8 and v9)"
+ * @see docs/protocol/4.3.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupResponseV8 extends JoinGroupResponse
 {

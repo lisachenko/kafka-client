@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2: "Regardless of throttling, send the response
  * immediately") instead of holding the answer back for the throttle time.
  *
- * @see docs/protocol/3.9.md, section "AlterConfigs API (key 33, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "AlterConfigs API (key 33, v0 to v2)"
  */
 final class AlterConfigsRequestV0 extends AlterConfigsRequest
 {

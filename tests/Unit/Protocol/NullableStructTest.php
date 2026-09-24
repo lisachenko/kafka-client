@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\NullableStruct;
  * `-1` for null and `1` for "a structure follows", and counts that byte in the size of the field. A present
  * structure is then the ordinary one, tagged-field section included.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 #[CoversClass(NullableStruct::class)]
 #[CoversClass(BinarySchema::class)]

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * changes to the response (KIP-853)", see {@see FetchResponse}. This class decodes the answers of a request that
  * asked with {@see FetchRequestV16}.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "The replica directory id of KIP-853 (v17)"
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "The replica directory id of KIP-853 (v17)"
  */
 final class FetchResponseV16 extends FetchResponse
 {

@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * first join of that version is refused with, and that answer uses the very same layout - the generation -1, an
  * empty group protocol, an empty leader id, an empty member array, and the assigned member id in `member_id`.
  *
- * @see docs/protocol/3.9.md, section "The member id of a first join (v4, KIP-394)"
+ * @see docs/protocol/4.3.md, section "The member id of a first join (v4, KIP-394)"
  */
 final class JoinGroupResponseV3 extends JoinGroupResponse
 {

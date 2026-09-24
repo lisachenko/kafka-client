@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * through {@see \Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseTokenV2}, which has no such field.
  * {@see DescribeDelegationTokenResponseV1} is the same body in the encoding before KIP-482.
  *
- * @see docs/protocol/3.9.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 final class DescribeDelegationTokenResponseV2 extends DescribeDelegationTokenResponse
 {

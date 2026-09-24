@@ -44,6 +44,8 @@ use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -115,11 +117,11 @@ function produceDemoRecords(string $brokerAddress, string $topic, array $configu
         $records[]         = $record;
     }
 
-    // The record set of a Produce v3 request is a record batch of the message format v2, and nothing else: a
-    // 0.11.0.3 broker closes the connection on a version 3 request whose magic is below 2. Use ProduceRequestV2
-    // with a MessageSet to write the older formats.
+    // The record set of a Produce v3 or higher request is a record batch of the message format v2, and nothing
+    // else: a 4.x node answers an older magic with the error code 87. ProduceRequestV2 with a MessageSet writes the
+    // older formats to a broker of Kafka 3.x; a node of Kafka 4.0 or later closes the connection on it (KIP-896).
     $stream = new SocketStream($brokerAddress, $configuration, 5.0);
-    new ProduceRequest(
+    new ProduceRequestV12(
         [$topic => [0 => RecordBatch::fromRecords($records)]],
         1,
         5000,
@@ -127,7 +129,7 @@ function produceDemoRecords(string $brokerAddress, string $topic, array $configu
         1
     )->writeTo($stream);
 
-    $partition = ProduceResponse::unpack($stream)->topics[$topic]->partitions[0];
+    $partition = ProduceResponseV12::unpack($stream)->topics[$topic]->partitions[0];
     if ($partition->errorCode !== 0) {
         throw KafkaException::fromCode($partition->errorCode, ['topic' => $topic, 'partitionId' => 0]);
     }

@@ -40,8 +40,8 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV11;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV11;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 
 /**
  * What **Kafka 3.1** adds to the apis the consumer sends: the request side of the topic ids of KIP-516.
@@ -59,8 +59,8 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  *
  * Every topic of this class is named `t2-31-…`, so that it can run next to the other suites on the shared node.
  *
- * @see docs/protocol/3.9.md, sections "The topic ids of the fetch path (v13, KIP-516)", "Metadata by topic id
- *      (v12, KIP-516)", "Fetch API (key 1, v0 to v17)" and "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, sections "The topic ids of the fetch path (v13, KIP-516)", "Metadata by topic id
+ *      (v12, KIP-516)", "Fetch API (key 1, v0 to v18)" and "Metadata API (key 3, v0 to v13)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -167,7 +167,7 @@ final class TopicIdsFetchApiTest extends IntegrationTestCase
             [$this->topic => $this->topicId]
         );
 
-        self::assertSame(17, $request->getApiVersion(), 'the client sends the version of Kafka 3.9 now');
+        self::assertSame(18, $request->getApiVersion(), 'the client sends the version of Kafka 4.1 now');
         self::assertSame([$this->topic => $this->topicId], $request->getTopicIds());
         self::assertStringNotContainsString(
             $this->topic,
@@ -520,14 +520,14 @@ final class TopicIdsFetchApiTest extends IntegrationTestCase
         }
 
         $answer = $this->send(
-            new ProduceRequest(
+            new ProduceRequestV12(
                 [$this->topic => [0 => RecordBatch::fromRecords($records)]],
                 1,
                 self::REQUEST_TIMEOUT_MS,
                 self::CLIENT_ID,
                 3100
             ),
-            ProduceResponse::class
+            ProduceResponseV12::class
         );
 
         self::assertSame(

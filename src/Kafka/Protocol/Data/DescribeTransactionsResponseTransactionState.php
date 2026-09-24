@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * **`producer_epoch` is an int16 here**, unlike the int32 of {@see ProducerState} in a DescribeProducers answer.
  *
- * @see docs/protocol/3.9.md, section "DescribeTransactions API (key 65, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTransactions API (key 65, v0)"
  */
 class DescribeTransactionsResponseTransactionState implements BinarySchemaInterface
 {

@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
  * unless the broker had to cap it at the high watermark, and it is the same number that an Offsets request with
  * `EARLIEST` and the `log_start_offset` of a Fetch v5 answer report for that partition.
  *
- * @see docs/protocol/3.9.md, section "DeleteRecords API (key 21, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DeleteRecords API (key 21, v0 to v2)"
  */
 final class DeletedRecords
 {

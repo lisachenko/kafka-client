@@ -1,0 +1,914 @@
+{
+    "api": "share-fetch",
+    "apiKey": 78,
+    "section": "ShareFetch API (key 78, v1 and v2)",
+    "description": "Wire vectors of the ShareFetch API (key 78, v1 and v2, KIP-932, KIP-1206 and KIP-1222), captured on the 4.3.1 node and replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "sharefetch.v1.acknowledgements-in-epoch-zero.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "A ShareFetch that opens a share session (epoch 0) and acknowledges offset 0 in the same frame.",
+            "hex": "0000008e004e00010000a03100126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000000000001f4000000017fffffff000001f4000001f402d8993093d5c34700a265f08673aea7540200000000020000000000000000000000000000000002010000000100",
+            "fields": {
+                "messageSize": 142,
+                "apiKey": 78,
+                "apiVersion": 1,
+                "correlationId": 41009,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 0,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 500,
+                "batchSize": 500,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": [
+                                    {
+                                        "firstOffset": 0,
+                                        "lastOffset": 0,
+                                        "acknowledgeTypes": [
+                                            1
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.acknowledgements-in-epoch-zero.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The **42** of the whole request, again without a message: acknowledgements need a session that acquired something, and the epoch 0 is the one that has none yet (`SharePartitionManager.newContext` @ 4.3.1). No partition is named in the answer.",
+            "hex": "000000130000a0310000000000002a0000000000010100",
+            "fields": {
+                "messageSize": 19,
+                "correlationId": 41009,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 0,
+                "responses": [],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.open.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The ShareFetch that opens the share session of the member on the leader: the group id and the member id, the epoch 0, `max_wait_ms` 500, `min_bytes` 1, `max_bytes` 0x7fffffff, `max_records` 500 and `batch_size` 500 (both version 1), partition 0 of the topic by id with no acknowledgement batch, and no forgotten topic.",
+            "hex": "0000007b004e00010000a03200126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000000000001f4000000017fffffff000001f4000001f402d8993093d5c34700a265f08673aea75402000000000100000100",
+            "fields": {
+                "messageSize": 123,
+                "apiKey": 78,
+                "apiVersion": 1,
+                "correlationId": 41010,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 0,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 500,
+                "batchSize": 500,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": []
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.open.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The records of partition 0 are *acquired* for this member: `acquisition_lock_timeout_ms` 30000 (`share.record.lock.duration.ms`), the six records as one record batch in `records`, and `acquired_records` naming the range 0-5 with the delivery count 1. The `current_leader` is `0 0`: the node fills it in only with the codes 6 and 74, and the spec has no default for it. `node_endpoints` is empty.",
+            "hex": "000000c10000a03200000000000000000000753002d8993093d5c34700a265f08673aea7540200000000000000000000000000000000000000740000000000000000000000670000000002d65a63e0000000000005000001a0d0fb68c6000001a0d0fb68c7ffffffffffffffffffffffffffff000000061000000001047630001000020201047631001000020401047632001000020601047633001000020801047634001000020a0104763500020000000000000000000000000000000500010000000100",
+            "fields": {
+                "messageSize": 193,
+                "correlationId": 41010,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 30000,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "acknowledgeErrorCode": 0,
+                                "acknowledgeErrorMessage": null,
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                },
+                                "records": {
+                                    "$bytes": "0000000000000000000000670000000002d65a63e0000000000005000001a0d0fb68c6000001a0d0fb68c7ffffffffffffffffffffffffffff000000061000000001047630001000020201047631001000020401047632001000020601047633001000020801047634001000020a0104763500"
+                                },
+                                "acquiredRecords": [
+                                    {
+                                        "firstOffset": 0,
+                                        "lastOffset": 5,
+                                        "deliveryCount": 1
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.wrong-epoch.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "A ShareFetch of the epoch 5 in the session whose next epoch is 1.",
+            "hex": "0000007b004e00010000a03300126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000005000001f4000000017fffffff000001f4000001f402d8993093d5c34700a265f08673aea75402000000000100000100",
+            "fields": {
+                "messageSize": 123,
+                "apiKey": 78,
+                "apiVersion": 1,
+                "correlationId": 41011,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 5,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 500,
+                "batchSize": 500,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": []
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.wrong-epoch.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The **123** `InvalidShareSessionEpoch` of the whole request, without a message and without partitions; the session itself stays at its epoch.",
+            "hex": "000000130000a0330000000000007b0000000000010100",
+            "fields": {
+                "messageSize": 19,
+                "correlationId": 41011,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 123,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 0,
+                "responses": [],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.acknowledge-and-redeliver.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The next ShareFetch of the session, epoch 1, with two acknowledgement batches for partition 0: the offsets 0-2 with one type **per offset** (accept `01`, release `02`, reject `03`) and the offsets 3-5 with the one type release for the whole range.",
+            "hex": "000000a3004e00010000a03400126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000001000001f4000000017fffffff000001f4000001f402d8993093d5c34700a265f08673aea7540200000000030000000000000000000000000000000204010203000000000000000003000000000000000502020000000100",
+            "fields": {
+                "messageSize": 163,
+                "apiKey": 78,
+                "apiVersion": 1,
+                "correlationId": 41012,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 1,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 500,
+                "batchSize": 500,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": [
+                                    {
+                                        "firstOffset": 0,
+                                        "lastOffset": 2,
+                                        "acknowledgeTypes": [
+                                            1,
+                                            2,
+                                            3
+                                        ]
+                                    },
+                                    {
+                                        "firstOffset": 3,
+                                        "lastOffset": 5,
+                                        "acknowledgeTypes": [
+                                            2
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.acknowledge-and-redeliver.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The acknowledgements succeed (`acknowledge_error_code` 0), and the fetch acquires the released records again: the offset 1 and the range 3-5 with the delivery count **2**. The accepted 0 and the rejected 2 are never delivered again. The `records` still carry the whole batch 0-5 - the acquired ranges are what the member may process.",
+            "hex": "000000d40000a03400000000000000000000753002d8993093d5c34700a265f08673aea7540200000000000000000000000000000000000000740000000000000000000000670000000002d65a63e0000000000005000001a0d0fb68c6000001a0d0fb68c7ffffffffffffffffffffffffffff000000061000000001047630001000020201047631001000020401047632001000020601047633001000020801047634001000020a010476350003000000000000000100000000000000010002000000000000000003000000000000000500020000000100",
+            "fields": {
+                "messageSize": 212,
+                "correlationId": 41012,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 30000,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "acknowledgeErrorCode": 0,
+                                "acknowledgeErrorMessage": null,
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                },
+                                "records": {
+                                    "$bytes": "0000000000000000000000670000000002d65a63e0000000000005000001a0d0fb68c6000001a0d0fb68c7ffffffffffffffffffffffffffff000000061000000001047630001000020201047631001000020401047632001000020601047633001000020801047634001000020a0104763500"
+                                },
+                                "acquiredRecords": [
+                                    {
+                                        "firstOffset": 1,
+                                        "lastOffset": 1,
+                                        "deliveryCount": 2
+                                    },
+                                    {
+                                        "firstOffset": 3,
+                                        "lastOffset": 5,
+                                        "deliveryCount": 2
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.acknowledge-error.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The same acknowledgement piggybacked on the next ShareFetch, epoch 4.",
+            "hex": "0000008e004e00010000a03700126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000004000001f4000000017fffffff000001f4000001f402d8993093d5c34700a265f08673aea7540200000000020000000000000003000000000000000302010000000100",
+            "fields": {
+                "messageSize": 142,
+                "apiKey": 78,
+                "apiVersion": 1,
+                "correlationId": 41015,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 4,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 500,
+                "batchSize": 500,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": [
+                                    {
+                                        "firstOffset": 3,
+                                        "lastOffset": 3,
+                                        "acknowledgeTypes": [
+                                            1
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.acknowledge-error.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The fetch half of the partition succeeds (`error_code` 0, nothing new to acquire - the member holds the rest), the acknowledgement half is the 121 in `acknowledge_error_code` with its sentence in `acknowledge_error_message`.",
+            "hex": "000000790000a03700000000000000000000753002d8993093d5c34700a265f08673aea754020000000000000000793f546865206f66667365742063616e6e6f742062652061636b6e6f776c65646765642e20546865206f6666736574206973206e6f742061637175697265642e000000000000000000010100000100",
+            "fields": {
+                "messageSize": 121,
+                "correlationId": 41015,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 30000,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "acknowledgeErrorCode": 121,
+                                "acknowledgeErrorMessage": "The offset cannot be acknowledged. The offset is not acquired.",
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                },
+                                "records": {
+                                    "$bytes": ""
+                                },
+                                "acquiredRecords": []
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.session-not-found.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "A ShareFetch of the epoch 5 after the close.",
+            "hex": "0000007b004e00010000a03a00126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a525172436700000005000001f4000000017fffffff000001f4000001f402d8993093d5c34700a265f08673aea75402000000000100000100",
+            "fields": {
+                "messageSize": 123,
+                "apiKey": 78,
+                "apiVersion": 1,
+                "correlationId": 41018,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 5,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 500,
+                "batchSize": 500,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": []
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v1.session-not-found.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The **122** `ShareSessionNotFound`, without a message: the member opens a new session with the epoch 0.",
+            "hex": "000000130000a03a0000000000007a0000000000010100",
+            "fields": {
+                "messageSize": 19,
+                "correlationId": 41018,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 122,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 0,
+                "responses": [],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.record-limit.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "ShareFetch v2 (Kafka 4.2, KIP-1206) opening the share session (epoch 0) in the **record-limit** acquire mode: `max_records` 2 and `batch_size` 2, then the two fields of version 2 behind them - `share_acquire_mode` `01` and `is_renew_ack` `00` (false) - and partition 0 of the topic by id.",
+            "hex": "0000007d004e00020000a41f00126b61666b612d636c69656e742d74332d3432001474332d34322d766563746f72732d736861726517627330546f77754553492d59786663454f6a4f59437700000000000001f4000000017fffffff0000000200000002010002c9ea04c005a94a6284fa9dc3ef9fa17702000000000100000100",
+            "fields": {
+                "messageSize": 125,
+                "apiKey": 78,
+                "apiVersion": 2,
+                "correlationId": 42015,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groupId": "t3-42-vectors-share",
+                "memberId": "bs0TowuESI-YxfcEOjOYCw",
+                "shareSessionEpoch": 0,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 2,
+                "batchSize": 2,
+                "shareAcquireMode": 1,
+                "isRenewAck": false,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": []
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.record-limit.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The node acquires exactly **two** records, the offsets 0-1 with the delivery count 1, although the record batch in `records` holds the offsets 0-5: the record limit cuts inside a batch. `acquisition_lock_timeout_ms` is 30000.",
+            "hex": "000000c10000a41f00000000000000000000753002c9ea04c005a94a6284fa9dc3ef9fa1770200000000000000000000000000000000000000740000000000000000000000670000000002b9874145000000000005000001a0d16a3dee000001a0d16a3deeffffffffffffffffffffffffffff000000061000000001047630001000000201047631001000000401047632001000000601047633001000000801047634001000000a0104763500020000000000000000000000000000000100010000000100",
+            "fields": {
+                "messageSize": 193,
+                "correlationId": 42015,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 30000,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "acknowledgeErrorCode": 0,
+                                "acknowledgeErrorMessage": null,
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                },
+                                "records": {
+                                    "$bytes": "0000000000000000000000670000000002b9874145000000000005000001a0d16a3dee000001a0d16a3deeffffffffffffffffffffffffffff000000061000000001047630001000000201047631001000000401047632001000000601047633001000000801047634001000000a0104763500"
+                                },
+                                "acquiredRecords": [
+                                    {
+                                        "firstOffset": 0,
+                                        "lastOffset": 1,
+                                        "deliveryCount": 1
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.batch-optimized.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The next ShareFetch of the session (epoch 1) with the same `max_records` 2 in the **batch-optimized** mode (`share_acquire_mode` `00`), the only behaviour of version 1.",
+            "hex": "0000007d004e00020000a42000126b61666b612d636c69656e742d74332d3432001474332d34322d766563746f72732d736861726517627330546f77754553492d59786663454f6a4f59437700000001000001f4000000017fffffff0000000200000002000002c9ea04c005a94a6284fa9dc3ef9fa17702000000000100000100",
+            "fields": {
+                "messageSize": 125,
+                "apiKey": 78,
+                "apiVersion": 2,
+                "correlationId": 42016,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groupId": "t3-42-vectors-share",
+                "memberId": "bs0TowuESI-YxfcEOjOYCw",
+                "shareSessionEpoch": 1,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 2,
+                "batchSize": 2,
+                "shareAcquireMode": 0,
+                "isRenewAck": false,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": []
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.batch-optimized.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The node acquires the rest of the batch it had started, the offsets 2-5, four records against a limit of two - \"This limit can be exceeded for alignment of batch boundaries\" - and stops at the boundary: the second batch 6-8 stays available.",
+            "hex": "000000c10000a42000000000000000000000753002c9ea04c005a94a6284fa9dc3ef9fa1770200000000000000000000000000000000000000740000000000000000000000670000000002b9874145000000000005000001a0d16a3dee000001a0d16a3deeffffffffffffffffffffffffffff000000061000000001047630001000000201047631001000000401047632001000000601047633001000000801047634001000000a0104763500020000000000000002000000000000000500010000000100",
+            "fields": {
+                "messageSize": 193,
+                "correlationId": 42016,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 30000,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "acknowledgeErrorCode": 0,
+                                "acknowledgeErrorMessage": null,
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                },
+                                "records": {
+                                    "$bytes": "0000000000000000000000670000000002b9874145000000000005000001a0d16a3dee000001a0d16a3deeffffffffffffffffffffffffffff000000061000000001047630001000000201047631001000000401047632001000000601047633001000000801047634001000000a0104763500"
+                                },
+                                "acquiredRecords": [
+                                    {
+                                        "firstOffset": 2,
+                                        "lastOffset": 5,
+                                        "deliveryCount": 1
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.renew-with-limits.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "A ShareFetch of the epoch 2 that renews the offsets 0-1 (acknowledge type **4**, `Renew`, KIP-1222) with `is_renew_ack` `01` (true) - and the ordinary limits of a fetch.",
+            "hex": "00000090004e00020000a42100126b61666b612d636c69656e742d74332d3432001474332d34322d766563746f72732d736861726517627330546f77754553492d59786663454f6a4f59437700000002000001f4000000017fffffff000001f4000001f4000102c9ea04c005a94a6284fa9dc3ef9fa1770200000000020000000000000000000000000000000102040000000100",
+            "fields": {
+                "messageSize": 144,
+                "apiKey": 78,
+                "apiVersion": 2,
+                "correlationId": 42017,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groupId": "t3-42-vectors-share",
+                "memberId": "bs0TowuESI-YxfcEOjOYCw",
+                "shareSessionEpoch": 2,
+                "maxWaitMs": 500,
+                "minBytes": 1,
+                "maxBytes": 2147483647,
+                "maxRecords": 500,
+                "batchSize": 500,
+                "shareAcquireMode": 0,
+                "isRenewAck": true,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": [
+                                    {
+                                        "firstOffset": 0,
+                                        "lastOffset": 1,
+                                        "acknowledgeTypes": [
+                                            4
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.renew-with-limits.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The **42** of the whole request, without a message on the wire: `KafkaApis.handleShareFetchRequest` @ 4.3.1 requires `max_wait_ms`, `min_bytes`, `max_bytes` and `max_records` to be 0 in a renew fetch (\"... must be set to 0 if isRenewAck is true.\", in the log of the node only). The refusal comes before the session is touched, so the epoch 2 is still the next one.",
+            "hex": "000000130000a4210000000000002a0000000000010100",
+            "fields": {
+                "messageSize": 19,
+                "correlationId": 42017,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 0,
+                "responses": [],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.renew.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The same renew with the five limits 0, as `ShareSessionHandler` @ 4.2.0 sends it: `max_wait_ms`, `min_bytes`, `max_bytes`, `max_records` and `batch_size` 0, `is_renew_ack` true, the offsets 0-1 with the type 4.",
+            "hex": "00000090004e00020000a42200126b61666b612d636c69656e742d74332d3432001474332d34322d766563746f72732d736861726517627330546f77754553492d59786663454f6a4f594377000000020000000000000000000000000000000000000000000102c9ea04c005a94a6284fa9dc3ef9fa1770200000000020000000000000000000000000000000102040000000100",
+            "fields": {
+                "messageSize": 144,
+                "apiKey": 78,
+                "apiVersion": 2,
+                "correlationId": 42018,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groupId": "t3-42-vectors-share",
+                "memberId": "bs0TowuESI-YxfcEOjOYCw",
+                "shareSessionEpoch": 2,
+                "maxWaitMs": 0,
+                "minBytes": 0,
+                "maxBytes": 0,
+                "maxRecords": 0,
+                "batchSize": 0,
+                "shareAcquireMode": 0,
+                "isRenewAck": true,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": [
+                                    {
+                                        "firstOffset": 0,
+                                        "lastOffset": 1,
+                                        "acknowledgeTypes": [
+                                            4
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.renew.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The partition answered with both codes 0, **empty** `records` and no acquired range: a renew fetch fetches nothing, it only renews - the acquisition lock of the offsets 0-1 starts over for `acquisition_lock_timeout_ms` 30000.",
+            "hex": "0000003b0000a42200000000000000000000753002c9ea04c005a94a6284fa9dc3ef9fa1770200000000000000000000000000000000000000010100000100",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 42018,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 30000,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "acknowledgeErrorCode": 0,
+                                "acknowledgeErrorMessage": null,
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                },
+                                "records": {
+                                    "$bytes": ""
+                                },
+                                "acquiredRecords": []
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.renew-without-flag.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The type 4 on the offsets 0-1 again, epoch 3, with `is_renew_ack` false.",
+            "hex": "00000090004e00020000a42300126b61666b612d636c69656e742d74332d3432001474332d34322d766563746f72732d736861726517627330546f77754553492d59786663454f6a4f594377000000030000000000000000000000000000000000000000000002c9ea04c005a94a6284fa9dc3ef9fa1770200000000020000000000000000000000000000000102040000000100",
+            "fields": {
+                "messageSize": 144,
+                "apiKey": 78,
+                "apiVersion": 2,
+                "correlationId": 42019,
+                "clientId": "kafka-client-t3-42",
+                "headerTaggedFields": [],
+                "groupId": "t3-42-vectors-share",
+                "memberId": "bs0TowuESI-YxfcEOjOYCw",
+                "shareSessionEpoch": 3,
+                "maxWaitMs": 0,
+                "minBytes": 0,
+                "maxBytes": 0,
+                "maxRecords": 0,
+                "batchSize": 0,
+                "shareAcquireMode": 0,
+                "isRenewAck": false,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": [
+                                    {
+                                        "firstOffset": 0,
+                                        "lastOffset": 1,
+                                        "acknowledgeTypes": [
+                                            4
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopicsData": []
+            }
+        },
+        {
+            "id": "sharefetch.v2.renew-without-flag.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The request succeeds, the acknowledgement of the partition is the **42** in `acknowledge_error_code`, without a message: `KafkaApis.validateAcknowledgementBatches` @ 4.3.1 refuses a Renew in a request that does not say `is_renew_ack`.",
+            "hex": "0000003b0000a42300000000000000000000753002c9ea04c005a94a6284fa9dc3ef9fa1770200000000000000002a00000000000000000000010100000100",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 42019,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "acquisitionLockTimeoutMs": 30000,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "c9ea04c005a94a6284fa9dc3ef9fa177"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "acknowledgeErrorCode": 42,
+                                "acknowledgeErrorMessage": null,
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                },
+                                "records": {
+                                    "$bytes": ""
+                                },
+                                "acquiredRecords": []
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        }
+    ]
+}

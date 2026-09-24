@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 3 (KIP-345, Kafka 2.3) added the `group_instance_id` to the **request** alone, so this answer and
  * {@see HeartbeatResponse} decode the same bytes.
  *
- * @see docs/protocol/3.9.md, section "Static membership (KIP-345)"
+ * @see docs/protocol/4.3.md, section "Static membership (KIP-345)"
  */
 final class HeartbeatResponseV2 extends HeartbeatResponse
 {

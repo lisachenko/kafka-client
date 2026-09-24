@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the `types_filter` of the request. {@see ListGroupResponseProtocolV4} is the entry of version 4, which has the
  * state and not the type.
  *
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "ListGroups API (key 16, v0 to v5)"
  */
 class ListGroupResponseProtocol implements BinarySchemaInterface
 {
@@ -72,7 +72,7 @@ class ListGroupResponseProtocol implements BinarySchemaInterface
     public const string TYPE_CONSUMER = 'consumer';
 
     /**
-     * A **share** group of KIP-932, which is early access in Kafka 3.9 and out of scope of this line
+     * A **share** group of KIP-932 (early access in Kafka 3.9, GA in 4.2), listed by `AdminClient::listShareGroups()`
      *
      * `Group.GroupType.SHARE` @ 3.9.2.
      *

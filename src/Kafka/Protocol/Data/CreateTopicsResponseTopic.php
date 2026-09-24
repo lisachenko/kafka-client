@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * gave the topic, between its name and the error code, and sixteen zero bytes for a topic it refused.
  * {@see CreateTopicsResponseTopicV5} is the entry of the versions 5 and 6.
  *
- * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/4.3.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 class CreateTopicsResponseTopic implements BinarySchemaInterface
 {

@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.8 put the **`topic_id`** of the deleted topic into every result with the version 6 and made the name
  * nullable with it; the version 5 carries the name, the error code and the error message it added itself.
  *
- * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 final class DeleteTopicsResponseV5 extends DeleteTopicsResponse
 {

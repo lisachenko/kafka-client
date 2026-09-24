@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The {@see ListGroupsRequest::$typesFilter} of such a frame is never on the wire, so a broker that speaks this
  * version lists every type it knows. {@see ListGroupsRequest} sends the frame with both filters.
  *
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "ListGroups API (key 16, v0 to v5)"
  */
 final class ListGroupsRequestV4 extends ListGroupsRequest
 {

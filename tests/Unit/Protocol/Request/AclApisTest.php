@@ -47,7 +47,7 @@ use Protocol\Kafka\Tests\Compliance\VectorFile;
  * The three apis are implemented on this line for the first time and at the version 3 alone, so every frame below
  * is one the 3.9.2 KRaft node with its `StandardAuthorizer` really sent or really accepted.
  *
- * @see docs/protocol/3.9.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/4.3.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
  *      and "DeleteAcls API (key 31, v0 to v3)"
  */
 #[CoversClass(DescribeAclsRequest::class)]

@@ -24,28 +24,34 @@ use Protocol\Kafka\Common\Errors\MismatchedEndpointTypeException;
 use Protocol\Kafka\Common\Errors\UnsupportedEndpointTypeException;
 use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
 use Protocol\Kafka\Protocol\Request\DescribeClusterRequestV0;
+use Protocol\Kafka\Protocol\Request\DescribeClusterRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
 use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV0;
+use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV1;
 
 /**
- * Exercises DescribeCluster (key 60, v0 and v1) of KIP-700 and KIP-919 against the 3.9.2 KRaft node.
+ * Exercises DescribeCluster (key 60, v0 to v2) of KIP-700, KIP-919 and KIP-1073 against the 4.3.1 KRaft node.
  *
  * The api carries nothing a Metadata answer did not already carry - the cluster id, the controller and the
  * brokers - and that is the point of it: until Kafka 2.8 a client that wanted those three had to send a request
  * about *topics* with an empty topic array. This class asserts that both routes answer the same thing, and
  * measures the one field that is new, the acl bit field of KIP-430, and the `endpoint_type` that Kafka 3.7
  * appended to the version 1 - which half of a KRaft cluster the answer describes, and the two error codes 114 and
- * 115 that a server answers when the byte is one it will not serve.
+ * 115 that a server answers when the byte is one it will not serve - and the `include_fenced_brokers` of the
+ * version 2 (Kafka 4.0), which a one-node cluster answers with its one broker, not fenced, because a fenced broker
+ * is a registered broker that has lost its lease and the only broker of this node serves the request itself.
  *
  * It creates nothing on the broker and therefore has nothing to clean up.
  *
- * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "DescribeCluster API (key 60, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeClusterRequest::class)]
 #[CoversClass(DescribeClusterResponse::class)]
 #[CoversClass(DescribeClusterRequestV0::class)]
 #[CoversClass(DescribeClusterResponseV0::class)]
+#[CoversClass(DescribeClusterRequestV1::class)]
+#[CoversClass(DescribeClusterResponseV1::class)]
 #[CoversClass(EndpointType::class)]
 #[CoversClass(ClusterDescription::class)]
 final class DescribeClusterApiTest extends IntegrationTestCase
@@ -116,9 +122,9 @@ final class DescribeClusterApiTest extends IntegrationTestCase
     }
 
     /**
-     * The client sends the version 1, and the node answers which half of the cluster it described
+     * The node answers which half of the cluster it described (KIP-919, version 1 and above)
      */
-    public function testTheClientSendsVersionOneAndIsAnsweredTheBrokerEndpointType(): void
+    public function testTheNodeAnswersTheBrokerEndpointType(): void
     {
         $described = $this->admin->describeCluster();
 
@@ -186,8 +192,8 @@ final class DescribeClusterApiTest extends IntegrationTestCase
         $below = DescribeClusterResponseV0::unpack($stream);
 
         $stream = $this->connect();
-        new DescribeClusterRequest(false, 'kafka-client-t1-cluster', 62)->writeTo($stream);
-        $above = DescribeClusterResponse::unpack($stream);
+        new DescribeClusterRequestV1(false, 'kafka-client-t1-cluster', 62)->writeTo($stream);
+        $above = DescribeClusterResponseV1::unpack($stream);
 
         self::assertSame(KafkaException::NO_ERROR, $below->errorCode);
         self::assertSame($above->clusterId, $below->clusterId);
@@ -198,6 +204,74 @@ final class DescribeClusterApiTest extends IntegrationTestCase
             $below->getMessageSize(),
             'the endpoint_type of KIP-919 is the only byte the version added'
         );
+    }
+
+    /**
+     * The client sends the version 2, and every broker of its answer carries the `is_fenced` of KIP-1073
+     */
+    public function testTheVersionTwoAnswersTheFencedFlagOfEveryBroker(): void
+    {
+        foreach ([false, true] as $includeFencedBrokers) {
+            $stream  = $this->connect();
+            $request = new DescribeClusterRequest(
+                false,
+                'kafka-client-t1-cluster',
+                63,
+                EndpointType::Broker,
+                $includeFencedBrokers
+            );
+            $request->writeTo($stream);
+            $answer = DescribeClusterResponse::unpack($stream);
+
+            self::assertSame(2, $request->getApiVersion());
+            self::assertSame(KafkaException::NO_ERROR, $answer->errorCode);
+            self::assertNotSame([], $answer->brokers);
+            foreach ($answer->brokers as $broker) {
+                self::assertFalse($broker->isFenced, 'the broker that answers is not fenced, asked for or not');
+            }
+        }
+
+        $stream = $this->connect();
+        new DescribeClusterRequestV1(false, 'kafka-client-t1-cluster', 64)->writeTo($stream);
+        $version1 = DescribeClusterResponseV1::unpack($stream);
+
+        self::assertSame(
+            $version1->getMessageSize() + count($version1->brokers),
+            $answer->getMessageSize(),
+            'the version 2 answer is the version 1 answer plus the one flag of every broker'
+        );
+    }
+
+    /**
+     * The admin api asks for the fenced brokers, and a one-node cluster has none to report
+     */
+    public function testTheDescriptionListsNoFencedBrokerOnAOneNodeCluster(): void
+    {
+        $withFenced = $this->admin->describeCluster(true, EndpointType::Broker, true);
+        $without    = $this->admin->describeCluster();
+
+        self::assertSame(array_keys($without->nodes), array_keys($withFenced->nodes));
+        self::assertSame([], $withFenced->fencedNodeIds);
+        self::assertFalse($withFenced->isFenced($withFenced->controllerId));
+        self::assertSame(self::ALL_CLUSTER_OPERATIONS, $withFenced->authorizedOperations);
+    }
+
+    /**
+     * A broker listener refuses the controller endpoints with the 114, the fenced flag or not
+     *
+     * The Java admin client refuses `includeFencedBrokers` towards a controller endpoint on the client side
+     * ("Cannot request fenced brokers from controller endpoint"); a broker listener answers the 114 of the
+     * endpoint type before it looks at the flag.
+     */
+    public function testTheControllersWithTheFencedFlagAreTheMismatchedEndpointType(): void
+    {
+        $stream = $this->connect();
+        new DescribeClusterRequest(false, 'kafka-client-t1-cluster', 65, EndpointType::Controller, true)
+            ->writeTo($stream);
+        $answer = DescribeClusterResponse::unpack($stream);
+
+        self::assertSame(KafkaException::MISMATCHED_ENDPOINT_TYPE, $answer->errorCode);
+        self::assertSame([], $answer->brokers);
     }
 
     /**

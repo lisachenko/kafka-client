@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersResponseReplicaElectionResult;
  * **Kafka 2.4 added the version 2** (KIP-482), the same frame in the flexible encoding.
  * {@see ElectLeadersResponseV1} is the version that carries the top-level error code without it.
  *
- * @see docs/protocol/3.9.md, section "ElectLeaders API (key 43, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 class ElectLeadersResponse extends AbstractResponse
 {

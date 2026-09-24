@@ -23,13 +23,14 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseNodeEndpoint;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV10;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV5;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV8;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Produce response object, version 11
+ * Produce response object, version 13
  *
  * <pre>
  *   ProduceResponse (Version: 8) => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset
@@ -103,17 +104,29 @@ use Protocol\Kafka\Protocol\TaggedField;
  * with the message "Partition was not added to the transaction". A broker picks between the two on the api
  * version alone, see {@see ProduceRequest}.
  *
+ * **Version 12 (Kafka 4.0, KIP-890 part 2) adds no field either** - `ProduceResponse.json` @ 4.0.0: "Version 12 is
+ * the same as version 10 (KIP-890)" - so this class decodes the version 10 frame once more, and
+ * {@see ProduceResponseV11} the very same bytes for the version below. What version 12 changes is what a
+ * transactional batch of the request means, see {@see ProduceRequest}.
+ *
+ * **Version 13 (Kafka 4.1, KIP-516) names every topic of the answer by its id**: `ProduceResponse.json` @ 4.1.0
+ * declares `Name` as `"versions": "0-12"` and `TopicId` as `"13+"`, so {@see self::$topics} is a list of entries
+ * that carry the `topic_id` and the empty name, see {@see ProduceResponseTopic}, and a partition of a topic the
+ * broker does not know by that id may carry **100** `UNKNOWN_TOPIC_ID`. {@see ProduceResponseV12} keeps the
+ * answer that names its topics.
+ *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)", "The leader discovery of KIP-951 (v10)"
- *      and "The abortable transaction error of KIP-890 (v11)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)", "The leader discovery of KIP-951 (v10)",
+ *      "The abortable transaction error of KIP-890 (v11)", "The transaction protocol v2 of KIP-890 part 2 (v12)" and
+ *      "The topic ids of the produce path (v13, KIP-516)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
      * Version of the Produce API that this class decodes the answer of
      */
-    public const int VERSION = 11;
+    public const int VERSION = 13;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -125,9 +138,10 @@ class ProduceResponse extends AbstractResponse
     public const int FLEXIBLE_VERSION = 9;
 
     /**
-     * Result for each topic of the request, indexed by the topic name
+     * Result for each topic of the request, indexed by the topic name - a list from version 13 on (KIP-516), whose
+     * entries name their topic by its {@see ProduceResponseTopic::$topicId}
      *
-     * @var array<string, ProduceResponseTopic>
+     * @var array<array-key, ProduceResponseTopic>
      */
     public array $topics = [];
 
@@ -165,8 +179,9 @@ class ProduceResponse extends AbstractResponse
     public static function getScheme(): array
     {
         $header = parent::getScheme();
-        $body   = [
-            'topics' => ['topic' => static::topicClass()],
+        // From version 13 the entries carry no name, so there is no field to index the array by
+        $body = [
+            'topics' => static::VERSION >= 13 ? [static::topicClass()] : ['topic' => static::topicClass()],
         ];
         if (static::VERSION >= 1) {
             $body['throttleTime'] = BinarySchema::TYPE_INT32;
@@ -188,7 +203,8 @@ class ProduceResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 10 => ProduceResponseTopic::class,
+            static::VERSION >= 13 => ProduceResponseTopic::class,
+            static::VERSION >= 10 => ProduceResponseTopicV10::class,
             static::VERSION >= 8 => ProduceResponseTopicV8::class,
             static::VERSION >= 5 => ProduceResponseTopicV5::class,
             static::VERSION >= 2 => ProduceResponseTopicV2::class,

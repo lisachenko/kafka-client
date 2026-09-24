@@ -19,10 +19,10 @@ use Protocol\Kafka\Protocol\Data\FeatureUpdateKey;
 use Protocol\Kafka\Protocol\Data\FeatureUpdateKeyV0;
 
 /**
- * UpdateFeatures, version 1: raises, lowers or deletes a finalized feature (ApiKey 57, Kafka 2.7, KIP-584)
+ * UpdateFeatures, version 2: raises, lowers or deletes a finalized feature (ApiKey 57, Kafka 2.7, KIP-584)
  *
  * <pre>
- *   UpdateFeatures Request (Version: 0 to 1) => timeout_ms [feature_updates] validate_only
+ *   UpdateFeatures Request (Version: 0 to 2) => timeout_ms [feature_updates] validate_only
  *     timeout_ms      => INT32
  *     feature_updates => feature max_version_level allow_downgrade|upgrade_type
  *       feature           => COMPACT_STRING
@@ -52,8 +52,13 @@ use Protocol\Kafka\Protocol\Data\FeatureUpdateKeyV0;
  * answers what it *would* do without writing anything. {@see UpdateFeaturesRequestV0} is the frame below that,
  * with the boolean and without the dry run.
  *
- * @see docs/protocol/3.9.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
- *      run of KIP-778 (v1)"
+ * **Version 2 (Kafka 4.0) is the frame of version 1 with another number in the header.** "Version 2 changes the
+ * response to not return feature level results" stands above the `validVersions` of `UpdateFeaturesRequest.json`
+ * @ 4.0.0: the version tells the controller that this client reads an answer without the per-feature `results`
+ * ({@see UpdateFeaturesResponse}). {@see UpdateFeaturesRequestV1} is the same bytes one version lower.
+ *
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
+ *      of KIP-778 (v1)" and "The answer without results (v2, Kafka 4.0)"
  */
 class UpdateFeaturesRequest extends AbstractRequest
 {
@@ -65,7 +70,7 @@ class UpdateFeaturesRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @inheritdoc

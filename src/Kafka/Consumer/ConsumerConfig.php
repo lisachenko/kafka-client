@@ -72,6 +72,9 @@ final class ConsumerConfig extends GeneralConfig
         ConsumerConfig::CLIENT_RACK                   => FetchRequest::NO_RACK,
         ConsumerConfig::KEY_DESERIALIZER              => null,
         ConsumerConfig::VALUE_DESERIALIZER            => null,
+        // KIP-932: read by the share consumer alone, as `ConsumerConfig` @ 4.3.1 defines them for every consumer
+        ConsumerConfig::SHARE_ACKNOWLEDGEMENT_MODE    => ConsumerConfig::SHARE_ACKNOWLEDGEMENT_MODE_IMPLICIT,
+        ConsumerConfig::SHARE_ACQUIRE_MODE            => ConsumerConfig::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED,
     ];
 
     /**
@@ -121,7 +124,7 @@ final class ConsumerConfig extends GeneralConfig
      * `consumer` is refused, and a ConsumerGroupHeartbeat for a classic group as well.
      *
      * @see \Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator
-     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public const string GROUP_PROTOCOL = 'group.protocol';
 
@@ -329,7 +332,7 @@ final class ConsumerConfig extends GeneralConfig
      * A control batch - the COMMIT or ABORT marker the transaction coordinator appends - is never handed to an
      * application in either level.
      *
-     * @see docs/protocol/3.9.md, section "Transactions"
+     * @see docs/protocol/4.3.md, section "Transactions"
      */
     public const string ISOLATION_LEVEL = 'isolation.level';
 
@@ -347,7 +350,7 @@ final class ConsumerConfig extends GeneralConfig
      * having no field at all. A broker without a `replica.selector.class` - the default, and the configuration of
      * the container of this line - answers `-1` to every fetch whatever the rack, i.e. "read from me".
      *
-     * @see docs/protocol/3.9.md, section "Reading from a follower (v11, KIP-392)"
+     * @see docs/protocol/4.3.md, section "Reading from a follower (v11, KIP-392)"
      */
     public const string CLIENT_RACK = 'client.rack';
 
@@ -362,7 +365,95 @@ final class ConsumerConfig extends GeneralConfig
     public const string ISOLATION_LEVEL_READ_COMMITTED = 'read_committed';
 
     public const string EXCLUDE_INTERNAL_TOPICS = 'exclude.internal.topics';
-    public const string MAX_POLL_RECORDS        = 'max.poll.records';
+
+    /**
+     * The maximum number of records a single poll() returns.
+     *
+     * {@see KafkaShareConsumer} sends it as the `max_records` and the `batch_size` of every ShareFetch, as the Java
+     * share consumer does (`ShareSessionHandler` @ 4.3.1), with the default {@see self::DEFAULT_MAX_POLL_RECORDS};
+     * how strictly the node keeps to it is {@see self::SHARE_ACQUIRE_MODE}. {@see KafkaConsumer} does not read it.
+     */
+    public const string MAX_POLL_RECORDS = 'max.poll.records';
+
+    /**
+     * Default of {@see self::MAX_POLL_RECORDS}, as in the Java consumer
+     */
+    public const int DEFAULT_MAX_POLL_RECORDS = 500;
+
+    /**
+     * How a share consumer acknowledges the records it is delivered: `implicit` (the default) or `explicit` (KIP-932)
+     *
+     * `share.acknowledgement.mode` of the Java consumer @ 4.3.1, read by {@see KafkaShareConsumer} alone.
+     *
+     * * **implicit** ({@see self::SHARE_ACKNOWLEDGEMENT_MODE_IMPLICIT}): every record a poll() returned is accepted
+     *   by the next poll(), commitSync() or commitAsync(), and {@see KafkaShareConsumer::acknowledge()} must not be
+     *   called; a close() releases what the last poll() returned instead of accepting it.
+     * * **explicit** ({@see self::SHARE_ACKNOWLEDGEMENT_MODE_EXPLICIT}): the application acknowledges every record
+     *   with {@see KafkaShareConsumer::acknowledge()} - accept, release, reject or renew - before its next poll(),
+     *   which refuses to run otherwise.
+     *
+     * @see docs/protocol/4.3.md, section "The share consumer (KIP-932)"
+     */
+    public const string SHARE_ACKNOWLEDGEMENT_MODE = 'share.acknowledgement.mode';
+
+    /**
+     * `share.acknowledgement.mode` of a share consumer whose poll() and commits accept what the last poll() returned
+     */
+    public const string SHARE_ACKNOWLEDGEMENT_MODE_IMPLICIT = 'implicit';
+
+    /**
+     * `share.acknowledgement.mode` of a share consumer that acknowledges every record itself
+     */
+    public const string SHARE_ACKNOWLEDGEMENT_MODE_EXPLICIT = 'explicit';
+
+    /**
+     * How the node reads the `max.poll.records` of a share consumer: `batch_optimized` (the default) or
+     * `record_limit` (KIP-1206, ShareFetch **v2**, Kafka 4.2)
+     *
+     * `share.acquire.mode` of the Java consumer @ 4.3.1, the `share_acquire_mode` of every ShareFetch of
+     * {@see KafkaShareConsumer}:
+     *
+     * * **batch_optimized** ({@see self::SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED}, the wire value 0): the node acquires
+     *   whole record batches, so a poll() may return more than {@see self::MAX_POLL_RECORDS} records - the rest of a
+     *   batch it started;
+     * * **record_limit** ({@see self::SHARE_ACQUIRE_MODE_RECORD_LIMIT}, the wire value 1): the node acquires at most
+     *   {@see self::MAX_POLL_RECORDS} records, and cuts a batch to do so.
+     *
+     * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+     */
+    public const string SHARE_ACQUIRE_MODE = 'share.acquire.mode';
+
+    /**
+     * `share.acquire.mode` of a share consumer that lets the node acquire whole record batches
+     */
+    public const string SHARE_ACQUIRE_MODE_BATCH_OPTIMIZED = 'batch_optimized';
+
+    /**
+     * `share.acquire.mode` of a share consumer that has the node acquire no more than `max.poll.records` records
+     */
+    public const string SHARE_ACQUIRE_MODE_RECORD_LIMIT = 'record_limit';
+
+    /**
+     * The options a share consumer refuses, as `ShareConsumerConfig` @ 4.3.1 lists them
+     *
+     * A share group has no committed offsets, no assignor of the client, no static membership and no session of the
+     * client: where to start reading is the group config `share.auto.offset.reset`, the isolation level is the group
+     * config `share.isolation.level`, and the session timeout and the heartbeat interval are the coordinator's.
+     * `interceptor.classes` of the Java list has no counterpart in this package.
+     *
+     * @var list<string>
+     */
+    public const array SHARE_GROUP_UNSUPPORTED_CONFIGS = [
+        self::AUTO_OFFSET_RESET,
+        self::ENABLE_AUTO_COMMIT,
+        self::GROUP_INSTANCE_ID,
+        self::ISOLATION_LEVEL,
+        self::PARTITION_ASSIGNMENT_STRATEGY,
+        self::SESSION_TIMEOUT_MS,
+        self::HEARTBEAT_INTERVAL_MS,
+        self::GROUP_PROTOCOL,
+        self::GROUP_REMOTE_ASSIGNOR,
+    ];
 
     /**
      * Returns default configuration for consumer

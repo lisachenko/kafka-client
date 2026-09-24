@@ -42,7 +42,8 @@ use Protocol\Kafka\Protocol\Request\ListGroupsRequestV4;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
-use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -77,9 +78,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see self::tearDownAfterClass()} - every KIP-848 member with the leave heartbeat of the epoch -1 first,
  * because a group that still holds a member is not deletable.
  *
- * @see docs/protocol/3.9.md, section "The group types of KIP-848 (Kafka 3.8)"
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "The group types of KIP-848 (Kafka 3.8)"
+ * @see docs/protocol/4.3.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ListGroupsRequest::class)]
@@ -556,7 +557,7 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
         string $topic,
         int $correlationId
     ): void {
-        new OffsetCommitRequest(
+        new OffsetCommitRequestV9(
             $groupId,
             $generationId,
             $memberId,
@@ -565,7 +566,7 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
             self::CLIENT_ID,
             $correlationId
         )->writeTo($stream);
-        $answer = OffsetCommitResponse::unpack($stream);
+        $answer = OffsetCommitResponseV9::unpack($stream);
 
         self::assertSame(
             KafkaException::NO_ERROR,

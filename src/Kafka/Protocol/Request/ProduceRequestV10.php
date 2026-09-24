@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}) where this version is answered **48**
  * `InvalidTxnState`, see {@see ProduceRequest}.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The abortable transaction error of
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The abortable transaction error of
  *      KIP-890 (v11)"
  */
 final class ProduceRequestV10 extends ProduceRequest

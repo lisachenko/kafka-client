@@ -23,8 +23,8 @@ use RuntimeException;
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
  *
- * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 3.9.2,
- * which ends at 127: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
+ * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 4.3.1,
+ * which ends at 133: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
  * 0.10.0, 36-42 (the CreateTopics codes, NOT_CONTROLLER and INVALID_REQUEST) with 0.10.1 and 43-44
  * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2; Kafka 0.11 added 45-55, the codes of the
  * idempotent and transactional producer (KIP-98), of the ACL apis (SECURITY_DISABLED, OPERATION_NOT_ATTEMPTED) and
@@ -49,7 +49,11 @@ use RuntimeException;
  * KIP-848 consumer protocol) with 3.5; 113 STALE_MEMBER_EPOCH with 3.6; 114-119 (the three endpoint codes of KIP-919,
  * the two client-metrics codes of KIP-714 and INVALID_REGISTRATION) with 3.7; 120 TRANSACTION_ABORTABLE of KIP-890
  * with 3.8 and 121-127 (the four share-group codes of KIP-932 and the three voter codes of KIP-853) with 3.9. Of them
- * only 106, 122 and 123 extend RetriableException in the Java client, as here. Codes above 127 are answered with
+ * only 106, 122 and 123 extend RetriableException in the Java client, as here. The 4.x line added 128-133, read off
+ * `Errors.java` at the release tags: 128 INVALID_REGULAR_EXPRESSION of the KIP-848 regex subscription and 129
+ * REBOOTSTRAP_REQUIRED of KIP-1102 with Kafka 4.0; 130-132 (the three topology codes of the KIP-1071 streams groups)
+ * and 133 SHARE_SESSION_LIMIT_REACHED of KIP-932 with 4.1 (4.2 and 4.3 added none). Of them only 133 extends
+ * RetriableException in the Java client, as here. Codes above 133 are answered with
  * {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
  */
 abstract class KafkaException extends RuntimeException
@@ -185,6 +189,12 @@ abstract class KafkaException extends RuntimeException
     public const INVALID_VOTER_KEY                      = 125;
     public const DUPLICATE_VOTER                        = 126;
     public const VOTER_NOT_FOUND                        = 127;
+    public const INVALID_REGULAR_EXPRESSION             = 128;
+    public const REBOOTSTRAP_REQUIRED                   = 129;
+    public const STREAMS_INVALID_TOPOLOGY               = 130;
+    public const STREAMS_INVALID_TOPOLOGY_EPOCH         = 131;
+    public const STREAMS_TOPOLOGY_FENCED                = 132;
+    public const SHARE_SESSION_LIMIT_REACHED            = 133;
 
     /**
      * Mapping from the codes to class names
@@ -320,6 +330,12 @@ abstract class KafkaException extends RuntimeException
         self::INVALID_VOTER_KEY                      => InvalidVoterKeyException::class,
         self::DUPLICATE_VOTER                        => DuplicateVoterException::class,
         self::VOTER_NOT_FOUND                        => VoterNotFoundException::class,
+        self::INVALID_REGULAR_EXPRESSION             => InvalidRegularExpressionException::class,
+        self::REBOOTSTRAP_REQUIRED                   => RebootstrapRequiredException::class,
+        self::STREAMS_INVALID_TOPOLOGY               => StreamsInvalidTopologyException::class,
+        self::STREAMS_INVALID_TOPOLOGY_EPOCH         => StreamsInvalidTopologyEpochException::class,
+        self::STREAMS_TOPOLOGY_FENCED                => StreamsTopologyFencedException::class,
+        self::SHARE_SESSION_LIMIT_REACHED            => ShareSessionLimitReachedException::class,
     ];
 
     /**

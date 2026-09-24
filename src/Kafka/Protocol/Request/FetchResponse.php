@@ -128,23 +128,29 @@ use Protocol\Kafka\Protocol\TaggedField;
  * `replica_directory_id` of every partition entry, see
  * {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$replicaDirectoryId}.
  *
+ * **Version 18 (Kafka 4.1, KIP-1166) declares nothing here either**: `FetchResponse.json` @ 4.1.0, "Version 18 no
+ * changes to the response (KIP-1166)", so this class decodes the very bytes {@see FetchResponseV17} decodes; what
+ * the version added is the tagged `high_watermark` of a follower in the *request*, see
+ * {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$highWatermark}.
+ *
  * What the answer of every version has to match is the *version of the request it belongs to*, which is why
- * {@see FetchResponseV16}, {@see FetchResponseV15}, {@see FetchResponseV14}, {@see FetchResponseV13}, {@see FetchResponseV12}, {@see FetchResponseV11},
+ * {@see FetchResponseV17}, {@see FetchResponseV16}, {@see FetchResponseV15}, {@see FetchResponseV14}, {@see FetchResponseV13}, {@see FetchResponseV12}, {@see FetchResponseV11},
  * {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
  * {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4},
  * {@see FetchResponseV3}, {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "Fetch sessions (v7, KIP-227)",
  *      "The topic ids of the fetch path (v13, KIP-516)", "The tiered-storage error of KIP-405 (v14)",
- *      "The leader discovery of KIP-951 (v16)" and "The replica directory id of KIP-853 (v17)"
+ *      "The leader discovery of KIP-951 (v16)", "The replica directory id of KIP-853 (v17)" and
+ *      "The high watermark of a follower, KIP-1166 (v18)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 17;
+    public const int VERSION = 18;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

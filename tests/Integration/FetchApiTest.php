@@ -19,8 +19,6 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Record\Header;
-use Protocol\Kafka\Common\Record\Message;
-use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\TimestampType;
@@ -29,10 +27,12 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
+use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV13;
 use Protocol\Kafka\Protocol\Request\FetchRequestV15;
 use Protocol\Kafka\Protocol\Request\FetchRequestV16;
+use Protocol\Kafka\Protocol\Request\FetchRequestV17;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
@@ -43,30 +43,35 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV8;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
-use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\FetchResponseV5;
 use Protocol\Kafka\Protocol\Request\FetchResponseV6;
 use Protocol\Kafka\Protocol\Request\FetchResponseV7;
 use Protocol\Kafka\Protocol\Request\FetchResponseV8;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
-use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
+use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the Fetch API against a real Kafka 1.1.1 broker.
+ * Verifies the Fetch API against the Kafka 4.3.1 node of this line.
  *
- * Most of what a version of this api states can not be checked without a broker: version 2 changes nothing on the
- * wire and only tells the broker to stop converting its answer down to message format v0, the request-level
- * `MaxBytes` of version 3 is a rule about how the broker *fills* the answer, the versions 4 and 5 are the ones
- * that answer with the log as it lies, version 6 is the version 5 frame with another error code, and version 7
- * carries the incremental fetch sessions of KIP-227, which have a test class of their own
- * ({@see FetchSessionApiTest}) - this one only checks that a version 7 request **without** a session is served
- * like a version 6 one, which is what {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
+ * Most of what a version of this api states can not be checked without a broker: the request-level `MaxBytes` of
+ * version 3 is a rule about how the broker *fills* the answer, the versions 4 and 5 are the ones that answer with
+ * the log as it lies, version 6 is the version 5 frame with another error code, and version 7 carries the
+ * incremental fetch sessions of KIP-227, which have a test class of their own ({@see FetchSessionApiTest}) - this
+ * one only checks that a version 7 request **without** a session is served like a version 6 one, which is what
+ * {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "Fetch sessions (v7, KIP-227)"
+ * **Kafka 4.0 removed the versions 0 to 3 (KIP-896)**: `FetchRequest.json` @ 4.0.0 starts at version 4, the first
+ * that reads a record batch v2, and a 4.x node closes the connection on a frame below it - and with those versions
+ * went the down-conversion of the log to the message formats v0 and v1, the dropped headers of KAFKA-5760 and the
+ * truncated message of a version below 3. Those tests measure the refusal now; the test data of this class is
+ * written as record batches v2 through a Produce v3, the lowest version the node serves.
+ *
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]
@@ -119,57 +124,38 @@ final class FetchApiTest extends IntegrationTestCase
             ->awaitTopicWithLeaders($this->topic);
     }
 
-    public function testAVersionTwoAnswerCarriesTheMessageFormatOfTheLogAndAVersionOneAnswerDoesNot(): void
+    public function testTheVersionsThatConvertedTheLogDownCloseTheConnection(): void
     {
         $this->produce(0, [
             new Record('with a timestamp', 'key', 0, null, $this->createTime),
             new Record('and another one', null, 0, null, $this->createTime + 1),
         ]);
 
-        $stream   = $this->connect();
-        $version2 = $this->fetch($stream, FetchRequestV2::class, FetchResponseV2::class, 0, 61);
-        $records  = $version2->getRecords()->getRecords();
+        // A 3.9.2 node converted its log down to the message format v0 for a Fetch v0 and v1 and to the format v1
+        // for a Fetch v2 and v3; a 4.x node refuses every one of them (KIP-896)
+        $probe = new RemovedVersionProbe(self::firstBootstrapServer());
+        foreach ([0 => FetchRequestV0::class, 1 => FetchRequestV1::class, 2 => FetchRequestV2::class, 3 => FetchRequestV3::class] as $version => $class) {
+            self::assertSame(
+                RemovedVersionProbe::CLOSED,
+                $probe->send(new $class([$this->topic => [0 => 0]], self::FETCH_MAX_WAIT_MS, 1, 65536, -1, self::CLIENT_ID, 60 + $version)),
+                "a Fetch v{$version}"
+            );
+        }
 
-        self::assertSame(Message::MAGIC_V1, $version2->getRecords()->getMagic());
+        // The lowest version it serves answers the log as it lies: a record batch v2 with the CreateTime of every
+        // record, the timestamps the message format v0 had no place for
+        $version4 = $this->fetchWithIsolationLevel($this->connect(), 4, FetchRequest::READ_UNCOMMITTED, 64);
+        $records  = $version4->getRecords()->getRecords();
+
+        self::assertSame(RecordBatch::MAGIC, $version4->getRecords()->getMagic());
         self::assertSame(
             [$this->createTime, $this->createTime + 1],
-            array_map(static fn(Record $record): ?int => $record->timestamp, $records),
-            'from version 2 on the broker answers with the message format the log holds'
+            array_map(static fn(Record $record): ?int => $record->timestamp, $records)
         );
         self::assertSame(
             [TimestampType::CREATE_TIME, TimestampType::CREATE_TIME],
             array_map(static fn(Record $record): int => $record->timestampType, $records)
         );
-
-        // The very same partition, asked for with a version 1 request: the broker converts it down to message
-        // format v0, which has no timestamps at all
-        $version1 = $this->fetch($stream, FetchRequestV1::class, FetchResponseV1::class, 0, 62);
-
-        self::assertSame(Message::MAGIC_V0, $version1->getRecords()->getMagic());
-        self::assertSame(
-            [null, null],
-            array_map(static fn(Record $record): ?int => $record->timestamp, $version1->getRecords()->getRecords())
-        );
-        self::assertSame(
-            ['with a timestamp', 'and another one'],
-            array_map(
-                static fn(Record $record): ?string => $record->value,
-                $version1->getRecords()->getRecords()
-            ),
-            'the records themselves survive the conversion'
-        );
-    }
-
-    public function testTheAnswerOfAVersionThreeRequestIsTheAnswerOfAVersionTwoOne(): void
-    {
-        $this->produce(0, [new Record('same frame', null, 0, null, $this->createTime)]);
-
-        $stream   = $this->connect();
-        $version2 = $this->fetch($stream, FetchRequestV2::class, FetchResponseV2::class, 0, 63);
-        $version3 = $this->fetch($stream, FetchRequestV3::class, FetchResponseV3::class, 0, 64);
-
-        self::assertSame($version2->getRecords()->toBuffer(), $version3->getRecords()->toBuffer());
-        self::assertSame($version2->highWaterMarkOffset, $version3->highWaterMarkOffset);
     }
 
     public function testTheVersionsFourAndFiveAnswerWithTheRecordBatchTheLogHolds(): void
@@ -200,33 +186,33 @@ final class FetchApiTest extends IntegrationTestCase
             $record->headers
         ));
 
-        // The very same log without the headers, asked for with a version 3 request: converted down to the
-        // message format v1, one message per record, with the timestamp of the record and no headers at all
-        $version3 = $this->fetch($stream, FetchRequestV3::class, FetchResponseV3::class, 1, 72);
-
-        self::assertSame(0, $version3->errorCode);
-        self::assertSame(Message::MAGIC_V1, $version3->getRecords()->getMagic());
-        self::assertSame([], $version3->getRecords()->getRecords()[0]->headers);
-        self::assertSame($timestamp, $version3->getRecords()->getRecords()[0]->timestamp);
+        // The very same log asked for with a version 3 request, which a 3.9.2 node converted down to the message
+        // format v1: a 4.x node closes the connection instead (KIP-896)
+        self::assertSame(
+            RemovedVersionProbe::CLOSED,
+            new RemovedVersionProbe(self::firstBootstrapServer())->send(new FetchRequestV3(
+                [$this->topic => [1 => 0]],
+                self::FETCH_MAX_WAIT_MS,
+                1,
+                65536,
+                -1,
+                self::CLIENT_ID,
+                72
+            ))
+        );
     }
 
     /**
-     * A fetch below v4 of a partition whose records carry headers is served, and the headers are dropped
+     * No version of Fetch a 4.x node serves drops the headers of a record
      *
-     * **This is a behaviour change of Kafka 1.0.** A 0.11.0.3 broker could not build such an answer at all:
-     * `MemoryRecordsBuilder.appendWithOffset` @ 0.11.0.3 threw "Magic v1 does not support record headers" out of
-     * the down-conversion, and the partition came back with the error code **-1** (UnknownServerError) and an
-     * empty record set. KAFKA-5760 replaced that with a down-conversion that simply **leaves the headers out**:
-     * `AbstractRecords.convertRecordBatch()` @ 1.1.1 builds a message of the format the request can read, copies
-     * key, value and timestamp, and warns `Down-converting records with headers` in the broker log instead of
-     * failing.
-     *
-     * A client of a 1.x broker therefore has to know that a record it reads with a Fetch below v4 may have carried
-     * headers it will never see, where a 0.11 broker refused the fetch outright. The batch below holds three
-     * records and only the middle one has a header, so the test also pins that **no record is skipped** and that
-     * the offsets of the answer are the offsets of the log.
+     * **A behaviour of Kafka 1.0 to 3.9 that 4.0 removed with the versions.** KAFKA-5760 made a 1.x broker convert
+     * a batch whose records carry headers down to the message format v0 or v1 for a Fetch below v4, leaving the
+     * headers out (`AbstractRecords.convertRecordBatch()` @ 1.1.1, "Ignore headers when down-converting to V0 and V1
+     * since they are not supported"), where a 0.11.0.3 broker answered the partition with the error code -1. A 4.x
+     * node serves Fetch from version 4 on (KIP-896), the first version that reads the record batch v2, so a record
+     * reaches every client of it with its headers - and a Fetch v3 or v1 of the same partition costs the connection.
      */
-    public function testAPartitionWhoseRecordsCarryHeadersIsDownConvertedWithoutThemBelowVersionFour(): void
+    public function testNoServedVersionDropsTheHeadersOfARecord(): void
     {
         $timestamp = self::currentTimestampMs();
         $this->produceRecordBatch(0, [
@@ -235,48 +221,24 @@ final class FetchApiTest extends IntegrationTestCase
             new Record('also plain', 'k2', 0, null, $timestamp + 2),
         ]);
 
-        // `AbstractRecords.convertRecordBatch` @ 1.1.1: "Ignore headers when down-converting to V0 and V1 since
-        // they are not supported". A 1.x broker converts such a batch like any other and simply leaves the headers
-        // out, where a 0.11.0.3 broker answered the whole partition with the error code -1 (UnknownServerError)
-        // and an empty record set, because the very same call threw "Magic v1 does not support record headers".
-        $stream   = $this->connect();
-        $version3 = $this->fetch($stream, FetchRequestV3::class, FetchResponseV3::class, 0, 79);
-        $version1 = $this->fetch($stream, FetchRequestV1::class, FetchResponseV1::class, 0, 80);
+        $probe = new RemovedVersionProbe(self::firstBootstrapServer());
+        foreach ([3 => FetchRequestV3::class, 1 => FetchRequestV1::class] as $version => $class) {
+            self::assertSame(
+                RemovedVersionProbe::CLOSED,
+                $probe->send(new $class([$this->topic => [0 => 0]], self::FETCH_MAX_WAIT_MS, 1, 65536, -1, self::CLIENT_ID, 79)),
+                "a Fetch v{$version}, which a 3.9.2 node answered without the headers"
+            );
+        }
 
-        self::assertSame(0, $version3->errorCode, 'a 1.x broker no longer refuses the conversion');
-        self::assertSame(Message::MAGIC_V1, $version3->getRecords()->getMagic());
-        self::assertSame(
-            ['plain', 'with a header', 'also plain'],
-            self::valuesOf($version3),
-            'not a single record is skipped'
-        );
-        self::assertSame(
-            [[], [], []],
-            array_map(static fn(Record $record): array => $record->headers, $version3->getRecords()->getRecords()),
-            'the headers are dropped, silently'
-        );
-        self::assertSame(
-            [$timestamp, $timestamp + 1, $timestamp + 2],
-            array_map(static fn(Record $record): ?int => $record->timestamp, $version3->getRecords()->getRecords()),
-            'the message format v1 still has a place for the CreateTime of every record'
-        );
+        $stream = $this->connect();
+        foreach ([4, 5, 8] as $version) {
+            $partition = $this->fetchWithIsolationLevel($stream, $version, FetchRequest::READ_UNCOMMITTED, 80 + $version);
 
-        self::assertSame(0, $version1->errorCode);
-        self::assertSame(Message::MAGIC_V0, $version1->getRecords()->getMagic());
-        self::assertSame(['plain', 'with a header', 'also plain'], self::valuesOf($version1));
-        self::assertSame(
-            [null, null, null],
-            array_map(static fn(Record $record): ?int => $record->timestamp, $version1->getRecords()->getRecords()),
-            'the message format v0 has no timestamps either'
-        );
-
-        // The very same partition carries its headers for a version 4 request
-        $version4 = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_UNCOMMITTED, 81);
-
-        self::assertSame(0, $version4->errorCode);
-        self::assertSame(['plain', 'with a header', 'also plain'], self::valuesOf($version4));
-        self::assertSame('trace-id', $version4->getRecords()->getRecords()[1]->headers[0]->key);
-        self::assertSame('abc', $version4->getRecords()->getRecords()[1]->headers[0]->value);
+            self::assertSame(0, $partition->errorCode);
+            self::assertSame(['plain', 'with a header', 'also plain'], self::valuesOf($partition), 'no record is skipped');
+            self::assertSame('trace-id', $partition->getRecords()->getRecords()[1]->headers[0]->key);
+            self::assertSame('abc', $partition->getRecords()->getRecords()[1]->headers[0]->value);
+        }
     }
 
     public function testTheAnswerOfAVersionSixRequestIsTheVersionFiveFrame(): void
@@ -324,7 +286,8 @@ final class FetchApiTest extends IntegrationTestCase
         self::assertSame(13, FetchRequestV13::VERSION, 'the version Kafka 3.1 added');
         self::assertSame(15, FetchRequestV15::VERSION, 'the version Kafka 3.5 added');
         self::assertSame(16, FetchRequestV16::VERSION, 'the version Kafka 3.7 added');
-        self::assertSame(17, FetchRequest::VERSION, 'and the client sends the version Kafka 3.9 added');
+        self::assertSame(17, FetchRequestV17::VERSION, 'the version Kafka 3.9 added');
+        self::assertSame(18, FetchRequest::VERSION, 'and the client sends the version Kafka 4.1 added');
     }
 
     public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void
@@ -477,12 +440,20 @@ final class FetchApiTest extends IntegrationTestCase
         // A budget of zero bytes is no exception to that rule
         self::assertSame([str_repeat('x', 4096)], self::valuesOf($this->fetchPartitions($stream, [0 => 0], 68, 0)[0]));
 
-        // The very same fetch with a version 1 request: the broker cuts the message set off at the MaxBytes of the
-        // partition and the answer holds no complete message at all
-        $version1 = $this->fetch($stream, FetchRequestV1::class, FetchResponseV1::class, 0, 69, 64);
-
-        self::assertSame([], self::valuesOf($version1));
-        self::assertTrue($version1->isSingleMessageTooLarge(0), 'which is what the lower versions answer instead');
+        // The very same fetch with a version 1 request, which a 3.9.2 node cut off at the MaxBytes of the partition
+        // into an answer without a complete message: a 4.x node closes the connection on it (KIP-896)
+        self::assertSame(
+            RemovedVersionProbe::CLOSED,
+            new RemovedVersionProbe(self::firstBootstrapServer())->send(new FetchRequestV1(
+                [$this->topic => [0 => 0]],
+                self::FETCH_MAX_WAIT_MS,
+                1,
+                64,
+                -1,
+                self::CLIENT_ID,
+                69
+            ))
+        );
     }
 
     public function testTheClientCarriesTheStateOfEveryPartitionOfAVersionFiveAnswer(): void
@@ -550,16 +521,16 @@ final class FetchApiTest extends IntegrationTestCase
     private function produce(int $partition, array $records): void
     {
         $stream = $this->connect();
-        // A message set may only travel in a request below version 3, see docs/protocol/3.9.md
-        new ProduceRequestV2(
-            [$this->topic => [$partition => MessageSet::fromRecords($records)]],
+        // Produce v3, the lowest version a 4.x node serves (KIP-896), with a record batch of the message format v2
+        new ProduceRequestV3(
+            [$this->topic => [$partition => RecordBatch::fromRecords($records)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
             self::CLIENT_ID,
             1
         )->writeTo($stream);
 
-        $errorCode = ProduceResponseV2::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+        $errorCode = ProduceResponseV3::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
         if ($errorCode !== 0) {
             throw KafkaException::fromCode($errorCode, ['topic' => $this->topic, 'partitionId' => $partition]);
         }
@@ -648,7 +619,7 @@ final class FetchApiTest extends IntegrationTestCase
     private function produceRecordBatch(int $partition, array $records): void
     {
         $stream = $this->connect();
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$this->topic => [$partition => RecordBatch::fromRecords($records)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -656,7 +627,7 @@ final class FetchApiTest extends IntegrationTestCase
             2
         )->writeTo($stream);
 
-        $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+        $errorCode = ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
         if ($errorCode !== 0) {
             throw KafkaException::fromCode($errorCode, ['topic' => $this->topic, 'partitionId' => $partition]);
         }

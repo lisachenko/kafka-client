@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`AddOffsetsToTxnRequest.json` @ 3.8.1) and no field. It is the version this client sends;
  * {@see AddOffsetsToTxnRequestV3} is the same frame with the version field of Kafka 2.8.
  *
- * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
  */
 class AddOffsetsToTxnRequest extends AbstractRequest
 {

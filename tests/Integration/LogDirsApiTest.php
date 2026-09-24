@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\AlterConfigOp;
 use Protocol\Kafka\Admin\ConfigResource;
 use Protocol\Kafka\Admin\LogDirInfo;
 use Protocol\Kafka\Admin\NewTopic;
@@ -25,6 +26,8 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException;
+use Protocol\Kafka\Common\Errors\InvalidReplicaAssignmentException;
+use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
@@ -42,6 +45,7 @@ use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponsePartition;
 use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
+use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV4;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
@@ -49,9 +53,11 @@ use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV3;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV4;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV2;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV4;
 
 /**
  * Exercises the two JBOD apis of KIP-113 against the 3.9.2 KRaft node with **two** log directories.
@@ -66,18 +72,25 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
  * `PARTITION_CHANGE_RECORD` into the metadata log about 90 ms after the answer of AlterReplicaLogDirs. The raft
  * log `__cluster_metadata-0` sits in the first directory and is never part of an answer of this api.
  *
- * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v4)" and
+ * The cordon of KIP-1066 (Kafka 4.3) is measured by cordoning **the second directory alone** through the dynamic
+ * per-broker option `cordoned.log.dirs`, and the override is removed in a `finally` block - both directories are
+ * never cordoned, because the node is shared and a broker with every directory cordoned takes no new replica.
+ *
+ * @see docs/protocol/4.3.md, sections "DescribeLogDirs API (key 35, v0 to v5)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeLogDirsRequest::class)]
 #[CoversClass(DescribeLogDirsRequestV2::class)]
 #[CoversClass(DescribeLogDirsRequestV3::class)]
+#[CoversClass(DescribeLogDirsRequestV4::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]
 #[CoversClass(DescribeLogDirsResponseV2::class)]
 #[CoversClass(DescribeLogDirsResponseV3::class)]
+#[CoversClass(DescribeLogDirsResponseV4::class)]
 #[CoversClass(DescribeLogDirsRequestTopic::class)]
 #[CoversClass(DescribeLogDirsResponseLogDir::class)]
+#[CoversClass(DescribeLogDirsResponseLogDirV4::class)]
 #[CoversClass(DescribeLogDirsResponseTopic::class)]
 #[CoversClass(DescribeLogDirsResponsePartition::class)]
 #[CoversClass(AlterReplicaLogDirsRequest::class)]
@@ -92,7 +105,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
 final class LogDirsApiTest extends IntegrationTestCase
 {
     /**
-     * The two directories of `log.dirs` of `docker/kafka-3.9.2/start.sh`
+     * The two directories of `log.dirs` of `docker/kafka-4.3.1/start.sh`
      */
     private const string FIRST_DIR = '/tmp/kafka-logs';
 
@@ -151,6 +164,16 @@ final class LogDirsApiTest extends IntegrationTestCase
      * same partition in less than one request round trip without the quota
      */
     private const int MOVER_QUOTA_BYTES_PER_SECOND = 1000000;
+
+    /**
+     * The dynamic per-broker option of KIP-1066 (Kafka 4.3): the directories of `log.dirs` that take no new replica
+     */
+    private const string CORDONED_LOG_DIRS_OPTION = 'cordoned.log.dirs';
+
+    /**
+     * How long the cordon flag of a directory may take to follow a change of the option, in seconds
+     */
+    private const float CORDON_TIMEOUT = 15.0;
 
     private Cluster $cluster;
 
@@ -587,6 +610,185 @@ final class LogDirsApiTest extends IntegrationTestCase
             $altered->topics[$topic]->partitions[0]->errorCode,
             'the error is per replica, the api has no top-level error code'
         );
+    }
+
+    public function testNoDirectoryOfTheNodeIsCordonedByDefault(): void
+    {
+        $stream = $this->connect();
+
+        new DescribeLogDirsRequest([], 't5-logdirs', 5170)->writeTo($stream);
+        $answer = DescribeLogDirsResponse::unpack($stream);
+
+        self::assertSame(5170, $answer->getCorrelationId());
+        self::assertSame([self::FIRST_DIR, self::SECOND_DIR], array_keys($answer->logDirs));
+        foreach ($answer->logDirs as $directory) {
+            self::assertFalse(
+                $directory->isCordoned,
+                'the version 5 of Kafka 4.3 carries the flag of KIP-1066, and `cordoned.log.dirs` defaults to empty'
+            );
+        }
+    }
+
+    /**
+     * The cordon of KIP-1066: a directory named in `cordoned.log.dirs` keeps and reports what it holds, receives no
+     * new replica, and is refused as the destination of a move
+     */
+    public function testACordonedDirectoryKeepsItsReplicasButTakesNoNewOne(): void
+    {
+        $held = $this->topicWithRecords('cordon-held');
+        $this->moveTo($held, self::SECOND_DIR);
+
+        $resource = ConfigResource::broker($this->brokerId());
+        try {
+            self::assertSame(
+                [$resource->key() => null],
+                $this->admin->incrementalAlterConfigs([
+                    $resource->key() => [AlterConfigOp::set(self::CORDONED_LOG_DIRS_OPTION, self::SECOND_DIR)],
+                ]),
+                '`cordoned.log.dirs` is a dynamic per-broker option (`DynamicBrokerConfig.PER_BROKER_CONFIGS` @ 4.3.1)'
+            );
+            $directories = $this->awaitCordon(true);
+
+            self::assertFalse($directories[self::FIRST_DIR]->isCordoned, 'only the named directory is cordoned');
+            self::assertNotNull(
+                $this->admin->describeLogDirs([$this->brokerId()], [$held => [0]])[$this->brokerId()][self::SECOND_DIR]
+                    ->replica($held, 0),
+                'a cordoned directory keeps the replica it holds and still reports it'
+            );
+
+            // The version 4 has no field for it: the same cordoned directory is reported without the flag
+            $stream = $this->connect();
+            new DescribeLogDirsRequestV4([], 't5-logdirs', 5171)->writeTo($stream);
+            $answer = DescribeLogDirsResponseV4::unpack($stream);
+            self::assertInstanceOf(DescribeLogDirsResponseLogDirV4::class, $answer->logDirs[self::SECOND_DIR]);
+            self::assertFalse(
+                $answer->logDirs[self::SECOND_DIR]->isCordoned,
+                'below the version 5 the entry ends with the two sizes, so the flag stays at its default'
+            );
+
+            // `LogManager.nextLogDirs` @ 4.3.1 leaves the cordoned directory out when it places a new replica
+            $placed                = self::uniqueTopicName('t5-logdirs-cordon-placed');
+            $this->createdTopics[] = $placed;
+            self::assertSame([$placed => null], $this->admin->createTopics([new NewTopic($placed, 6, 1)]));
+            $replicas = $this->awaitReplicas($placed, 6);
+            self::assertSame(
+                [self::FIRST_DIR],
+                array_values(array_unique($replicas)),
+                'every partition of a topic created while the second directory is cordoned lands in the first one'
+            );
+
+            // `ReplicaManager.alterReplicaLogDirs` @ 4.3.1 refuses a cordoned destination with 39
+            $key    = TopicPartitionReplica::of($placed, 0, $this->brokerId())->key();
+            $result = $this->admin->alterReplicaLogDirs([$key => self::SECOND_DIR]);
+            self::assertInstanceOf(
+                InvalidReplicaAssignmentException::class,
+                $result[$key],
+                'a move INTO a cordoned directory is InvalidReplicaAssignment ("Log directory ... is cordoned")'
+            );
+        } finally {
+            $this->admin->incrementalAlterConfigs([
+                $resource->key() => [AlterConfigOp::delete(self::CORDONED_LOG_DIRS_OPTION)],
+            ]);
+            $this->awaitCordon(false);
+        }
+    }
+
+    /**
+     * What the broker validates before it forwards a change of `cordoned.log.dirs` to the controller, measured with
+     * `validateOnly` so that nothing is cordoned
+     */
+    public function testTheBrokerValidatesTheCordonedDirectoriesItIsGiven(): void
+    {
+        $resource = ConfigResource::broker($this->brokerId());
+        $validate = fn(string $resourceKey, string $value): ?KafkaException => $this->admin->incrementalAlterConfigs(
+            [$resourceKey => [AlterConfigOp::set(self::CORDONED_LOG_DIRS_OPTION, $value)]],
+            true
+        )[$resourceKey];
+
+        self::assertNull($validate($resource->key(), self::SECOND_DIR), 'an entry of `log.dirs` is accepted');
+        self::assertNull($validate($resource->key(), '*'), 'and so is `*`, every directory of the broker');
+
+        foreach (
+            [
+                [$resource->key(), self::ABSENT_DIR, 'All entries in cordoned.log.dirs must be present in log.dirs'],
+                [$resource->key(), 'kafka-logs-2', 'All entries in cordoned.log.dirs must be present in log.dirs'],
+                [$resource->key(), '*,' . self::SECOND_DIR, 'it must not contain other values'],
+                ['broker:', self::SECOND_DIR, 'Cannot update these configs at default cluster level'],
+            ] as [$resourceKey, $value, $message]
+        ) {
+            $error = $validate($resourceKey, $value);
+            self::assertInstanceOf(
+                InvalidRequestException::class,
+                $error,
+                "`{$value}` on `{$resourceKey}` is refused with 42 by the `ConfigAdminManager` of the broker"
+            );
+            self::assertStringContainsString($message, (string) ($error->getContext()['error'] ?? ''));
+        }
+    }
+
+    /**
+     * Moves the partition 0 of the topic into the given directory and waits until the move is complete
+     */
+    private function moveTo(string $topic, string $target): void
+    {
+        if ($this->directoryOf($topic, 0) === $target) {
+            return;
+        }
+        $key = TopicPartitionReplica::of($topic, 0, $this->brokerId())->key();
+        self::assertSame([$key => null], $this->admin->alterReplicaLogDirs([$key => $target]));
+        $this->awaitMove($topic, 0, $target);
+    }
+
+    /**
+     * Waits until the second directory reports the given cordon flag, and returns that answer
+     *
+     * The broker applies the option when its `DynamicConfigPublisher` sees the record in the metadata log, a few
+     * dozen milliseconds after the answer of IncrementalAlterConfigs.
+     *
+     * @return array<string, LogDirInfo>
+     */
+    private function awaitCordon(bool $cordoned): array
+    {
+        $deadline = microtime(true) + self::CORDON_TIMEOUT;
+        do {
+            $directories = $this->admin->describeLogDirs([$this->brokerId()], [])[$this->brokerId()];
+            if ($directories[self::SECOND_DIR]->isCordoned === $cordoned) {
+                return $directories;
+            }
+            usleep(50000);
+        } while (microtime(true) < $deadline);
+
+        self::fail('The cordon flag of ' . self::SECOND_DIR . ' did not become ' . var_export($cordoned, true));
+    }
+
+    /**
+     * Waits until every partition of the topic has a replica on the broker, and returns the directory of each
+     *
+     * @return array<int, string> Directory of every partition, by partition id
+     */
+    private function awaitReplicas(string $topic, int $partitions): array
+    {
+        $ids      = range(0, $partitions - 1);
+        $deadline = microtime(true) + self::TOPIC_TIMEOUT;
+        do {
+            $directories = $this->admin->describeLogDirs([$this->brokerId()], [$topic => $ids])[$this->brokerId()];
+            $replicas    = [];
+            foreach ($directories as $path => $directory) {
+                foreach ($ids as $id) {
+                    if ($directory->replica($topic, $id) !== null) {
+                        $replicas[$id] = $path;
+                    }
+                }
+            }
+            if (count($replicas) === $partitions) {
+                ksort($replicas);
+
+                return $replicas;
+            }
+            usleep(100000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("Not every partition of {$topic} got a replica within " . self::TOPIC_TIMEOUT . 's');
     }
 
     /**

@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\DescribeQuorumRequestTopic;
  * message, and {@see DescribeQuorumRequestV0} with {@see DescribeQuorumResponseV0}, which has no timestamps
  * either.
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 class DescribeQuorumRequest extends AbstractRequest
 {

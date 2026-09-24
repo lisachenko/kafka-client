@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\Request\DescribeQuorumResponseV1;
  * timestamps of a replica state (v1) and, on top of them, its directory id, the two error messages and the
  * top-level nodes array (v2).
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 #[CoversClass(DescribeQuorumRequest::class)]
 #[CoversClass(DescribeQuorumRequestV0::class)]

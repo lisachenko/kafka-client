@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponseAbortedTransaction;
  * and the marker in it is the wire vector `fetch.response.v5.aborted-transactions` and the integration test
  * `ReadCommittedConsumerTest`.
  *
- * @see docs/protocol/3.9.md, section "Transactions"
+ * @see docs/protocol/4.3.md, section "Transactions"
  */
 #[CoversClass(AbortedTransactionFilter::class)]
 final class AbortedTransactionFilterTest extends TestCase

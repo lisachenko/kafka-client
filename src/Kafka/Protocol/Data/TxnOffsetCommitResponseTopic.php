@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partitions => TxnOffsetCommitResponsePartition
  * </pre>
  *
- * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 class TxnOffsetCommitResponseTopic implements BinarySchemaInterface
 {

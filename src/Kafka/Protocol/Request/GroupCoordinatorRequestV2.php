@@ -19,8 +19,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 3 (Kafka 2.4, KIP-482) added no field: it is the version 1 frame - the key and its type - written
  * with the **compact** types and a tagged-field section, which {@see GroupCoordinatorRequest} sends.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class GroupCoordinatorRequestV2 extends GroupCoordinatorRequest
 {

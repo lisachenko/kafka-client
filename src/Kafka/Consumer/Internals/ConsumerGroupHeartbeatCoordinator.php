@@ -61,19 +61,30 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * {@see self::maybeHeartbeat()} honours that number, not the `heartbeat.interval.ms` of the consumer, which is
  * never sent anywhere in this protocol. The session timeout is the broker's as well.
  *
- * **The member id is the member's own**: a uuid it generates for itself and keeps for its whole life, where a
- * classic member is given one by the coordinator in the answer of its first JoinGroup. A member that is fenced -
- * **110** `FencedMemberEpoch`, **113** `StaleMemberEpoch` or **25** `UnknownMemberId` - drops its partitions and
- * joins again with the epoch 0 **and a fresh member id**, which is what {@see self::resetMembership()} does. The
- * two configuration errors of the api are not retried at all: **112** `UnsupportedAssignor` names a
- * `group.remote.assignor` the broker does not have, **111** `UnreleasedInstanceId` a `group.instance.id` another
- * member still holds, and neither of them gets better by trying again.
+ * **The member id is the member's own** (KIP-1082, ConsumerGroupHeartbeat **v1**, Kafka 4.0): a uuid it
+ * generates for itself - {@see self::newMemberId()}, the `Uuid.randomUuid().toString()` of the Java consumer - and
+ * keeps for its whole life, where a classic member is given one by the coordinator in the answer of its first
+ * JoinGroup. `AbstractMembershipManager` @ 4.0.0 holds it in a `final` field: it is sent with the first heartbeat,
+ * with every heartbeat after it and **with every rejoin**. A member that is fenced - **110** `FencedMemberEpoch`,
+ * **113** `StaleMemberEpoch` or **25** `UnknownMemberId` - drops its partitions and joins again with the epoch 0
+ * under the id it had, which is what {@see self::resetMembership()} prepares. The two configuration errors of the
+ * api are not retried at all: **112** `UnsupportedAssignor` names a `group.remote.assignor` the broker does not
+ * have, **111** `UnreleasedInstanceId` a `group.instance.id` another member still holds, and neither of them gets
+ * better by trying again; neither does the **128** `InvalidRegularExpression` of a regex the coordinator cannot
+ * compile.
+ *
+ * **A subscription is a list of topic names or a regular expression** (`subscribed_topic_regex`, version 1): the
+ * regex is matched by the COORDINATOR against the topics of the cluster, in the RE2/J syntax of the Java client's
+ * `SubscriptionPattern`, and the assignment it answers names whatever topics matched - {@see self::setSubscriptionPattern()}
+ * is how {@see \Protocol\Kafka\Consumer\KafkaConsumer::subscribeByPattern()} hands it over. The join of such a
+ * member carries the regex next to the EMPTY list of topic names, as the Java consumer's does, and a member that
+ * drops its regex says so with the empty string.
  *
  * The epoch this class reports as {@see self::getGenerationId()} is the **member epoch**, which is what an
  * OffsetCommit **v9** and an OffsetFetch **v9** of this member send in the field a classic member fills with its
  * generation id; the call sites of {@see \Protocol\Kafka\Consumer\KafkaConsumer} need no change for it.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  * @see \Protocol\Kafka\Consumer\ConsumerConfig::GROUP_PROTOCOL
  */
 final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInterface
@@ -98,9 +109,9 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
     private const int DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
 
     /**
-     * Member id of this consumer, which it generates for itself and keeps until it is fenced
+     * Member id of this consumer, which it generates for itself and keeps for its whole life (KIP-1082)
      */
-    private string $memberId = JoinGroupRequest::DEFAULT_MEMBER_ID;
+    private readonly string $memberId;
 
     /**
      * Epoch of this member, {@see OffsetCommitRequest::DEFAULT_GENERATION_ID} for a consumer without membership
@@ -134,6 +145,16 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
     private ?array $subscribedTopics = null;
 
     /**
+     * Regular expression this member subscribes with (ConsumerGroupHeartbeat v1), null for a list of topic names
+     */
+    private ?string $subscriptionPattern = null;
+
+    /**
+     * Regular expression the coordinator knows of this member, null until it named one
+     */
+    private ?string $subscribedPattern = null;
+
+    /**
      * Whether the next poll() has to reconcile before it fetches anything
      */
     private bool $rejoinNeeded = true;
@@ -157,6 +178,8 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
      * @param string|null $groupInstanceId    `group.instance.id` of a static member (KIP-345), null for a dynamic
      * @param string|null $serverAssignor     `group.remote.assignor`, null to let the coordinator choose
      * @param string|null $rackId             `client.rack` of this consumer, null when it names none
+     * @param string|null $memberId           Member id of this consumer, null to generate one with
+     *        {@see self::newMemberId()}; a consumer that re-subscribes hands the id of its first membership in
      */
     public function __construct(
         private readonly Client $client,
@@ -166,28 +189,32 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
         private readonly int $retryBackoffMs = 100,
         private readonly ?string $groupInstanceId = null,
         private readonly ?string $serverAssignor = null,
-        private readonly ?string $rackId = null
-    ) {}
+        private readonly ?string $rackId = null,
+        ?string $memberId = null
+    ) {
+        $this->memberId = $memberId ?? self::newMemberId();
+    }
 
     /**
      * Returns the member id a KIP-848 consumer generates for itself, the uuid the Java client sends
      *
-     * `ConsumerConfig` @ 3.9.2 gives every member of the new protocol a `Uuid.randomUuid().toString()` and keeps
-     * it for the whole life of the consumer; the coordinator only generates one for a request that names none.
+     * `AbstractMembershipManager` @ 4.0.0 gives every member of the new protocol a
+     * `Uuid.randomUuid().toString()` and keeps it for the whole life of the consumer: the 16 bytes of a random
+     * (version 4) uuid in the **URL-safe base64 without padding** of Kafka's own `Uuid.toString()` - 22 characters
+     * such as `sYtIkmBTRnqHVM0TTnw5lQ` - and never one that starts with a `-`, which `Uuid.randomUuid()` draws
+     * again. ConsumerGroupHeartbeat **v1** (KIP-1082) requires it: a frame of that version without a member id is
+     * the 42 "MemberId can't be empty.".
      */
     public static function newMemberId(): string
     {
-        return sprintf(
-            '%04x%04x-%04x-4%03x-%04x-%04x%04x%04x',
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFFF),
-            random_int(0, 0x0FFF),
-            random_int(0, 0x3FFF) | 0x8000,
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFFF),
-            random_int(0, 0xFFFF)
-        );
+        do {
+            $bytes     = random_bytes(16);
+            $bytes[6]  = chr((ord($bytes[6]) & 0x0F) | 0x40);
+            $bytes[8]  = chr((ord($bytes[8]) & 0x3F) | 0x80);
+            $memberId  = rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
+        } while ($memberId[0] === '-');
+
+        return $memberId;
     }
 
     /**
@@ -207,11 +234,48 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
     }
 
     /**
+     * The member id of a member, and the empty one of "no member" before the join and after a fence or a leave
+     *
+     * The id itself is kept for the whole life of this membership ({@see self::getOwnMemberId()}); what an
+     * OffsetCommit of a consumer that is not in its group sends is the empty id with the generation -1.
+     *
      * @inheritdoc
      */
     public function getMemberId(): string
     {
+        return $this->isMember() ? $this->memberId : JoinGroupRequest::DEFAULT_MEMBER_ID;
+    }
+
+    /**
+     * Returns the member id this consumer generated for itself, whether it is in its group right now or not
+     */
+    public function getOwnMemberId(): string
+    {
         return $this->memberId;
+    }
+
+    /**
+     * Subscribes this member by a regular expression the coordinator matches (ConsumerGroupHeartbeat v1)
+     *
+     * The regex is in the RE2/J syntax of the Java client's `SubscriptionPattern` and it is not compiled here: the
+     * coordinator compiles it, and answers one it cannot compile with the **128** `InvalidRegularExpression`.
+     * Null goes back to a subscription by topic names. The change travels with the next reconciliation - the join,
+     * or an ordinary heartbeat of a member that is already in its group.
+     */
+    public function setSubscriptionPattern(?string $pattern): void
+    {
+        if ($pattern !== $this->subscriptionPattern) {
+            $this->subscriptionPattern = $pattern;
+            $this->rejoinNeeded        = true;
+        }
+    }
+
+    /**
+     * Returns the regular expression this member subscribes with, null for a subscription by topic names
+     */
+    public function getSubscriptionPattern(): ?string
+    {
+        return $this->subscriptionPattern;
     }
 
     /**
@@ -229,8 +293,7 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
      */
     public function isMember(): bool
     {
-        return $this->memberId !== JoinGroupRequest::DEFAULT_MEMBER_ID
-            && $this->memberEpoch > OffsetCommitRequest::DEFAULT_GENERATION_ID;
+        return $this->memberEpoch > OffsetCommitRequest::DEFAULT_GENERATION_ID;
     }
 
     /**
@@ -411,19 +474,20 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
     }
 
     /**
-     * Forgets the membership, so that the next reconciliation joins as a **new** member
+     * Forgets the membership, so that the next reconciliation joins again with the epoch 0
      *
-     * The member id is thrown away with the epoch: a member the coordinator fenced may not come back under the
-     * same id, `ConsumerGroupHeartbeatRequest.json` @ 3.9.2 gives every join a member id of its own.
+     * The member id is **kept**: `ConsumerGroupHeartbeatRequest.json` @ 4.0.0 says the member id *"must be kept
+     * during the entire lifetime of the consumer process"* (KIP-1082), and the Java consumer rejoins a group that
+     * fenced it under the id it had. The epoch, the partitions and what the coordinator knew of the subscription go.
      */
     public function resetMembership(): void
     {
-        $this->memberId         = JoinGroupRequest::DEFAULT_MEMBER_ID;
-        $this->memberEpoch      = OffsetCommitRequest::DEFAULT_GENERATION_ID;
-        $this->ownedPartitions  = [];
-        $this->targetPartitions = null;
-        $this->subscribedTopics = null;
-        $this->rejoinNeeded     = true;
+        $this->memberEpoch       = OffsetCommitRequest::DEFAULT_GENERATION_ID;
+        $this->ownedPartitions   = [];
+        $this->targetPartitions  = null;
+        $this->subscribedTopics  = null;
+        $this->subscribedPattern = null;
+        $this->rejoinNeeded      = true;
     }
 
     /**
@@ -437,16 +501,22 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
     {
         if (!$this->isMember()) {
             $this->join($topics);
-        } elseif ($this->subscribedTopics !== $topics) {
-            // A subscription that changed travels in an ordinary heartbeat: there is nothing to re-join for
+        } elseif ($this->subscribedTopics !== $topics || $this->subscribedPattern !== $this->subscriptionPattern) {
+            // A subscription that changed travels in an ordinary heartbeat: there is nothing to re-join for. Each
+            // half is sent only when it changed, and a regex that was dropped is the empty string, not a null
+            $pattern = $this->subscriptionPattern;
             $this->apply($this->client->consumerGroupHeartbeat(
                 $this->getNode(),
                 $this->groupId,
                 $this->memberId,
                 $this->memberEpoch,
-                $topics
+                $this->subscribedTopics !== $topics ? $topics : null,
+                subscribedTopicRegex: $this->subscribedPattern !== $pattern
+                    ? ($pattern ?? ConsumerGroupHeartbeatRequest::NO_SUBSCRIBED_TOPIC_REGEX)
+                    : null
             ));
-            $this->subscribedTopics = $topics;
+            $this->subscribedTopics  = $topics;
+            $this->subscribedPattern = $pattern;
         }
 
         for ($step = 0; $step < self::MAX_RECONCILIATION_STEPS && $this->targetPartitions !== null; $step++) {
@@ -475,13 +545,15 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
     }
 
     /**
-     * Sends the heartbeat that joins the group: a fresh member id, the epoch 0 and the whole picture
+     * Sends the heartbeat that joins the group: the member id of this consumer, the epoch 0 and the whole picture
+     *
+     * A member that subscribes by a regex names no topic and sends the empty list next to it, as the Java consumer
+     * does; the coordinator needs one of the two to be non-null on a join.
      *
      * @param list<string> $topics Subscription of this member
      */
     private function join(array $topics): void
     {
-        $this->memberId         = self::newMemberId();
         $this->ownedPartitions  = [];
         $this->targetPartitions = null;
 
@@ -493,10 +565,12 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
             $this->rebalanceTimeoutMs,
             $this->groupInstanceId,
             $this->rackId,
-            $this->serverAssignor
+            $this->serverAssignor,
+            $this->subscriptionPattern
         ));
 
-        $this->subscribedTopics = $topics;
+        $this->subscribedTopics  = $topics;
+        $this->subscribedPattern = $this->subscriptionPattern;
     }
 
     /**
@@ -506,10 +580,7 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
     {
         $this->lastHeartbeatMs = (int) (microtime(true) * 1e3);
 
-        // A member that named no id of its own is given one here, and a member that named one is answered its own
-        if ($response->memberId !== null && $response->memberId !== JoinGroupRequest::DEFAULT_MEMBER_ID) {
-            $this->memberId = $response->memberId;
-        }
+        // The member id is this member's own and a version 1 answer echoes it: there is nothing to learn from it
         $this->memberEpoch = $response->memberEpoch;
         if ($response->heartbeatIntervalMs > 0) {
             $this->heartbeatIntervalMs = $response->heartbeatIntervalMs;

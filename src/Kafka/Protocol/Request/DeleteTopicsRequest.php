@@ -80,7 +80,7 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsRequestTopic;
  * the controller gave it, with a null name; a request that carries both is answered 42 `InvalidRequest` (measured on the container).
  * {@see DeleteTopicsRequestTopic} is that structure, {@see DeleteTopicsRequestV5} the flat frame of Kafka 2.7.
  *
- * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 class DeleteTopicsRequest extends AbstractRequest
 {

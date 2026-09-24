@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The two fields are kept in step by the constructor, in the direction `FeatureUpdate.allowDowngrade()` @ 3.3.2
  * keeps them: the boolean is "anything but an upgrade".
  *
- * @see docs/protocol/3.9.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 to v2)" and "The upgrade type and the dry
  *      run of KIP-778 (v1)"
  */
 class FeatureUpdateKey implements BinarySchemaInterface

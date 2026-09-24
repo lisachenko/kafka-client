@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\InlinedGroupRecord;
  * the message once and hands the answer down, which is why the same {@see FlexibleRecord} scheme produces two
  * different frames here and reads back into the same values from both.
  *
- * @see docs/protocol/3.9.md, sections "Protocol primitive types" and "Implementation model"
+ * @see docs/protocol/4.3.md, sections "Protocol primitive types" and "Implementation model"
  */
 #[CoversClass(BinarySchema::class)]
 #[CoversClass(TaggedField::class)]

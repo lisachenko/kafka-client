@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `WriteTxnMarkersRequest.json` @ 2.8.2) and changed no field, so this class only lowers the version constant: the version
  * 0 is the frame a broker below Kafka 2.8 speaks.
  *
- * @see docs/protocol/3.9.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 final class WriteTxnMarkersRequestV0 extends WriteTxnMarkersRequest
 {

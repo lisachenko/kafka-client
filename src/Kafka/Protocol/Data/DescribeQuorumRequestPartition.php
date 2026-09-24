@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the partition 0 of `__cluster_metadata` ({@see \Protocol\Kafka\Protocol\Request\DescribeQuorumRequest}), so
  * this structure carries the index of that one partition and nothing else.
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 class DescribeQuorumRequestPartition implements BinarySchemaInterface
 {

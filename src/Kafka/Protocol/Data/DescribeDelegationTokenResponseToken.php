@@ -48,7 +48,7 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * for a token that was issued for somebody else. {@see DescribeDelegationTokenResponseTokenV2} is the entry of
  * every version below 3.
  *
- * @see docs/protocol/3.9.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 class DescribeDelegationTokenResponseToken implements BinarySchemaInterface
 {

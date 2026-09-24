@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * header may carry a key alone. Headers only exist in the message format v2 of Kafka 0.11: the formats v0 and v1
  * have no place to put them, which is why {@see MessageSet::fromRecords()} ignores them.
  *
- * @see docs/protocol/3.9.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/4.3.md, section "RecordBatch (message format v2)"
  * @see org/apache/kafka/common/header/internals/RecordHeader.java @ 0.11.0.3
  */
 class Header implements BinarySchemaInterface

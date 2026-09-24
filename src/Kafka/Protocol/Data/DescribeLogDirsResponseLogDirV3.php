@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * behind its topic array; this class is the entry of every version below 4, where the two fields stay at the
  * {@see DescribeLogDirsResponseLogDir::UNKNOWN_BYTES} of a directory the broker did not measure.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class DescribeLogDirsResponseLogDirV3 extends DescribeLogDirsResponseLogDir
 {

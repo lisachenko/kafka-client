@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * 0 to 65535, and an int16 would answer everything above 32767 as a negative number. It is the only field of any
  * api of Kafka 3.9.2 that uses the type, and the engine of this repository gained it for this structure.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 class DescribeQuorumResponseListener implements BinarySchemaInterface
 {

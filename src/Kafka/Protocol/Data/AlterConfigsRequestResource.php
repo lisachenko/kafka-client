@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * them and hands it to `AdminUtils.changeTopicConfig`, which REPLACES the ZooKeeper node of the topic. Every option
  * that is not in this array is therefore reset to its default.
  *
- * @see docs/protocol/3.9.md, section "AlterConfigs API (key 33, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "AlterConfigs API (key 33, v0 to v2)"
  */
 class AlterConfigsRequestResource implements BinarySchemaInterface
 {

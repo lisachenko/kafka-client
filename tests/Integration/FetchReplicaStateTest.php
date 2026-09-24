@@ -40,8 +40,8 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV13;
 use Protocol\Kafka\Protocol\Request\FetchResponseV14;
 use Protocol\Kafka\Protocol\Request\FetchResponseV15;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 
 /**
  * What **Kafka 3.5** adds to the Fetch api: the error code of KIP-405 and the replica state of KIP-903.
@@ -61,8 +61,8 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  *
  * Every topic of this class is named `t2-35-…`, so that it can run next to the other suites on the shared node.
  *
- * @see docs/protocol/3.9.md, sections "The tiered-storage error of KIP-405 (v14)", "The replica state of KIP-903
- *      (v15)" and "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, sections "The tiered-storage error of KIP-405 (v14)", "The replica state of KIP-903
+ *      (v15)" and "Fetch API (key 1, v0 to v18)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -366,7 +366,7 @@ final class FetchReplicaStateTest extends IntegrationTestCase
         // of them the version 15 frame of this test with another number in its header; `FetchRequestV15`
         // keeps the version the class measures
         self::assertSame(15, FetchRequestV15::VERSION);
-        self::assertSame(17, FetchRequest::VERSION);
+        self::assertSame(18, FetchRequest::VERSION);
         self::assertSame(
             self::RECORDS,
             array_map(
@@ -421,14 +421,14 @@ final class FetchReplicaStateTest extends IntegrationTestCase
         }
 
         $answer = $this->send(
-            new ProduceRequest(
+            new ProduceRequestV12(
                 [$this->topic => [self::PARTITION => RecordBatch::fromRecords($records)]],
                 1,
                 self::REQUEST_TIMEOUT_MS,
                 self::CLIENT_ID,
                 3500
             ),
-            ProduceResponse::class
+            ProduceResponseV12::class
         );
 
         self::assertSame(

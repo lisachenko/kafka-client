@@ -17,23 +17,35 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * One broker of a DescribeCluster answer (key 60, Kafka 2.8, KIP-700)
+ * One broker of a DescribeCluster answer of version 2 (key 60, Kafka 2.8, KIP-700)
  *
  * <pre>
- *   DescribeClusterBroker => BrokerId Host Port Rack
+ *   DescribeClusterBroker => BrokerId Host Port Rack IsFenced
  *     BrokerId => INT32
  *     Host     => COMPACT_STRING
  *     Port     => INT32
  *     Rack     => COMPACT_NULLABLE_STRING
+ *     IsFenced => BOOLEAN                  -- since version 2
  * </pre>
  *
  * The same four fields a Metadata answer carries for a broker - KIP-700 did not change what is known about one,
  * it gave the cluster itself a request that does not have to name a single topic.
  *
- * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0 and v1)"
+ * **Version 2 (KIP-1073, Kafka 4.0) appended `is_fenced`**: "Version 2 adds IsFenced field to Brokers for KIP-1073
+ * support" (`DescribeClusterResponse.json` @ 4.0.0). It is true only for a broker the request asked for with
+ * `include_fenced_brokers`, because an answer without that flag lists no fenced broker at all.
+ * {@see DescribeClusterBrokerV1} is the entry of the versions 0 and 1.
+ *
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 to v2)" and "The fenced brokers of KIP-1073
+ *      (v2)"
  */
 class DescribeClusterBroker implements BinarySchemaInterface
 {
+    /**
+     * Version of the DescribeCluster API that this DTO is unpacked from
+     */
+    public const int VERSION = 2;
+
     /**
      * Identifier of this broker
      */
@@ -55,15 +67,27 @@ class DescribeClusterBroker implements BinarySchemaInterface
     public ?string $rack = null;
 
     /**
+     * Whether the controller has fenced this broker
+     *
+     * @since Version 2 of protocol (Kafka 4.0, KIP-1073)
+     */
+    public bool $isFenced = false;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'brokerId' => BinarySchema::TYPE_INT32,
             'host'     => BinarySchema::TYPE_STRING,
             'port'     => BinarySchema::TYPE_INT32,
             'rack'     => BinarySchema::TYPE_NULLABLE_STRING,
         ];
+        if (static::VERSION >= 2) {
+            $scheme['isFenced'] = BinarySchema::TYPE_BOOLEAN;
+        }
+
+        return $scheme;
     }
 }

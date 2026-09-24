@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * | 52   | TransactionCoordinatorFenced  | The `coordinator_epoch` of the marker is below the one the leader saw |
  * | 31   | ClusterAuthorizationFailed    | The client may not perform a `ClusterAction`                          |
  *
- * @see docs/protocol/3.9.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 class WriteTxnMarkersResponsePartition implements BinarySchemaInterface
 {

@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * A filter that matched nothing is **not** an error: the code is 0 and the array is empty, which is the answer of
  * a delete of an acl that was not there.
  *
- * @see docs/protocol/3.9.md, section "DeleteAcls API (key 31, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "DeleteAcls API (key 31, v0 to v3)"
  */
 class DeleteAclsResponseFilterResult implements BinarySchemaInterface
 {

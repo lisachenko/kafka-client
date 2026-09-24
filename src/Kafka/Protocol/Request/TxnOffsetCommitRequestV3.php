@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * topics, in the flexible encoding - is written byte for byte the same way, and the version alone says that the
  * sender understands the code 120. The version 3 is what a client sends to a broker below Kafka 3.8.
  *
- * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 final class TxnOffsetCommitRequestV3 extends TxnOffsetCommitRequest
 {

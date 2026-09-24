@@ -18,7 +18,7 @@ namespace Protocol\Kafka\Admin;
  *
  * `UserScramCredentialsDescription` of the Java admin client.
  *
- * @see docs/protocol/3.9.md, section "DescribeUserScramCredentials API (key 50, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeUserScramCredentials API (key 50, v0)"
  */
 final class UserScramCredentialsDescription
 {

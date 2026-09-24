@@ -146,7 +146,7 @@ final class Cluster
      *
      * @throws AllBrokersNotAvailableException If the cluster did not advertise a single broker in time
      *
-     * @see docs/protocol/3.9.md, section "Cluster readiness"
+     * @see docs/protocol/4.3.md, section "Cluster readiness"
      */
     public static function bootstrap(array $configuration, ?string $topic = null): Cluster
     {
@@ -314,7 +314,7 @@ final class Cluster
      * name a topic by that id. A topic the cluster does not know yet, and a topic whose answer carried the zero
      * id, are both `null` here - the caller reloads the metadata and asks again, it never falls back to the name.
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     public function topicIdOf(string $topic): ?string
     {
@@ -360,7 +360,7 @@ final class Cluster
      *
      * @param string $topicId The 16 raw bytes of the topic id
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     public function topicNameById(string $topicId): ?string
     {
@@ -457,25 +457,34 @@ final class Cluster
      * list has not received the metadata of the cluster from the controller yet and is treated as unavailable, see
      * {@see Cluster::bootstrap()}.
      *
-     * The request is version 4 of the Metadata API, so `null` asks for every topic of the cluster and an EMPTY
-     * list asks for none of them - two intentions that version 0 had to express with the same empty array - and
+     * The request is version 13 of the Metadata API (Kafka 4.0), and every version from 4 on behaves the same way
+     * here: `null` asks for every topic of the cluster and an EMPTY list asks for none of them - two intentions that version 0 had to express with the same empty array - and
      * `allow_auto_topic_creation` is sent as **true**: a cluster is bootstrapped and reloaded on behalf of a
      * producer or a consumer, for which a named topic that does not exist yet has always been created by the
      * broker, and version 4 must not change that. The administrative path asks with `false`, see
      * {@see \Protocol\Kafka\Admin\AdminClient::describeTopics()}.
      *
+     * **Version 13 (Kafka 4.0, KIP-1102) gave the answer a top-level error code**, whose one purpose is the **129**
+     * `REBOOTSTRAP_REQUIRED`: "Client metadata is stale. The client should rebootstrap to obtain new metadata". This
+     * method always asks the `bootstrap.servers` and never a broker it learned from an earlier answer, so a
+     * rebootstrap is what it does anyway: an answer that carries a top-level code is dropped and the next bootstrap
+     * server is asked, and when none of them answers without one, the code of the last answer is thrown.
+     *
      * @param list<string>|null $topics Topics to ask the metadata for, `null` asks for every topic
      *
      * @throws UnknownErrorException If not a single bootstrap server answered
      * @throws AllBrokersNotAvailableException If the cluster answered without advertising a broker
+     * @throws KafkaException The top-level error code of the last answer, when every bootstrap server answered one
+     *         ({@see \Protocol\Kafka\Common\Errors\RebootstrapRequiredException} for the 129 of KIP-1102)
      */
     public function reload(?array $topics = null): void
     {
         $brokerAddresses = $this->configuration[ClientConfig::BOOTSTRAP_SERVERS] ?? [];
         $clientId        = (string) ($this->configuration[ClientConfig::CLIENT_ID] ?? '');
 
-        $metadata = null;
-        $causes   = [];
+        $metadata      = null;
+        $causes        = [];
+        $answeredError = null;
         foreach ($brokerAddresses as $address) {
             try {
                 $stream        = ConnectionFactory::open($address, $this->configuration);
@@ -488,12 +497,23 @@ final class Cluster
                     $correlationId,
                     ['address' => $address]
                 );
-                break;
             } catch (NetworkException $exception) {
                 // we ignore all network errors and just try the next one address
                 $causes[$address] = $exception->getMessage();
                 continue;
             }
+            // The top-level error code of KIP-1102 (Metadata v13) refuses the whole answer: the next bootstrap
+            // server is asked instead, which is what "rebootstrap" means for a client that always bootstraps
+            if ($metadata->errorCode !== KafkaException::NO_ERROR) {
+                $answeredError    = KafkaException::fromCode($metadata->errorCode, ['address' => $address]);
+                $causes[$address] = $answeredError->getMessage();
+                $metadata         = null;
+                continue;
+            }
+            break;
+        }
+        if ($metadata === null && $answeredError !== null) {
+            throw $answeredError;
         }
         if ($metadata === null) {
             throw new UnknownErrorException(

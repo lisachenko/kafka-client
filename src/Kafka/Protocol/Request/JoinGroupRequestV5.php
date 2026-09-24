@@ -19,8 +19,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 6 (Kafka 2.4, KIP-482) added no field: it is this frame written with the **compact** types and a
  * tagged-field section per structure, which {@see JoinGroupRequestV6} sends.
  *
- * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/4.3.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupRequestV5 extends JoinGroupRequest
 {

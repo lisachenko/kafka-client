@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Version 4 (Kafka 2.4, KIP-345) inserted the nullable `group_instance_id` of a static member behind the member
  * id, see {@see DescribeGroupResponseMember}; this is the entry without it.
  *
- * @see docs/protocol/3.9.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 final class DescribeGroupResponseMemberV0 extends DescribeGroupResponseMember
 {

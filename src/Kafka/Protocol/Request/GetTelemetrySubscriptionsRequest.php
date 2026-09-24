@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * rows of 71 and 72 unless `ClientMetricsManager.isTelemetryReceiverConfigured()` - although it is answered all
  * the same, which is what the vectors of this api were captured with.
  *
- * @see docs/protocol/3.9.md, section "GetTelemetrySubscriptions API (key 71, v0)"
+ * @see docs/protocol/4.3.md, section "GetTelemetrySubscriptions API (key 71, v0)"
  */
 class GetTelemetrySubscriptionsRequest extends AbstractRequest
 {

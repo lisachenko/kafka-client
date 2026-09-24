@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * ConsumerGroupDescribe, version 0: describes groups of the new consumer protocol (ApiKey 69, Kafka 3.7, KIP-848)
+ * ConsumerGroupDescribe, version 1: describes groups of the new consumer protocol (ApiKey 69, Kafka 3.7, KIP-848)
  *
  * <pre>
- *   ConsumerGroupDescribe Request (Version: 0) => [group_ids] include_authorized_operations
+ *   ConsumerGroupDescribe Request (Version: 0 and 1) => [group_ids] include_authorized_operations
  *     group_ids                     => COMPACT_STRING
  *     include_authorized_operations => BOOLEAN
  * </pre>
@@ -36,7 +36,12 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The request goes to the **coordinator** of every group it names, as every group api does, and a broker that
  * does not coordinate one of them answers that entry - not the frame - with the 16 `NotCoordinatorForGroup`.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * **Version 1 (Kafka 4.0, KIP-1099) changes the answer only**: `ConsumerGroupDescribeRequest.json` @ 4.0.0 says
+ * *"For ConsumerGroupDescribeRequest, version 1 is same as version 0"*, and the answer gives every member its
+ * `member_type` ({@see \Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember::$memberType}).
+ * {@see ConsumerGroupDescribeRequestV0} is the frame of version 0.
+ *
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 class ConsumerGroupDescribeRequest extends AbstractRequest
 {
@@ -48,7 +53,7 @@ class ConsumerGroupDescribeRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * The api is flexible from its first version: it was born after KIP-482 (Kafka 2.4)

@@ -24,8 +24,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * may be told that its member epoch is stale with the 113. A member of such a group is not allowed to send this
  * version at all: `ConsumerGroup::validateOffsetCommit` @ 3.9.2 answers it 35 `UnsupportedVersion`.
  *
- * @see docs/protocol/3.9.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
  */
 final class OffsetCommitRequestV8 extends OffsetCommitRequest
 {

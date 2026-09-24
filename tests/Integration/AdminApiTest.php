@@ -30,8 +30,8 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * `controlledShutdown()` method of the admin client: key 7 is `zkBroker`-only, a KRaft node does not list it on a
  * client listener and closes the connection for every version of it - see the "(3.x)" note of the section below.
  *
- * @see docs/protocol/3.9.md, section "ControlledShutdown API (key 7, v0 to v3)"
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/4.3.md, section "Metadata API (key 3, v0 to v13)"
  */
 #[CoversClass(AdminClient::class)]
 final class AdminApiTest extends IntegrationTestCase

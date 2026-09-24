@@ -17,13 +17,15 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * ListTransactions, version 1: the transactional ids a broker coordinates (ApiKey 66, Kafka 3.0)
+ * ListTransactions, version 2: the transactional ids a broker coordinates (ApiKey 66, Kafka 3.0)
  *
  * <pre>
- *   ListTransactions Request (Version: 0 to 1) => [state_filters] [producer_id_filters] duration_filter
- *     state_filters       => COMPACT_STRING
- *     producer_id_filters => INT64
- *     duration_filter     => INT64      -- since version 1, -1 for "every transaction"
+ *   ListTransactions Request (Version: 0 to 2) => [state_filters] [producer_id_filters] duration_filter
+ *                                                transactional_id_pattern
+ *     state_filters            => COMPACT_STRING
+ *     producer_id_filters      => INT64
+ *     duration_filter          => INT64                    -- since version 1, -1 for "every transaction"
+ *     transactional_id_pattern => COMPACT_NULLABLE_STRING  -- since version 2, null for "every id"
  * </pre>
  *
  * `ListTransactionsRequest.json` @ 3.0.2 declares the two filters, both flexible from the version 0. An **empty**
@@ -46,7 +48,17 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * means implicitly. The three filters are ANDed. {@see ListTransactionsRequestV0} is the frame below it, which
  * cannot ask at all.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * **Version 2 (Kafka 4.1, KIP-1152) appended the `transactional_id_pattern`**: "Version 2: adds
+ * TransactionalIdPattern to list transactions with the same pattern(KIP-1152)" stands above the `validVersions` of
+ * `ListTransactionsRequest.json` @ 4.1.0. It is a regular expression of **RE2/J** (`com.google.re2j.Pattern` in
+ * `TransactionStateManager.listTransactionStates` @ 4.1.0, the engine the regex subscription of KIP-848 uses too,
+ * not `java.util.regex`) that the **whole** transactional id has to match - `matcher(id).matches()`, not `find()`;
+ * a null or empty pattern is "every id", and a pattern the coordinator cannot compile is the **128**
+ * (`InvalidRegularExpression`) of Kafka 4.0, the one error the answer gained with it. It is the fourth filter, ANDed with the others. {@see ListTransactionsRequestV1} is the frame
+ * below it.
+ *
+ * @see docs/protocol/4.3.md, sections "ListTransactions API (key 66, v0 to v2)" and "The transactional id pattern
+ *      of KIP-1152 (v2)"
  */
 class ListTransactionsRequest extends AbstractRequest
 {
@@ -58,7 +70,7 @@ class ListTransactionsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @inheritdoc
@@ -78,6 +90,8 @@ class ListTransactionsRequest extends AbstractRequest
      * @param string       $clientId          A user specified identifier for the client
      * @param int          $correlationId     A value the broker passes back unmodified
      * @param int          $durationFilter    Age in milliseconds a transaction has to exceed, -1 for every one
+     * @param string|null  $transactionalIdPattern RE2/J regular expression the whole transactional id has to
+     *        match, null for every id (KIP-1152, version 2)
      */
     public function __construct(
         /**
@@ -99,7 +113,13 @@ class ListTransactionsRequest extends AbstractRequest
          *
          * @since Version 1 of protocol (Kafka 3.8, KIP-994)
          */
-        protected readonly int $durationFilter = self::NO_DURATION_FILTER
+        protected readonly int $durationFilter = self::NO_DURATION_FILTER,
+        /**
+         * RE2/J regular expression the whole transactional id has to match, null for every id.
+         *
+         * @since Version 2 of protocol (Kafka 4.1, KIP-1152)
+         */
+        protected readonly ?string $transactionalIdPattern = null
     ) {
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -116,6 +136,9 @@ class ListTransactionsRequest extends AbstractRequest
         ];
         if (static::VERSION >= 1) {
             $body['durationFilter'] = BinarySchema::TYPE_INT64;
+        }
+        if (static::VERSION >= 2) {
+            $body['transactionalIdPattern'] = BinarySchema::TYPE_NULLABLE_STRING;
         }
 
         return $header + $body;
@@ -148,5 +171,13 @@ class ListTransactionsRequest extends AbstractRequest
     public function getDurationFilter(): int
     {
         return $this->durationFilter;
+    }
+
+    /**
+     * Returns the regular expression the transactional ids are filtered by, null for every id (KIP-1152, version 2)
+     */
+    public function getTransactionalIdPattern(): ?string
+    {
+        return $this->transactionalIdPattern;
     }
 }

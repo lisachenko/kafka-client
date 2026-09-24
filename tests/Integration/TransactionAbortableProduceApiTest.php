@@ -38,8 +38,12 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV11;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV11;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 
 /**
  * What **Kafka 3.8** adds to the produce path: the abortable transaction error of KIP-890.
@@ -58,16 +62,25 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
  * two frames of this class are the very same request under two version numbers, and the difference is entirely
  * the broker's answer.
  *
+ * **Kafka 4.0 added Produce v12 (KIP-890 part 2)**, the same frame once more, and on a node that finalizes
+ * `transaction.version` 2 - the node of this line does - it changes what the very same transactional batch means:
+ * "the produce request will also include the function for a AddPartitionsToTxn call", so the partition the
+ * coordinator was never told about is added by the broker and the batch is appended, where version 11 is refused
+ * the 120. That is why the client caps a transaction of the protocol v1 at {@see ProduceRequestV11}, see
+ * {@see Client::produceVersion()}, and why every frame of the version 11 measurements below names that class.
+ *
  * Every topic, group and transactional id of this class is named `t2-38-…`, so that it can run next to the other
  * suites on the shared node.
  *
- * @see docs/protocol/3.9.md, sections "The abortable transaction error of KIP-890 (v11)" and "Produce API (key 0,
- *      v0 to v11)"
+ * @see docs/protocol/4.3.md, sections "The abortable transaction error of KIP-890 (v11)", "The transaction protocol
+ *      v2 of KIP-890 part 2 (v12)" and "Produce API (key 0, v0 to v13)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
 #[CoversClass(ProduceRequestV10::class)]
 #[CoversClass(ProduceResponseV10::class)]
+#[CoversClass(ProduceRequestV11::class)]
+#[CoversClass(ProduceResponseV11::class)]
 #[CoversClass(TransactionAbortableException::class)]
 #[CoversClass(TransactionManager::class)]
 #[CoversClass(Client::class)]
@@ -119,7 +132,7 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    public function testTheNodeServesTheVersionThisClientSends(): void
+    public function testTheNodeServesVersionTwelveAndFinalizesTheTransactionProtocolV2(): void
     {
         $stream = $this->connect();
 
@@ -131,32 +144,58 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
         }
 
         self::assertSame(KafkaException::NO_ERROR, $answer->errorCode);
-        self::assertSame(11, $answer->apiVersions[0]->maxVersion, 'the node serves Produce up to v11');
-        self::assertSame(11, ProduceRequest::VERSION);
-        self::assertSame(11, ProduceResponse::VERSION);
+        self::assertGreaterThanOrEqual(12, $answer->apiVersions[0]->maxVersion, 'the node serves Produce v12 (4.0)');
+        self::assertSame(13, ProduceRequest::VERSION, 'Produce v13 of Kafka 4.1 names the topics by id');
+        self::assertSame(13, ProduceResponse::VERSION);
+        self::assertSame(12, ProduceRequestV12::VERSION);
+        self::assertSame(12, ProduceResponseV12::VERSION);
+        self::assertSame(11, ProduceRequestV11::VERSION);
+        self::assertSame(11, ProduceResponseV11::VERSION);
         self::assertSame(10, ProduceRequestV10::VERSION);
         self::assertSame(10, ProduceResponseV10::VERSION);
 
-        // KIP-890 has a second part - the transaction protocol v2, which replaces the verification round trip -
-        // and it rides on a cluster feature named `transaction.version`. A 3.9.2 node has no such feature at all,
-        // so the 120 measured below is the one the VERIFICATION produces
-        self::assertArrayNotHasKey(
-            'transaction.version',
-            $answer->supportedFeatures,
-            'a 3.9.2 node does not know the transaction.version feature of KIP-890 part 2'
-        );
-        self::assertArrayNotHasKey('transaction.version', $answer->finalizedFeatures);
+        // KIP-890 part 2 - the transaction protocol v2, which replaces the verification round trip - rides on the
+        // cluster feature `transaction.version`, which a 3.9.2 node did not know and a 4.3.1 node finalizes at 2:
+        // a transactional Produce v12 is the protocol v2 on this node, see
+        // testAVersionTwelveTransactionalBatchAddsItsPartitionToTheTransactionItself()
+        self::assertArrayHasKey('transaction.version', $answer->finalizedFeatures);
+        self::assertSame(2, $answer->finalizedFeatures['transaction.version']->maxVersionLevel);
         self::assertSame(
-            ['metadata.version'],
-            array_keys($answer->finalizedFeatures),
-            'the node finalizes metadata.version and nothing else'
+            ProduceRequestV11::VERSION,
+            Client::produceVersion(RecordBatch::MAGIC, ProduceRequestV11::VERSION),
+            'the version a transaction of the protocol v1 is capped at'
         );
+    }
+
+    public function testAVersionTwelveTransactionalBatchAddsItsPartitionToTheTransactionItself(): void
+    {
+        // The same frame as the version 11 one below that is refused the 120: a transactional batch for a
+        // partition no AddPartitionsToTxn announced. At version 12 on a `transaction.version` 2 node the broker
+        // adds the partition itself (`AddPartitionsToTxnManager.produceRequestVersionToTransactionSupportedOperation`
+        // @ 4.0.0: `if (version > 11) addPartition`) and appends the batch
+        $transactionalId = self::uniqueTransactionalId('t2-40-v2');
+        $this->client->getTransactionCoordinator($transactionalId);
+        $idAndEpoch = $this->client->initProducerId($transactionalId, 60000);
+
+        try {
+            $twelve    = $this->send(
+                $this->transactionalRequest(ProduceRequestV12::class, 3886, $transactionalId, $idAndEpoch),
+                ProduceResponseV12::class
+            );
+            $partition = $twelve->topics[$this->topic]->partitions[self::UNVERIFIED_PARTITION];
+
+            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, 'no 120: the broker added the partition');
+            self::assertSame(0, $partition->baseOffset, 'and appended the batch, the first of the partition');
+            self::assertNull($partition->errorMessage);
+        } finally {
+            $this->abortQuietly($transactionalId, $idAndEpoch);
+        }
     }
 
     public function testAVersionElevenProduceIsTheVersionTenFrameWithAnotherApiVersion(): void
     {
         $ten    = $this->produceRequest(ProduceRequestV10::class, 3881, self::VERIFIED_PARTITION);
-        $eleven = $this->produceRequest(ProduceRequest::class, 3881, self::VERIFIED_PARTITION);
+        $eleven = $this->produceRequest(ProduceRequestV11::class, 3881, self::VERIFIED_PARTITION);
 
         self::assertSame(
             bin2hex((string) $ten),
@@ -164,7 +203,7 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
             'KIP-890 added no field to the request: the api version of the header is the whole difference'
         );
 
-        $answer    = $this->send($eleven, ProduceResponse::class);
+        $answer    = $this->send($eleven, ProduceResponseV11::class);
         $partition = $answer->topics[$this->topic]->partitions[self::VERIFIED_PARTITION];
 
         self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
@@ -187,8 +226,8 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
 
         try {
             $eleven = $this->send(
-                $this->transactionalRequest(ProduceRequest::class, 3883, $transactionalId, $idAndEpoch),
-                ProduceResponse::class
+                $this->transactionalRequest(ProduceRequestV11::class, 3883, $transactionalId, $idAndEpoch),
+                ProduceResponseV11::class
             );
             $ten = $this->send(
                 $this->transactionalRequest(ProduceRequestV10::class, 3884, $transactionalId, $idAndEpoch),
@@ -240,13 +279,13 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
         try {
             $answer = $this->send(
                 $this->transactionalRequest(
-                    ProduceRequest::class,
+                    ProduceRequestV11::class,
                     3885,
                     $transactionalId,
                     $idAndEpoch,
                     self::VERIFIED_PARTITION
                 ),
-                ProduceResponse::class
+                ProduceResponseV11::class
             );
             $partition = $answer->topics[$this->topic]->partitions[self::VERIFIED_PARTITION];
 
@@ -266,14 +305,12 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
         // What the 120 is for: the batch fails, the transaction can not be committed any more, and the producer
         // carries on with the SAME transactional id once it has aborted. `Client::produce()` reports the code as
         // the exception of that partition and `TransactionManager::batchFailed()` moves the producer into
-        // ABORTABLE_ERROR, from which only `abortTransaction()` leads out
+        // ABORTABLE_ERROR, from which only `abortTransaction()` leads out. The node finalizes `transaction.version`
+        // 2, on which a producer of the protocol v2 never meets the 120 (its Produce v12 enrols the partition, see
+        // the test below), so the producer of this test is held on the protocol v1 - Produce v11 inside the
+        // transaction, AddPartitionsToTxn in front of it - which is what a 3.x cluster would make of it
         $transactionalId = self::uniqueTransactionalId('t2-38-recover');
-        $manager         = new TransactionManager(
-            $this->client,
-            $transactionalId,
-            60000,
-            $this->configuration()
-        );
+        $manager         = $this->transactionManagerOfTheProtocolV1($transactionalId);
 
         $manager->initTransactions();
         $manager->beginTransaction();
@@ -326,6 +363,50 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
             $accepted[$this->topic][self::VERIFIED_PARTITION]->baseOffset,
             'the next transaction of the same producer commits, behind the marker of the aborted one'
         );
+    }
+
+    public function testAProducerOfTheProtocolV2EnrolsThePartitionWithItsProduceVersionTwelve(): void
+    {
+        // The other side of the version choice: on this node the transaction manager speaks the protocol v2, so
+        // `Client::produce()` sends the transactional batch as Produce v12, which enrols the partition itself - the
+        // very batch that is refused the 120 at version 11 above is appended and committed
+        $transactionalId = self::uniqueTransactionalId('t2-40-v2-producer');
+        $manager         = new TransactionManager($this->client, $transactionalId, 60000, $this->configuration());
+
+        $manager->initTransactions();
+        self::assertTrue($manager->isTransactionV2Enabled(), 'the node finalizes transaction.version 2');
+
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$this->topic => [self::UNVERIFIED_PARTITION => []]]);
+        $accepted = $this->client->produce(
+            [$this->topic => [self::UNVERIFIED_PARTITION => [new Record('t2-40 enrolled by the produce')]]],
+            $manager
+        );
+        $manager->commitTransaction();
+
+        self::assertSame(0, $accepted[$this->topic][self::UNVERIFIED_PARTITION]->baseOffset);
+        self::assertTrue($manager->isReady());
+    }
+
+    /**
+     * A transaction manager held on the transaction protocol v1 even on a node that finalizes `transaction.version` 2
+     */
+    private function transactionManagerOfTheProtocolV1(string $transactionalId): TransactionManager
+    {
+        return new class ($this->client, $transactionalId, $this->configuration()) extends TransactionManager {
+            /**
+             * @param array<string, mixed> $configuration
+             */
+            public function __construct(Client $client, string $transactionalId, array $configuration)
+            {
+                parent::__construct($client, $transactionalId, 60000, $configuration);
+            }
+
+            protected function canEnrolPartitionsByProduce(): bool
+            {
+                return false;
+            }
+        };
     }
 
     /**

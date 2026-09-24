@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see ListGroupResponseProtocol::$groupType} stays null. {@see ListGroupResponseProtocolV0} is the entry of the
  * versions 0 to 3, which have neither.
  *
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "ListGroups API (key 16, v0 to v5)"
  */
 final class ListGroupResponseProtocolV4 extends ListGroupResponseProtocol
 {

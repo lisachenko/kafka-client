@@ -18,10 +18,10 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * The bytes are the ones of version 1 - `UpdateFeaturesResponse.json` @ 3.3.2 declares every field `0+` - because
  * KIP-778 changed the request alone ({@see UpdateFeaturesRequestV0}). What separates this answer from
- * {@see UpdateFeaturesResponse} is what it stands for: every result of this version is a change the controller
+ * {@see UpdateFeaturesResponseV1} is what it stands for: every result of this version is a change the controller
  * **wrote**, because a version 0 request has no `validate_only` to ask it not to.
  *
- * @see docs/protocol/3.9.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 to v2)" and "The upgrade type and the dry
  *      run of KIP-778 (v1)"
  */
 final class UpdateFeaturesResponseV0 extends UpdateFeaturesResponse

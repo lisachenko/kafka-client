@@ -31,7 +31,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The incremental fetch sessions of KIP-227 work exactly as they do at version 8: {@see FetchMetadata} in front of
  * the topics array and `forgotten_topics_data` behind it.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Fetch sessions (v7, KIP-227)"
  */
 final class FetchRequestV7 extends FetchRequest
 {

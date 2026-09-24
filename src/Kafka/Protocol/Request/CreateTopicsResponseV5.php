@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `ThrottlingQuotaExceeded` that a topic entry may carry, and with it the `throttle_time_ms` the client has to wait
  * before it retries that topic.
  *
- * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/4.3.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsResponseV5 extends CreateTopicsResponse
 {

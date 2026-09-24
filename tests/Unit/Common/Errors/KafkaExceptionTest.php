@@ -65,6 +65,7 @@ use Protocol\Kafka\Common\Errors\InvalidPrincipalTypeException;
 use Protocol\Kafka\Common\Errors\InvalidRecordException;
 use Protocol\Kafka\Common\Errors\InvalidRecordStateException;
 use Protocol\Kafka\Common\Errors\InvalidRegistrationException;
+use Protocol\Kafka\Common\Errors\InvalidRegularExpressionException;
 use Protocol\Kafka\Common\Errors\InvalidReplicaAssignmentException;
 use Protocol\Kafka\Common\Errors\InvalidReplicationFactorException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
@@ -106,6 +107,7 @@ use Protocol\Kafka\Common\Errors\PrincipalDeserializationException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\ReassignmentInProgressException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
+use Protocol\Kafka\Common\Errors\RebootstrapRequiredException;
 use Protocol\Kafka\Common\Errors\RecordListTooLargeException;
 use Protocol\Kafka\Common\Errors\ReplicaNotAvailableException;
 use Protocol\Kafka\Common\Errors\RequestTimedOutException;
@@ -114,11 +116,15 @@ use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\Errors\SaslAuthenticationFailedException;
 use Protocol\Kafka\Common\Errors\SecurityDisabledException;
 use Protocol\Kafka\Common\Errors\ServerExceptionInterface;
+use Protocol\Kafka\Common\Errors\ShareSessionLimitReachedException;
 use Protocol\Kafka\Common\Errors\ShareSessionNotFoundException;
 use Protocol\Kafka\Common\Errors\SnapshotNotFoundException;
 use Protocol\Kafka\Common\Errors\StaleBrokerEpochException;
 use Protocol\Kafka\Common\Errors\StaleControllerEpochException;
 use Protocol\Kafka\Common\Errors\StaleMemberEpochException;
+use Protocol\Kafka\Common\Errors\StreamsInvalidTopologyEpochException;
+use Protocol\Kafka\Common\Errors\StreamsInvalidTopologyException;
+use Protocol\Kafka\Common\Errors\StreamsTopologyFencedException;
 use Protocol\Kafka\Common\Errors\TelemetryTooLargeException;
 use Protocol\Kafka\Common\Errors\ThrottlingQuotaExceededException;
 use Protocol\Kafka\Common\Errors\TopicAuthorizationFailedException;
@@ -171,7 +177,9 @@ use RuntimeException;
  * InvalidMetadataExceptions and 75, 78, 88 and 89 plain RetriableExceptions in the Java client. The codes 105-127 are
  * those of Kafka 3.0 to 3.9 (Errors.java @ 3.9.2, read at the release tags): 105 with 3.0, 106 with 3.1, 107-108
  * with 3.3, 109-112 with 3.5, 113 with 3.6, 114-119 with 3.7, 120 with 3.8 and 121-127 with 3.9; of them only 106,
- * 122 and 123 extend RetriableException in the Java client.
+ * 122 and 123 extend RetriableException in the Java client. The codes 128-133 are those of Kafka 4.0 and 4.1
+ * (Errors.java @ 4.3.1, read at the release tags): 128-129 with 4.0 and 130-133 with 4.1; of them only 133 extends
+ * RetriableException in the Java client.
  */
 #[CoversClass(KafkaException::class)]
 final class KafkaExceptionTest extends TestCase
@@ -312,6 +320,12 @@ final class KafkaExceptionTest extends TestCase
             'InvalidVoterKey'                       => [125, InvalidVoterKeyException::class, false],
             'DuplicateVoter'                        => [126, DuplicateVoterException::class, false],
             'VoterNotFound'                         => [127, VoterNotFoundException::class, false],
+            'InvalidRegularExpression'              => [128, InvalidRegularExpressionException::class, false],
+            'RebootstrapRequired'                   => [129, RebootstrapRequiredException::class, false],
+            'StreamsInvalidTopology'                => [130, StreamsInvalidTopologyException::class, false],
+            'StreamsInvalidTopologyEpoch'           => [131, StreamsInvalidTopologyEpochException::class, false],
+            'StreamsTopologyFenced'                 => [132, StreamsTopologyFencedException::class, false],
+            'ShareSessionLimitReached'              => [133, ShareSessionLimitReachedException::class, true],
         ];
     }
 
@@ -365,7 +379,7 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Codes above 127 do not exist in Kafka 3.9.2 (Kafka 4.0 continues at 128), a 3.9.2 node never sends them
+     * Codes above 133 do not exist in Kafka 4.3.1, a 4.3.1 node never sends them
      *
      * @return array<string, array{int}>
      */
@@ -373,8 +387,8 @@ final class KafkaExceptionTest extends TestCase
     {
         return [
             'NoError'                       => [0],
-            'above the table (128)'         => [128],
-            'above the table (129)'         => [129],
+            'above the table (134)'         => [134],
+            'above the table (135)'         => [135],
             'out of range'                  => [4242],
             'negative out of range'         => [-999],
         ];
@@ -402,9 +416,9 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Guards against a post-3.9 error class sneaking into the mapping
+     * Guards against a post-4.3 error class sneaking into the mapping
      */
-    public function testOnlyTheErrorCodesOfKafka392AreMapped(): void
+    public function testOnlyTheErrorCodesOfKafka431AreMapped(): void
     {
         $mappedCodes = [];
         foreach (range(-10, 140) as $errorCode) {
@@ -414,7 +428,7 @@ final class KafkaExceptionTest extends TestCase
             }
         }
 
-        self::assertSame(array_merge([-1], range(1, 127)), $mappedCodes);
+        self::assertSame(array_merge([-1], range(1, 133)), $mappedCodes);
     }
 
     /**

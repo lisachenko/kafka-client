@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\NullableStruct;
  * An entry that was refused (**29** `TopicAuthorizationFailed`) is appended **behind** the sorted ones, because
  * the handler collects the unauthorized topics in a set of their own and adds them to the answer at the end.
  *
- * @see docs/protocol/3.9.md, section "DescribeTopicPartitions API (key 75, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTopicPartitions API (key 75, v0)"
  */
 class DescribeTopicPartitionsResponse extends AbstractResponse
 {

@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * deleted by its id and could not be resolved to one. {@see DeleteTopicsResponseTopicV5} is the entry of the
  * version 5 and {@see DeleteTopicsResponseTopicV0} the one of every version below it.
  *
- * @see docs/protocol/3.9.md, section "DeleteTopics API (key 20, v0 to v6)"
+ * @see docs/protocol/4.3.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 class DeleteTopicsResponseTopic implements BinarySchemaInterface
 {

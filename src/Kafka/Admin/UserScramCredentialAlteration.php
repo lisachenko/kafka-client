@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Admin;
  * The request carries the two kinds in **two arrays**, so this interface exists to let a caller hand over one
  * ordered list and let the client sort them.
  *
- * @see docs/protocol/3.9.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/4.3.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 interface UserScramCredentialAlteration
 {

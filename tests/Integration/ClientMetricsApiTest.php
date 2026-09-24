@@ -16,16 +16,17 @@ namespace Protocol\Kafka\Tests\Integration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Uuid;
+use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Protocol\Data\ClientMetricsResource;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsRequest;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsResponse;
-use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequest;
-use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponse;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequestV0;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponseV0;
 use Protocol\Kafka\Protocol\Request\PushTelemetryRequest;
 use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
 
 /**
- * Exercises the three client-metrics apis of KIP-714 (keys 71, 72 and 74) against the 3.9.2 KRaft node.
+ * Exercises the three client-metrics apis of KIP-714 (keys 71, 72 and 74) against the 4.3.1 KRaft node.
  *
  * They are **wire only** on this line - classes and vectors, no client method and no telemetry emitter - so this
  * class sends every frame by hand on a raw stream and asserts what a node **without a client-metrics receiver
@@ -37,14 +38,20 @@ use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
  * without traffic, so there is nothing to clean up; the `client-metrics` configuration resource that the vectors
  * of these apis were captured against was written and removed by hand and is not recreated here.
  *
- * @see docs/protocol/3.9.md, section "Client metrics (KIP-714) — wire only"
+ * **Every test speaks over one connection.** Since Kafka 4.0 `ClientMetricsManager` forgets a client instance when
+ * the connection it was created on closes (its `ClientConnectionDisconnectListener` @ 4.0.0), and an instance id
+ * the manager does not know is answered like a new one: the 89 of a second request inside the push interval and
+ * the 42 of a push after a terminating one are what the manager answers **on the connection of the instance**. A
+ * 3.9.2 node kept the instance for its whole cache lifetime, whatever happened to the connection.
+ *
+ * @see docs/protocol/4.3.md, section "Client metrics (KIP-714) — wire only"
  */
 #[CoversClass(GetTelemetrySubscriptionsRequest::class)]
 #[CoversClass(GetTelemetrySubscriptionsResponse::class)]
 #[CoversClass(PushTelemetryRequest::class)]
 #[CoversClass(PushTelemetryResponse::class)]
-#[CoversClass(ListClientMetricsResourcesRequest::class)]
-#[CoversClass(ListClientMetricsResourcesResponse::class)]
+#[CoversClass(ListClientMetricsResourcesRequestV0::class)]
+#[CoversClass(ListClientMetricsResourcesResponseV0::class)]
 #[CoversClass(ClientMetricsResource::class)]
 final class ClientMetricsApiTest extends IntegrationTestCase
 {
@@ -69,6 +76,19 @@ final class ClientMetricsApiTest extends IntegrationTestCase
     private const int DEFAULT_PUSH_INTERVAL_MS = 300000;
 
     /**
+     * The one connection of a test, opened on first use and closed after the test
+     */
+    private ?SocketStream $stream = null;
+
+    protected function tearDown(): void
+    {
+        $this->stream?->disconnect();
+        $this->stream = null;
+
+        parent::tearDown();
+    }
+
+    /**
      * A first GetTelemetrySubscriptions answers the defaults of the broker and asks for no metric at all
      */
     public function testAFirstRequestIsAnsweredAGeneratedInstanceIdAndAnEmptySubscription(): void
@@ -90,7 +110,7 @@ final class ClientMetricsApiTest extends IntegrationTestCase
     }
 
     /**
-     * The same instance asking again inside its push interval is throttled, and told nothing else
+     * The same instance asking again inside its push interval on its connection is throttled, and told nothing else
      */
     public function testAskingAgainInsideThePushIntervalIsThrottled(): void
     {
@@ -182,7 +202,7 @@ final class ClientMetricsApiTest extends IntegrationTestCase
     }
 
     /**
-     * A terminating push is accepted outside the interval, and ends the instance for good
+     * A terminating push is accepted outside the interval, and ends the instance as long as its connection lives
      */
     public function testATerminatingPushEndsTheInstance(): void
     {
@@ -202,13 +222,59 @@ final class ClientMetricsApiTest extends IntegrationTestCase
     }
 
     /**
+     * A closed connection takes its client instance along (Kafka 4.0): the id is a new instance on the next one
+     *
+     * The instance is created on the connection that first asked for it, and `ClientMetricsManager` @ 4.0.0 drops
+     * it from its cache once that connection closes. The same id on a new connection is then an instance the
+     * manager has never seen: its first GetTelemetrySubscriptions is answered 0 with the same id and the same
+     * subscription id - the CRC-32C of the subscription mixed with the id - and a push after the terminating push
+     * of the forgotten instance is accepted. A 3.9.2 node answered the 89 and the 42 of the two tests above here.
+     */
+    public function testAClosedConnectionTakesItsInstanceAlong(): void
+    {
+        $first = $this->subscribe(7119);
+        $this->reconnect();
+
+        $again = $this->eventually(
+            fn(int $attempt): GetTelemetrySubscriptionsResponse => $this->subscribe(
+                7120 + $attempt,
+                $first->clientInstanceId
+            )
+        );
+
+        self::assertSame(KafkaException::NO_ERROR, $again->errorCode, 'a forgotten instance id is a new instance');
+        self::assertSame($first->clientInstanceId, $again->clientInstanceId, 'answered under the id it was asked for');
+        self::assertSame($first->subscriptionId, $again->subscriptionId, 'with the same subscription id');
+
+        $terminating = $this->subscribe(7130);
+        $last        = $this->push(7131, $terminating->clientInstanceId, $terminating->subscriptionId, '', 0, true);
+
+        self::assertSame(KafkaException::NO_ERROR, $last->errorCode);
+
+        $this->reconnect();
+        $after = $this->eventually(
+            fn(int $attempt): PushTelemetryResponse => $this->push(
+                7132 + $attempt,
+                $terminating->clientInstanceId,
+                $terminating->subscriptionId
+            )
+        );
+
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $after->errorCode,
+            'the terminated instance went with its connection, and its id is accepted anew'
+        );
+    }
+
+    /**
      * The resource list is answered on a node that has no client-metrics resource, and this class leaves none
      */
     public function testTheResourceListIsAnsweredAndHoldsNothingOfThisClass(): void
     {
         $stream = $this->connect();
-        new ListClientMetricsResourcesRequest(self::CLIENT_ID, 7118)->writeTo($stream);
-        $answer = ListClientMetricsResourcesResponse::unpack($stream);
+        new ListClientMetricsResourcesRequestV0(self::CLIENT_ID, 7118)->writeTo($stream);
+        $answer = ListClientMetricsResourcesResponseV0::unpack($stream);
 
         self::assertSame(KafkaException::NO_ERROR, $answer->errorCode);
 
@@ -227,7 +293,7 @@ final class ClientMetricsApiTest extends IntegrationTestCase
      */
     private function subscribe(int $correlationId, string $clientInstanceId = Uuid::ZERO): GetTelemetrySubscriptionsResponse
     {
-        $stream = $this->connect();
+        $stream = $this->stream();
         new GetTelemetrySubscriptionsRequest($clientInstanceId, self::CLIENT_ID, $correlationId)->writeTo($stream);
 
         return GetTelemetrySubscriptionsResponse::unpack($stream);
@@ -244,7 +310,7 @@ final class ClientMetricsApiTest extends IntegrationTestCase
         int $compressionType = PushTelemetryRequest::COMPRESSION_NONE,
         bool $terminating = false
     ): PushTelemetryResponse {
-        $stream = $this->connect();
+        $stream = $this->stream();
         new PushTelemetryRequest(
             $clientInstanceId,
             $subscriptionId,
@@ -256,5 +322,46 @@ final class ClientMetricsApiTest extends IntegrationTestCase
         )->writeTo($stream);
 
         return PushTelemetryResponse::unpack($stream);
+    }
+
+    /**
+     * Returns the one connection of the test
+     */
+    private function stream(): SocketStream
+    {
+        return $this->stream ??= $this->connect();
+    }
+
+    /**
+     * Closes the connection of the test, so that the next request opens a new one
+     */
+    private function reconnect(): void
+    {
+        $this->stream?->disconnect();
+        $this->stream = null;
+    }
+
+    /**
+     * Repeats a request on a new connection until the node has processed the close of the old one
+     *
+     * The close reaches `ClientMetricsManager` through the network thread of the broker a moment after the client
+     * closed the socket, so the first request on the new connection may still find the old instance.
+     *
+     * @template T of GetTelemetrySubscriptionsResponse|PushTelemetryResponse
+     *
+     * @param callable(int): T $request Sends the request, given the number of the attempt
+     *
+     * @return T
+     */
+    private function eventually(callable $request): GetTelemetrySubscriptionsResponse|PushTelemetryResponse
+    {
+        for ($attempt = 0; ; ++$attempt) {
+            $answer = $request($attempt);
+            if ($answer->errorCode === KafkaException::NO_ERROR || $attempt >= 9) {
+                return $answer;
+            }
+            usleep(100000);
+            $this->reconnect();
+        }
     }
 }

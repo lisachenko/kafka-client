@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * as in every other api of this protocol. The partitions are the ones an `AddPartitionsToTxn` of this producer
  * added to the transaction that is open now - the partitions its commit or abort marker still has to reach.
  *
- * @see docs/protocol/3.9.md, section "DescribeTransactions API (key 65, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTransactions API (key 65, v0)"
  */
 class DescribeTransactionsResponseTopic implements BinarySchemaInterface
 {

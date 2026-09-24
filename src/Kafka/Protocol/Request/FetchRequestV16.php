@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * two frames differ in the single byte of the api version of their header. What the version 17 request buys is
  * therefore nothing for a consumer and the ability to name a log directory for a follower.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "The leader discovery of KIP-951 (v16)" and
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "The leader discovery of KIP-951 (v16)" and
  *      "The replica directory id of KIP-853 (v17)"
  */
 final class FetchRequestV16 extends FetchRequest

@@ -20,6 +20,7 @@ use Protocol\Kafka\Common\Errors\LeaderNotAvailableException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Throwable;
 
@@ -34,11 +35,17 @@ use Throwable;
  *   - 5 LeaderNotAvailable - the partition currently has no leader, an election is in progress,
  *   - 6 NotLeaderForPartition - the broker hosts the partition, but it is a follower and not the leader.
  *
- * A dropped connection ({@see NetworkException}) has the same cure. All four are answered by refreshing the cluster
- * metadata and sending the request again, up to `retries` times with `retry.backoff.ms` in between; every other
- * error is final and is reported to the caller straight away.
+ * A dropped connection ({@see NetworkException}) has the same cure, and so has the
  *
- * @see docs/protocol/3.9.md, section "Error codes"
+ *   - 100 UnknownTopicId (Kafka 2.8, KIP-516) of a request that names its topics by id - a Fetch from v13, a
+ *     Produce from v13 (Kafka 4.1) - whose id went stale because the topic was deleted, or deleted and created again
+ *     under the same name: nothing was read or appended, and the reloaded metadata carries the current id. It is an
+ *     `InvalidMetadataException` in the Java client, as the other three codes are.
+ *
+ * All five are answered by refreshing the cluster metadata and sending the request again, up to `retries` times
+ * with `retry.backoff.ms` in between; every other error is final and is reported to the caller straight away.
+ *
+ * @see docs/protocol/4.3.md, section "Error codes"
  */
 final class RetryPolicy
 {
@@ -51,6 +58,7 @@ final class RetryPolicy
         KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
         KafkaException::LEADER_NOT_AVAILABLE,
         KafkaException::NOT_LEADER_FOR_PARTITION,
+        KafkaException::UNKNOWN_TOPIC_ID,
     ];
 
     /**
@@ -62,6 +70,7 @@ final class RetryPolicy
         UnknownTopicOrPartitionException::class,
         LeaderNotAvailableException::class,
         NotLeaderForPartitionException::class,
+        UnknownTopicIdException::class,
         NetworkException::class,
     ];
 

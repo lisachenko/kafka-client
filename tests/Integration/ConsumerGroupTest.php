@@ -19,8 +19,8 @@ use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
-use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
@@ -32,8 +32,8 @@ use Protocol\Kafka\Consumer\RoundRobinAssignor;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
-use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
-use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
 use Protocol\Kafka\Tests\Fixture\ConsumerGroupMemberProcess;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -51,8 +51,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * first one until a session timeout expires. The second member therefore runs in a child process, see
  * {@see ConsumerGroupMemberProcess}.
  *
- * @see docs/protocol/3.9.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
- *      (protocol_type = consumer)" and "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
+ *      (protocol_type = consumer)" and "DescribeGroups API (key 15, v0 to v6)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(ConsumerCoordinator::class)]
@@ -63,6 +63,13 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(MemberAssignment::class)]
 final class ConsumerGroupTest extends IntegrationTestCase
 {
+    /**
+     * Every group this class created, deleted in {@see self::tearDownAfterClass()}
+     *
+     * @var list<string>
+     */
+    private static array $groupsOfTheClass = [];
+
     /**
      * Client id of the consumer under test, which the coordinator uses as the prefix of its member id
      */
@@ -518,23 +525,24 @@ final class ConsumerGroupTest extends IntegrationTestCase
      */
     private function produce(int $partition, array $values): void
     {
-        $messageSet = MessageSet::fromRecords(array_map(
-            static fn(string $value): Record => new Record($value),
+        // A record batch of the message format v2: a 4.x node refuses the Produce v2 of a message set (KIP-896)
+        $batch = RecordBatch::fromRecords(array_map(
+            static fn(string $value): Record => new Record($value, null, 0, null, (int) (microtime(true) * 1000)),
             $values
         ));
         $deadline   = microtime(true) + self::TOPIC_TIMEOUT;
 
         do {
             $stream = $this->connect();
-            new ProduceRequestV2(
-                [$this->topic => [$partition => $messageSet]],
+            new ProduceRequestV10(
+                [$this->topic => [$partition => $batch]],
                 1,
                 self::PRODUCE_TIMEOUT_MS,
                 self::CLIENT_ID,
                 1
             )->writeTo($stream);
 
-            $errorCode = ProduceResponseV2::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+            $errorCode = ProduceResponseV10::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
             if ($errorCode === KafkaException::NO_ERROR) {
                 return;
             }
@@ -560,6 +568,38 @@ final class ConsumerGroupTest extends IntegrationTestCase
      */
     private static function uniqueGroupName(): string
     {
-        return 't7-group-' . bin2hex(random_bytes(6));
+        $groupId                  = 't7-group-' . bin2hex(random_bytes(6));
+        self::$groupsOfTheClass[] = $groupId;
+
+        return $groupId;
+    }
+
+    /**
+     * Deletes the groups this class created, once their members are gone - best effort, one group at a time
+     *
+     * The node is shared by every suite of the line, and a group that is left behind stays in `__consumer_offsets`
+     * with its committed offsets until `offsets.retention.minutes` expires them; a group that still has a member -
+     * a static one waits out its session - is answered the 68 `NonEmptyGroup` and left to the reaper.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        $groups                 = self::$groupsOfTheClass;
+        self::$groupsOfTheClass = [];
+        if ($groups !== [] && self::bootstrapServers() !== []) {
+            $configuration = [
+                ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+                ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+                ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
+            ];
+            foreach ($groups as $groupId) {
+                try {
+                    new AdminClient(Cluster::bootstrap($configuration), $configuration)->deleteConsumerGroups([$groupId]);
+                } catch (KafkaException) {
+                    // A group with a member left, or one that was never created, must not fail a green suite
+                }
+            }
+        }
+
+        parent::tearDownAfterClass();
     }
 }

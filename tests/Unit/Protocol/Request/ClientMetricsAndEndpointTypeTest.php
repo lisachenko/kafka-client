@@ -25,11 +25,13 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ClientMetricsResource;
 use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
 use Protocol\Kafka\Protocol\Request\DescribeClusterRequestV0;
+use Protocol\Kafka\Protocol\Request\DescribeClusterRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV1;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsRequest;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsResponse;
-use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequest;
-use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponse;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequestV0;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponseV0;
 use Protocol\Kafka\Protocol\Request\PushTelemetryRequest;
 use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
 
@@ -41,19 +43,21 @@ use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
  * `docs/protocol/vectors/`, and this class asserts what a caller sees of them - the version a class sends, the
  * one byte that separates the two DescribeCluster versions, and the shape of every client-metrics message.
  *
- * @see docs/protocol/3.9.md, sections "The endpoint type of KIP-919 (v1)" and "Client metrics (KIP-714) — wire
+ * @see docs/protocol/4.3.md, sections "The endpoint type of KIP-919 (v1)" and "Client metrics (KIP-714) — wire
  *      only"
  */
 #[CoversClass(DescribeClusterRequest::class)]
+#[CoversClass(DescribeClusterRequestV1::class)]
 #[CoversClass(DescribeClusterResponse::class)]
+#[CoversClass(DescribeClusterResponseV1::class)]
 #[CoversClass(EndpointType::class)]
 #[CoversClass(ClusterDescription::class)]
 #[CoversClass(GetTelemetrySubscriptionsRequest::class)]
 #[CoversClass(GetTelemetrySubscriptionsResponse::class)]
 #[CoversClass(PushTelemetryRequest::class)]
 #[CoversClass(PushTelemetryResponse::class)]
-#[CoversClass(ListClientMetricsResourcesRequest::class)]
-#[CoversClass(ListClientMetricsResourcesResponse::class)]
+#[CoversClass(ListClientMetricsResourcesRequestV0::class)]
+#[CoversClass(ListClientMetricsResourcesResponseV0::class)]
 #[CoversClass(ClientMetricsResource::class)]
 final class ClientMetricsAndEndpointTypeTest extends TestCase
 {
@@ -131,12 +135,12 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
         . '00';
 
     /**
-     * Version 1 is what this client sends, and the `endpoint_type` is the only byte that separates the two
+     * The `endpoint_type` is the only byte that separates the versions 0 and 1 (Kafka 4.0 appended a third)
      */
     public function testTheEndpointTypeIsTheOneByteVersionOneAdded(): void
     {
         $version0 = new DescribeClusterRequestV0(false, 'test', 9);
-        $version1 = new DescribeClusterRequest(false, 'test', 9);
+        $version1 = new DescribeClusterRequestV1(false, 'test', 9);
 
         self::assertSame(0, $version0->getApiVersion());
         self::assertSame(1, $version1->getApiVersion());
@@ -156,8 +160,8 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
      */
     public function testTheRequestCarriesEveryEndpointTypeVerbatim(): void
     {
-        $controllers = new DescribeClusterRequest(false, 'test', 9, EndpointType::Controller);
-        $nonsense    = new DescribeClusterRequest(false, 'test', 9, 3);
+        $controllers = new DescribeClusterRequestV1(false, 'test', 9, EndpointType::Controller);
+        $nonsense    = new DescribeClusterRequestV1(false, 'test', 9, 3);
 
         self::assertSame(2, $controllers->getEndpointTypeId());
         self::assertSame(EndpointType::Controller, $controllers->getEndpointType());
@@ -195,7 +199,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
      */
     public function testTheAnswerCarriesTheDescribedEndpointType(): void
     {
-        $response = DescribeClusterResponse::unpack(
+        $response = DescribeClusterResponseV1::unpack(
             new StringStream((string) hex2bin(self::CLUSTER_RESPONSE_V1_HEX))
         );
 
@@ -218,7 +222,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
      */
     public function testAMismatchedEndpointTypeIsAnsweredWithoutACluster(): void
     {
-        $response = DescribeClusterResponse::unpack(
+        $response = DescribeClusterResponseV1::unpack(
             new StringStream((string) hex2bin(self::CLUSTER_RESPONSE_V1_MISMATCHED_HEX))
         );
 
@@ -319,11 +323,11 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
     }
 
     /**
-     * ListClientMetricsResources is the one request of this protocol without a body
+     * ListClientMetricsResources v0 is the one request of this protocol without a body (v1 of Kafka 4.1 has one)
      */
     public function testTheResourceListRequestHasNoBodyAtAll(): void
     {
-        $request = new ListClientMetricsResourcesRequest('test', 9);
+        $request = new ListClientMetricsResourcesRequestV0('test', 9);
         $header  = bin2hex((string) $request);
 
         self::assertSame(ApiKeys::LIST_CLIENT_METRICS_RESOURCES, $request->getApiKey());
@@ -336,7 +340,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
      */
     public function testTheResourceListAnswersNamesOnly(): void
     {
-        $response = ListClientMetricsResourcesResponse::unpack(
+        $response = ListClientMetricsResourcesResponseV0::unpack(
             new StringStream((string) hex2bin(self::RESOURCES_RESPONSE_HEX))
         );
 
@@ -345,7 +349,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
         self::assertSame('t1-37-metrics', $response->clientMetricsResources['t1-37-metrics']->name);
         self::assertSame(self::RESOURCES_RESPONSE_HEX, bin2hex((string) $response));
 
-        $empty = ListClientMetricsResourcesResponse::unpack(
+        $empty = ListClientMetricsResourcesResponseV0::unpack(
             new StringStream((string) hex2bin('0000000d00000e7e000000000000000100'))
         );
 

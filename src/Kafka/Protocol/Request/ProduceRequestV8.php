@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `INT32`-prefixed record set and no tagged-field section anywhere. Version 9 (Kafka 2.8) is the flexible
  * version of KIP-482, see {@see ProduceRequest}.
  *
- * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v11)"
+ * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v13)"
  */
 final class ProduceRequestV8 extends ProduceRequest
 {

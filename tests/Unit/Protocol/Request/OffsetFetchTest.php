@@ -17,17 +17,23 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroup;
 use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroupV8;
+use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroupV9;
+use Protocol\Kafka\Protocol\Data\OffsetFetchRequestTopics;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroup;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroupV8;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV5;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
@@ -39,6 +45,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV8;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV1;
@@ -48,18 +55,21 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV5;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV7;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV8;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV9;
 use UnexpectedValueException;
 
 /**
- * Byte-exact tests for the OffsetFetch API (key 9), versions 0 to 5.
+ * Byte-exact tests for the OffsetFetch API (key 9), versions 0 to 10.
  *
  * The request is one and the same body from version 2 on: version 3 (KIP-124, Kafka 0.11) added the throttle time
  * to the answer and version 4 (KIP-219, Kafka 2.0) added nothing at all, so the five frames differ in their api
  * version field alone, up to and including version 4. Version 5 (Kafka 2.1, KIP-320) is the first one that changes
  * the ANSWER again: every partition entry of it carries a `committed_leader_epoch` behind the committed offset.
- * The request of v5 is still the body of v2, and v5 is the version this client sends.
+ * The request of v5 is still the body of v2. Version 8 (Kafka 3.0) batches the groups, version 9 (Kafka 3.7, KIP-848)
+ * names a member in every group entry, and version 10 (Kafka 4.2, KIP-848) names every topic of an entry by its id.
  *
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
+ * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/4.3.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
@@ -70,6 +80,12 @@ use UnexpectedValueException;
 #[CoversClass(OffsetFetchRequestV5::class)]
 #[CoversClass(OffsetFetchRequestV7::class)]
 #[CoversClass(OffsetFetchRequestV8::class)]
+#[CoversClass(OffsetFetchRequestV9::class)]
+#[CoversClass(OffsetFetchRequestGroupV9::class)]
+#[CoversClass(OffsetFetchRequestTopics::class)]
+#[CoversClass(OffsetFetchResponseV9::class)]
+#[CoversClass(OffsetFetchResponseGroupV8::class)]
+#[CoversClass(OffsetFetchResponseTopicV5::class)]
 #[CoversClass(OffsetFetchRequestGroup::class)]
 #[CoversClass(OffsetFetchRequestGroupV8::class)]
 #[CoversClass(OffsetFetchResponse::class)]
@@ -704,8 +720,13 @@ final class OffsetFetchTest extends TestCase
     public function testTheSingleGroupConstructorSendsTheOneElementBatch(): void
     {
         self::assertSame(
-            bin2hex((string) OffsetFetchRequest::forGroups(['my-group' => ['topic' => [0, 1]]], 'test', 1)),
-            bin2hex((string) new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1))
+            bin2hex((string) OffsetFetchRequestV9::forGroups(['my-group' => ['topic' => [0, 1]]], 'test', 1)),
+            bin2hex((string) new OffsetFetchRequestV9('my-group', ['topic' => [0, 1]], 'test', 1))
+        );
+        $topicIds = ['topic' => (string) hex2bin('0102030405060708090a0b0c0d0e0f10')];
+        self::assertSame(
+            bin2hex((string) OffsetFetchRequest::forGroups(['my-group' => ['topic' => [0, 1]]], 'test', 1, false, $topicIds)),
+            bin2hex((string) new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1, false, null, $topicIds))
         );
     }
 
@@ -780,7 +801,7 @@ final class OffsetFetchTest extends TestCase
      */
     public function testVersionNineNamesTheMemberInsideEveryGroupEntry(): void
     {
-        $request = OffsetFetchRequest::forMember('my-group', ['topic' => [0, 1]], 'm1', 5, 'test', 1);
+        $request = OffsetFetchRequestV9::forMember('my-group', ['topic' => [0, 1]], 'm1', 5, 'test', 1);
 
         self::assertSame(
             '00000034' . '0009' . '0009' . '00000001'
@@ -800,7 +821,7 @@ final class OffsetFetchTest extends TestCase
             bin2hex((string) $request),
             'the member id and the member epoch stand behind the group id, before its topic array'
         );
-        self::assertSame(9, $request->getApiVersion(), 'the version this client sends since Kafka 3.7');
+        self::assertSame(9, $request->getApiVersion(), 'the version of KIP-848 in Kafka 3.7');
     }
 
     /**
@@ -808,7 +829,7 @@ final class OffsetFetchTest extends TestCase
      */
     public function testTheMemberFieldsDefaultToTheNullAndTheMinusOneOfTheSpecification(): void
     {
-        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1);
+        $request = new OffsetFetchRequestV9('my-group', ['topic' => [0, 1]], 'test', 1);
 
         self::assertSame(
             '00000032' . '0009' . '0009' . '00000001'
@@ -860,6 +881,10 @@ final class OffsetFetchTest extends TestCase
             OffsetFetchRequestGroup::class,
             OffsetFetchRequest::getScheme()['groups']['groupId']
         );
+        self::assertSame(
+            OffsetFetchRequestGroupV9::class,
+            OffsetFetchRequestV9::getScheme()['groups']['groupId']
+        );
     }
 
     public function testAVersionBelowNineRefusesToNameAMemberAtAll(): void
@@ -886,9 +911,9 @@ final class OffsetFetchTest extends TestCase
             . '00'
             . '00';
 
-        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = OffsetFetchResponseV9::unpack(new StringStream((string) hex2bin($frame)));
 
-        self::assertSame(9, OffsetFetchResponse::VERSION);
+        self::assertSame(9, OffsetFetchResponseV9::VERSION);
         self::assertSame(113, $response->groupOf('my-group')->errorCode);
         self::assertSame([], $response->groupOf('my-group')->topics);
         self::assertSame(
@@ -923,7 +948,7 @@ final class OffsetFetchTest extends TestCase
             . '00'
             . '00';
 
-        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = OffsetFetchResponseV9::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(['my-group', 'other'], array_keys($response->groups));
         self::assertSame(21, $response->groupOf('my-group')->topics['topic']->partitions[0]->offset);
@@ -940,7 +965,7 @@ final class OffsetFetchTest extends TestCase
 
     public function testABatchedAnswerWithoutTheGroupIsRefused(): void
     {
-        $response = OffsetFetchResponse::unpack(
+        $response = OffsetFetchResponseV9::unpack(
             new StringStream((string) hex2bin(self::batchedAnswerFrame()))
         );
 
@@ -959,6 +984,158 @@ final class OffsetFetchTest extends TestCase
         self::assertSame('my-group', $group->groupId);
         self::assertSame($response->topics, $group->topics);
         self::assertSame($response->errorCode, $group->errorCode);
+    }
+
+    /**
+     * OffsetFetch request v10 (Kafka 4.2, KIP-848): the group entry of version 9 whose topic entries carry the topic
+     * id in place of the name.
+     *
+     *   Size 3c, ApiKey 00 09, ApiVersion 00 0a, CorrelationId, ClientId "test", TAG_BUFFER 00
+     *   Groups          => 02 (one)
+     *     GroupId       => 09 "my-group"
+     *     MemberId      => 00 (null)
+     *     MemberEpoch   => ff ff ff ff (-1)
+     *     Topics        => 02 (one)
+     *       TopicId     => 01 02 ... 10 (16 raw bytes)
+     *       Partitions  => 03: 0, 1
+     *       TAG_BUFFER  => 00
+     *     TAG_BUFFER    => 00
+     *   RequireStable   => 00
+     *   TAG_BUFFER      => 00
+     */
+    public function testVersionTenNamesEveryTopicOfAGroupEntryByItsId(): void
+    {
+        $topicId = (string) hex2bin('0102030405060708090a0b0c0d0e0f10');
+        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1, false, null, ['topic' => $topicId]);
+
+        self::assertSame(10, OffsetFetchRequest::VERSION);
+        self::assertSame(
+            '0000003c' . '0009' . '000a' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '02'
+            . '09' . '6d792d67726f7570'
+            . '00'
+            . 'ffffffff'
+            . '02'
+            . '0102030405060708090a0b0c0d0e0f10'
+            . '03' . '00000000' . '00000001'
+            . '00'
+            . '00'
+            . '00'
+            . '00',
+            bin2hex((string) $request)
+        );
+        self::assertSame(['topic' => $topicId], $request->getTopicIds());
+        self::assertSame(
+            ['groupId', 'memberId', 'memberEpoch', 'topics'],
+            array_keys(OffsetFetchRequestGroup::getScheme())
+        );
+        self::assertSame(
+            ['groupId', 'memberId', 'memberEpoch', 'topicPartitions'],
+            array_keys(OffsetFetchRequestGroupV9::getScheme())
+        );
+    }
+
+    public function testVersionTenRefusesATopicWithoutItsId(): void
+    {
+        $this->expectException(UnknownTopicIdException::class);
+
+        OffsetFetchRequest::forMember('my-group', ['topic' => [0]], 'm1', 5, 'test', 1);
+    }
+
+    /**
+     * A group entry that asks for every topic of the group names no topic, and so needs no id at all
+     */
+    public function testVersionTenAsksForEveryTopicWithoutAnyId(): void
+    {
+        self::assertSame(
+            '00000022' . '0009' . '000a' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '02'
+            . '09' . '6d792d67726f7570'
+            . '00'
+            . 'ffffffff'
+            . '00'
+            . '00'
+            . '00'
+            . '00',
+            bin2hex((string) OffsetFetchRequest::forAllTopics('my-group', 'test', 1))
+        );
+    }
+
+    /**
+     * A ready-made group entry of a batch takes the ids of the request, and a member id travels with them
+     */
+    public function testVersionTenCompletesTheIdsOfAReadyMadeGroupEntry(): void
+    {
+        $topicId = (string) hex2bin('0102030405060708090a0b0c0d0e0f10');
+        $request = OffsetFetchRequest::forMember('my-group', ['topic' => [0, 1]], 'm1', 5, 'test', 1, false, ['topic' => $topicId]);
+
+        self::assertStringContainsString(
+            '09' . '6d792d67726f7570' . '03' . '6d31' . '00000005' . '02' . '0102030405060708090a0b0c0d0e0f10',
+            bin2hex((string) $request)
+        );
+    }
+
+    /**
+     * The answer of version 10 names every topic of a group by its id, and the client names it back
+     */
+    public function testTheAnswerOfVersionTenNamesItsTopicsByIdUntilTheClientNamesThem(): void
+    {
+        $frame = '00000064'
+            . '00000001'
+            . '00'
+            . '00000000'
+            . '02'
+            . '09' . '6d792d67726f7570'
+            . '03'
+            . '0102030405060708090a0b0c0d0e0f10'
+            . '02'
+            . '00000000' . '0000000000000015' . 'ffffffff' . '01' . '0000'
+            . '00'
+            . '00'
+            . 'a0a1a2a3a4a5a6a7a8a9aaabacadaeaf'
+            . '02'
+            . '00000000' . 'ffffffffffffffff' . 'ffffffff' . '01' . '0064'
+            . '00'
+            . '00'
+            . '0000'
+            . '00'
+            . '00';
+
+        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $group    = $response->groupOf('my-group');
+
+        self::assertSame($frame, bin2hex((string) $response));
+        self::assertSame([0, 1], array_keys($group->topics), 'a version 10 entry has no name to index it by');
+        self::assertSame(
+            [(string) hex2bin('0102030405060708090a0b0c0d0e0f10'), (string) hex2bin('a0a1a2a3a4a5a6a7a8a9aaabacadaeaf')],
+            $group->unnamedTopicIds()
+        );
+
+        $group->nameTopics([(string) hex2bin('0102030405060708090a0b0c0d0e0f10') => 'topic']);
+        $stale = Uuid::toString((string) hex2bin('a0a1a2a3a4a5a6a7a8a9aaabacadaeaf'));
+
+        self::assertSame(['topic', $stale], array_keys($group->topics));
+        self::assertSame('topic', $group->topics['topic']->topic);
+        self::assertSame(21, $group->topics['topic']->partitions[0]->offset);
+        self::assertSame(100, $group->topics[$stale]->partitions[0]->errorCode, 'the 100 of an id the node does not know');
+        self::assertSame([], $group->unnamedTopicIds());
+    }
+
+    public function testTheAnswerBelowVersionTenIsNamedAlready(): void
+    {
+        $response = OffsetFetchResponseV9::unpack(new StringStream((string) hex2bin(self::batchedAnswerFrame())));
+        $group    = $response->groupOf('my-group');
+        $topics   = $group->topics;
+
+        $group->nameTopics([]);
+
+        self::assertInstanceOf(OffsetFetchResponseGroupV8::class, $group);
+        self::assertSame($topics, $group->topics);
+        self::assertContainsOnlyInstancesOf(OffsetFetchResponseTopicV5::class, $group->topics);
     }
 
     /**

@@ -21,6 +21,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV3;
+use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV4;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
@@ -28,31 +29,36 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV3;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV4;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV1;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV2;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV4;
 
 /**
  * Byte-exact tests for the DescribeLogDirs API of Kafka 1.0 (api key 35, v0, KIP-113), for the top-level error
- * code its version 3 gained in Kafka 3.2 and for the volume sizes of KIP-827 that its version 4 gained in Kafka
- * 3.3.
+ * code its version 3 gained in Kafka 3.2, for the volume sizes of KIP-827 that its version 4 gained in Kafka 3.3
+ * and for the cordon flag of KIP-1066 that its version 5 gained in Kafka 4.3.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 #[CoversClass(DescribeLogDirsRequest::class)]
+#[CoversClass(DescribeLogDirsRequestV4::class)]
 #[CoversClass(DescribeLogDirsRequestV3::class)]
 #[CoversClass(DescribeLogDirsRequestV2::class)]
 #[CoversClass(DescribeLogDirsRequestV1::class)]
 #[CoversClass(DescribeLogDirsRequestV0::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]
+#[CoversClass(DescribeLogDirsResponseV4::class)]
 #[CoversClass(DescribeLogDirsResponseV3::class)]
 #[CoversClass(DescribeLogDirsResponseV2::class)]
 #[CoversClass(DescribeLogDirsResponseV1::class)]
 #[CoversClass(DescribeLogDirsResponseV0::class)]
 #[CoversClass(DescribeLogDirsRequestTopic::class)]
 #[CoversClass(DescribeLogDirsResponseLogDir::class)]
+#[CoversClass(DescribeLogDirsResponseLogDirV4::class)]
 #[CoversClass(DescribeLogDirsResponseLogDirV3::class)]
 #[CoversClass(DescribeLogDirsResponseTopic::class)]
 #[CoversClass(DescribeLogDirsResponsePartition::class)]
@@ -277,24 +283,64 @@ final class DescribeLogDirsTest extends TestCase
         . '0000' . '102f746d702f6b61666b612d6c6f6773' . '01'
         . '0000003efe39d000' . '000000055e88e000' . '00' . '00';
 
-    public function testTheVersionsTwoThreeAndFourOfTheRequestAreTheSameFrame(): void
+    /**
+     * The same answer of the version 5: behind the two sizes, the `is_cordoned` flag of KIP-1066 - here `01`, the
+     * directory is listed in `cordoned.log.dirs` - and then the tag buffer of the entry. Two bytes longer in the
+     * size field for the flag, one byte per directory.
+     */
+    private const string CORDONED_RESPONSE_V5_HEX = '00000032' . '00000ce9' . '00' . '00000000' . '0000' . '02'
+        . '0000' . '102f746d702f6b61666b612d6c6f6773' . '01'
+        . '0000003efe39d000' . '000000055e88e000' . '01' . '00' . '00';
+
+    public function testTheVersionsTwoToFiveOfTheRequestAreTheSameFrame(): void
     {
         // "Version 3 is the same as version 2 (new field in response)" of `DescribeLogDirsRequest.json` @ 3.2.3,
-        // and "Version 4 is the same as version 2 (new fields in response)" of the same file @ 3.3.2
-        $version4 = bin2hex((string) new DescribeLogDirsRequest(['topic' => [0, 1]], 'test', 5));
+        // "Version 4 is the same as version 2 (new fields in response)" of the same file @ 3.3.2 and "Version 5 is
+        // the same as version 2 (new fields in response)" @ 4.3.1
+        $version5 = bin2hex((string) new DescribeLogDirsRequest(['topic' => [0, 1]], 'test', 5));
+        $version4 = bin2hex((string) new DescribeLogDirsRequestV4(['topic' => [0, 1]], 'test', 5));
         $version3 = bin2hex((string) new DescribeLogDirsRequestV3(['topic' => [0, 1]], 'test', 5));
         $version2 = bin2hex((string) new DescribeLogDirsRequestV2(['topic' => [0, 1]], 'test', 5));
 
-        self::assertSame($version3, substr_replace($version4, '0003', 12, 4));
-        self::assertSame($version2, substr_replace($version4, '0002', 12, 4));
-        self::assertSame(4, new DescribeLogDirsRequest(clientId: 'test')->getApiVersion());
+        self::assertSame($version4, substr_replace($version5, '0004', 12, 4));
+        self::assertSame($version3, substr_replace($version5, '0003', 12, 4));
+        self::assertSame($version2, substr_replace($version5, '0002', 12, 4));
+        self::assertSame(5, new DescribeLogDirsRequest(clientId: 'test')->getApiVersion());
+        self::assertSame(4, new DescribeLogDirsRequestV4(clientId: 'test')->getApiVersion());
         self::assertSame(3, new DescribeLogDirsRequestV3(clientId: 'test')->getApiVersion());
         self::assertSame(2, new DescribeLogDirsRequestV2(clientId: 'test')->getApiVersion());
     }
 
+    public function testTheVersionFiveAnswerCarriesTheCordonFlagOfEveryDirectory(): void
+    {
+        $answer = DescribeLogDirsResponse::unpack(new StringStream((string) hex2bin(self::CORDONED_RESPONSE_V5_HEX)));
+
+        $directory = $answer->logDirs['/tmp/kafka-logs'];
+        self::assertInstanceOf(DescribeLogDirsResponseLogDir::class, $directory);
+        self::assertTrue($directory->isCordoned, 'the directory is listed in `cordoned.log.dirs`');
+        self::assertSame(270553174016, $directory->totalBytes, 'the flag stands BEHIND the two sizes of KIP-827');
+        self::assertSame(23060865024, $directory->usableBytes);
+        self::assertSame(self::CORDONED_RESPONSE_V5_HEX, bin2hex((string) $answer), 'and survives a round trip');
+    }
+
+    public function testTheVersionFourAnswerHasNoFieldForTheCordonFlag(): void
+    {
+        $answer = DescribeLogDirsResponseV4::unpack(new StringStream((string) hex2bin(self::SIZED_RESPONSE_V4_HEX)));
+
+        $directory = $answer->logDirs['/tmp/kafka-logs'];
+        self::assertInstanceOf(DescribeLogDirsResponseLogDirV4::class, $directory);
+        self::assertFalse($directory->isCordoned, 'the default false of the field of Kafka 4.3');
+        self::assertArrayNotHasKey('isCordoned', DescribeLogDirsResponseLogDirV4::getScheme());
+        self::assertSame(
+            strlen(self::CORDONED_RESPONSE_V5_HEX) - 2,
+            strlen(self::SIZED_RESPONSE_V4_HEX),
+            'the version 4 entry is exactly the one byte of the flag shorter'
+        );
+    }
+
     public function testTheVersionFourAnswerCarriesTheVolumeSizesOfEveryDirectory(): void
     {
-        $answer = DescribeLogDirsResponse::unpack(new StringStream((string) hex2bin(self::SIZED_RESPONSE_V4_HEX)));
+        $answer = DescribeLogDirsResponseV4::unpack(new StringStream((string) hex2bin(self::SIZED_RESPONSE_V4_HEX)));
 
         $directory = $answer->logDirs['/tmp/kafka-logs'];
         self::assertSame(270553174016, $directory->totalBytes, 'File.getTotalSpace of the volume');

@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the fetcher goes to the right broker without a Metadata round trip. Both fields default to `-1`, "unknown",
  * and the structure is left out of an answer that has nothing to say, which is what a tagged field is for.
  *
- * @see docs/protocol/3.9.md, section "Epoch validation in the fetch itself (v12, KIP-595)"
+ * @see docs/protocol/4.3.md, section "Epoch validation in the fetch itself (v12, KIP-595)"
  */
 class FetchResponseCurrentLeader implements BinarySchemaInterface
 {

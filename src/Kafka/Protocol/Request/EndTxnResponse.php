@@ -16,7 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * EndTxn response object, version 4 (key 26)
+ * EndTxn response object, version 5 (key 26)
  *
  * <pre>
  *   EndTxn Response (Version: 0 and 1) => throttle_time_ms error_code
@@ -50,17 +50,42 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * **Kafka 3.8 added the version 4** (KIP-890) and gave the answer no field. A 3.9.2 coordinator still answers an
  * abort of a committed transaction with the **48** and a fenced producer with the **90**: the end of a
  * transaction verifies no partition, so the code 120 never reaches this api either - measured at both versions.
- * The producer id and the epoch of the **version 5** are Kafka 3.9's. {@see EndTxnResponseV3} is the frame of
- * Kafka 2.8.
+ * {@see EndTxnResponseV3} is the frame of Kafka 2.8.
  *
- * @see docs/protocol/3.9.md, section "EndTxn API (key 26, v0 to v4)"
+ * **Kafka 4.0 added the version 5** (KIP-890 part 2): *"Version 5 enables bumping epoch on every transaction
+ * (KIP-890 Part 2), so producer ID and epoch are included in the response"* (`EndTxnResponse.json` @ 4.0.0). Two
+ * fields follow the error code, both `"ignorable": true` with the default **-1**:
+ *
+ * <pre>
+ *   EndTxn Response (Version: 5) => throttle_time_ms error_code producer_id producer_epoch TAG_BUFFER
+ *     producer_id    => INT64
+ *     producer_epoch => INT16
+ * </pre>
+ *
+ * They are the producer id and the epoch the **next** transaction of the producer runs under: the coordinator of
+ * the transaction protocol v2 bumps the epoch with every end of a transaction, and hands out a new producer id
+ * with the epoch 0 when the epoch is exhausted. The Java `TransactionManager.EndTxnHandler` @ 4.0.0 takes them over
+ * whenever the producer id of the answer is not -1 and starts every sequence at 0 again.
+ * {@see EndTxnResponseV4} is the answer of Kafka 3.8, without the two fields.
+ *
+ * @see docs/protocol/4.3.md, section "EndTxn API (key 26, v0 to v5)"
  */
 class EndTxnResponse extends AbstractResponse
 {
     /**
+     * The default of `producer_id` in `EndTxnResponse.json` @ 4.0.0: no producer id handed out
+     */
+    public const int NO_PRODUCER_ID = -1;
+
+    /**
+     * The default of `producer_epoch` in `EndTxnResponse.json` @ 4.0.0
+     */
+    public const int NO_PRODUCER_EPOCH = -1;
+
+    /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)
@@ -78,15 +103,45 @@ class EndTxnResponse extends AbstractResponse
     public int $errorCode = 0;
 
     /**
+     * Producer id the next transaction runs under, -1 below the version 5 and in an answer that carries none
+     *
+     * @since Version 5 of protocol
+     */
+    public int $producerId = self::NO_PRODUCER_ID;
+
+    /**
+     * Epoch the next transaction runs under, bumped by the coordinator with the end of this one; -1 without one
+     *
+     * @since Version 5 of protocol
+     */
+    public int $producerEpoch = self::NO_PRODUCER_EPOCH;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
         $header = parent::getScheme();
-
-        return $header + [
+        $body   = [
             'throttleTimeMs' => BinarySchema::TYPE_INT32,
             'errorCode'      => BinarySchema::TYPE_INT16,
         ];
+        if (static::VERSION >= 5) {
+            $body['producerId']    = BinarySchema::TYPE_INT64;
+            $body['producerEpoch'] = BinarySchema::TYPE_INT16;
+        }
+
+        return $header + $body;
+    }
+
+    /**
+     * Tells whether the answer hands the producer a new producer id and epoch (version 5, KIP-890 part 2)
+     *
+     * `EndTxnHandler.handleResponse()` @ 4.0.0 reads it as `producerId() != -1`: an answer below the version 5,
+     * and an answer of a version 5 that carries the defaults, leave the producer where it is.
+     */
+    public function hasProducerIdAndEpoch(): bool
+    {
+        return $this->producerId !== self::NO_PRODUCER_ID;
     }
 }

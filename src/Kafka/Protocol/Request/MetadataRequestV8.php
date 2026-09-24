@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The class inherits {@see MetadataRequest::FLEXIBLE_VERSION} (9) and is therefore **not** flexible: the engine
  * asks `VERSION >= FLEXIBLE_VERSION`, and 8 is not.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and
+ * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)" and
  *      "Flexible versions in the engine (KIP-482)"
  */
 final class MetadataRequestV8 extends MetadataRequest

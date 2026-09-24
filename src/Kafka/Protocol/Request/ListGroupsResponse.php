@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocolV4;
  * (`ListGroupsResponse.json` @ 3.8.1) - which says whether the group runs the **classic** membership protocol of
  * Kafka 0.9 or the **consumer** protocol of KIP-848. {@see ListGroupsResponseV4} decodes the answer without it.
  *
- * @see docs/protocol/3.9.md, sections "ListGroups API (key 16, v0 to v5)" and "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, sections "ListGroups API (key 16, v0 to v5)" and "Quotas and throttle time"
  */
 class ListGroupsResponse extends AbstractResponse
 {

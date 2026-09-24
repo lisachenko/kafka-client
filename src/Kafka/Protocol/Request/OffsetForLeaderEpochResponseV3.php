@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * written with `INT16`-prefixed strings, `INT32`-counted arrays and without a tagged-field section anywhere.
  * Version 4 (Kafka 2.8) is the flexible version of KIP-482, see {@see OffsetForLeaderEpochResponse}.
  *
- * @see docs/protocol/3.9.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 final class OffsetForLeaderEpochResponseV3 extends OffsetForLeaderEpochResponse
 {

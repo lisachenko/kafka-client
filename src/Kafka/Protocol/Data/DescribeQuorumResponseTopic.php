@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * ({@see self::partitionClass()}), see {@see DescribeQuorumResponseTopicV1} and
  * {@see DescribeQuorumResponseTopicV0}: neither KIP-836 nor KIP-853 gave this entry a field of its own.
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
+ * @see docs/protocol/4.3.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 class DescribeQuorumResponseTopic implements BinarySchemaInterface
 {

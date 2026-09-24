@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `CreateTopicsRequest.Builder.build(version)` @ 2.8.2 and in {@see CreateTopicsRequest::__construct()}, because
  * the BROKER of a lower version does not refuse the bytes, it simply did not resolve the -1 before Kafka 2.4.
  *
- * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/4.3.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 class CreateTopicsRequestTopic implements BinarySchemaInterface
 {

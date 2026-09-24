@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * before the coordinator sees them), **29** `TopicAuthorizationFailed` for a topic the client may not read, and
  * **86** `GroupSubscribedToTopic` for a topic a live member of the group is subscribed to.
  *
- * @see docs/protocol/3.9.md, section "OffsetDelete API (key 47, v0)"
+ * @see docs/protocol/4.3.md, section "OffsetDelete API (key 47, v0)"
  */
 class OffsetDeleteResponsePartition implements BinarySchemaInterface
 {

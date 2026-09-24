@@ -25,7 +25,7 @@ use Protocol\Kafka\Common\TopicPartition;
  * `transactionStartTimeMs` is **null** while no transaction of this id is in flight - the wire carries the -1 of
  * `TransactionMetadata.txnStartTimestamp` then, which the Java client models as an empty `OptionalLong`.
  *
- * @see docs/protocol/3.9.md, section "DescribeTransactions API (key 65, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeTransactions API (key 65, v0)"
  */
 final class TransactionDescription
 {

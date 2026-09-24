@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (KIP-903)"), so the three versions of the answer differ in the number of their header alone. What differs is
  * which error codes a partition entry may carry, see {@see FetchResponse}.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "The tiered-storage error of KIP-405
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "The tiered-storage error of KIP-405
  *      (v14)"
  */
 final class FetchResponseV13 extends FetchResponse

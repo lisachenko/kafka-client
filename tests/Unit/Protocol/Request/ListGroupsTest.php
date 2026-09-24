@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\ListGroupsResponseV4;
  * The request of version 1 is the request of version 0 - the bare header - and only the answer gained the leading
  * `ThrottleTimeMs`, which is why the two versions need a response class each.
  *
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "ListGroups API (key 16, v0 to v5)"
  */
 #[CoversClass(ListGroupsRequest::class)]
 #[CoversClass(ListGroupsRequestV0::class)]

@@ -72,7 +72,13 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
  * code 48 and `Partition was not added to the transaction`. Every test here adds its partitions first, as the
  * {@see TransactionManager} does.
  *
- * @see docs/protocol/3.9.md, section "Transactions"
+ * The 4.3.1 node of the 4.x line finalizes `transaction.version` 2, and the manager runs the transaction protocol v2
+ * of KIP-890 part 2 on it as soon as its Produce request can enrol a partition
+ * ({@see TransactionManager::isTransactionV2Enabled()}): `maybeAddPartitionsToTransaction()` then sends nothing, and
+ * every end of a transaction bumps the epoch. The tests hold for both protocols; the one place where the node answers
+ * them differently - the commit of an expired transaction - says so.
+ *
+ * @see docs/protocol/4.3.md, section "Transactions"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]
@@ -656,7 +662,15 @@ final class TransactionalProducerTest extends IntegrationTestCase
             self::fail('the producer of an expired transaction must not be able to commit it');
         } catch (TransactionalProducerFencedException) {
             // The 90 `ProducerFenced` of the EndTxn v2 that KIP-588 added; a version 1 request is answered 47
+            self::assertFalse($manager->isTransactionV2Enabled(), 'the refusal of the protocol v1');
+        } catch (InvalidTxnStateException) {
+            // The protocol v2 (Kafka 4.0): the coordinator of `transaction.version` 2 bumps the epoch when it
+            // rolls the transaction back, and `TransactionCoordinator.endTransaction` @ 4.3.1 reads an EndTxn v5
+            // with the epoch one below the current one as a RETRY of the end that bumped it - and a commit that
+            // retries an abort (`CompleteAbort`) is the 48, where the protocol v1 answers the 90
+            self::assertTrue($manager->isTransactionV2Enabled(), 'the refusal of the protocol v2');
         }
+        self::assertTrue($manager->hasFatalError(), 'either way the producer is finished');
     }
 
     public function testASendOutsideATransactionIsRefusedByTheProducer(): void

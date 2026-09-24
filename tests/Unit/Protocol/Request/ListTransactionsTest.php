@@ -23,11 +23,13 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ListTransactionsResponseTransactionState;
 use Protocol\Kafka\Protocol\Request\ListTransactionsRequest;
 use Protocol\Kafka\Protocol\Request\ListTransactionsRequestV0;
+use Protocol\Kafka\Protocol\Request\ListTransactionsRequestV1;
 use Protocol\Kafka\Protocol\Request\ListTransactionsResponse;
 use Protocol\Kafka\Protocol\Request\ListTransactionsResponseV0;
+use Protocol\Kafka\Protocol\Request\ListTransactionsResponseV1;
 
 /**
- * Byte-exact tests for ListTransactions (key 66, v0 and v1), the second api Kafka 3.0 added to the admin surface.
+ * Byte-exact tests for ListTransactions (key 66, v0 to v2), the second api Kafka 3.0 added to the admin surface.
  *
  * Unlike DescribeTransactions (65) this one has a **top-level error code**, and it stands behind the throttle
  * time; the `unknown_state_filters` next to it name the state filters of the request the coordinator could not
@@ -35,13 +37,17 @@ use Protocol\Kafka\Protocol\Request\ListTransactionsResponseV0;
  *
  * **Version 1 (Kafka 3.8, KIP-994)** appends the `duration_filter` int64 to the request and changes the answer in
  * nothing at all, which is why both versions of the answer are the same bytes read through two classes.
+ * **Version 2 (Kafka 4.1, KIP-1152)** appends the nullable `transactional_id_pattern` and, again, leaves the answer
+ * alone.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
+ * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 to v2)"
  */
 #[CoversClass(ListTransactionsRequest::class)]
 #[CoversClass(ListTransactionsRequestV0::class)]
+#[CoversClass(ListTransactionsRequestV1::class)]
 #[CoversClass(ListTransactionsResponse::class)]
 #[CoversClass(ListTransactionsResponseV0::class)]
+#[CoversClass(ListTransactionsResponseV1::class)]
 #[CoversClass(ListTransactionsResponseTransactionState::class)]
 #[CoversClass(TransactionListing::class)]
 #[CoversClass(TransactionState::class)]
@@ -130,15 +136,43 @@ final class ListTransactionsTest extends TestCase
      */
     public function testTheVersion1RequestAppendsTheDurationFilter(): void
     {
-        $request = new ListTransactionsRequest(['Ongoing'], [338], 'test', 9, 30000);
+        $request = new ListTransactionsRequestV1(['Ongoing'], [338], 'test', 9, 30000);
 
         self::assertSame(self::REQUEST_HEX_V1, bin2hex((string) $request));
-        self::assertSame(1, $request->getApiVersion(), 'the client sends the duration filter from Kafka 3.8 on');
+        self::assertSame(1, $request->getApiVersion(), 'the duration filter of Kafka 3.8');
         self::assertSame(30000, $request->getDurationFilter());
         self::assertSame(
             strlen(self::REQUEST_HEX_V0) / 2 + 8,
             strlen(self::REQUEST_HEX_V1) / 2,
             'the only difference of the two frames is the int64 of the filter'
+        );
+    }
+
+    /**
+     * Version 2 (KIP-1152) is the version 1 body with the nullable `transactional_id_pattern` appended to it
+     */
+    public function testTheVersion2RequestAppendsTheTransactionalIdPattern(): void
+    {
+        $request = new ListTransactionsRequest(['Ongoing'], [338], 'test', 9, 30000, 't1-.*');
+
+        self::assertSame(2, $request->getApiVersion(), 'the client sends the pattern from Kafka 4.1 on');
+        self::assertSame('t1-.*', $request->getTransactionalIdPattern());
+        self::assertSame(
+            '00000030' . '0042' . '0002' . '00000009' . '0004' . '74657374' . '00'
+            . '02' . '084f6e676f696e67' . '02' . '0000000000000152' . '0000000000007530' . '06' . bin2hex('t1-.*')
+            . '00',
+            bin2hex((string) $request),
+            'the version 1 body, then the compact string of the pattern (5 + 1) and the tag buffer of the body'
+        );
+        self::assertStringEndsWith(
+            '00' . '00',
+            bin2hex((string) new ListTransactionsRequest([], [], 'test', 9)),
+            'a null pattern is the compact 00, then the tag buffer of the body'
+        );
+        self::assertSame(
+            self::REQUEST_HEX_V1,
+            bin2hex((string) new ListTransactionsRequestV1(['Ongoing'], [338], 'test', 9, 30000, 't1-.*')),
+            'the version 1 frame has no field for the pattern'
         );
     }
 
@@ -150,11 +184,13 @@ final class ListTransactionsTest extends TestCase
         $request = new ListTransactionsRequest([], [], 'test', 9);
 
         self::assertSame(
-            '0000001a' . '0042' . '0001' . '00000009' . '0004' . '74657374' . '00' . '01' . '01'
-            . 'ffffffffffffffff' . '00',
+            '0000001b' . '0042' . '0002' . '00000009' . '0004' . '74657374' . '00' . '01' . '01'
+            . 'ffffffffffffffff' . '00' . '00',
             bin2hex((string) $request),
-            'an empty filter is the compact length 01, and the -1 duration means "every transaction"'
+            'an empty filter is the compact length 01, the -1 duration means "every transaction" and the null'
+            . ' pattern "every id"'
         );
+        self::assertNull($request->getTransactionalIdPattern());
         self::assertSame(ListTransactionsRequest::NO_DURATION_FILTER, $request->getDurationFilter());
         self::assertSame([], $request->getStateFilters());
         self::assertSame([], $request->getProducerIdFilters());
@@ -192,16 +228,20 @@ final class ListTransactionsTest extends TestCase
      */
     public function testBothVersionsOfTheAnswerAreTheSameBytes(): void
     {
-        $atVersion1 = ListTransactionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $atVersion1 = ListTransactionsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
         $atVersion0 = ListTransactionsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $atVersion2 = ListTransactionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
-        self::assertSame(1, ListTransactionsResponse::VERSION);
+        self::assertSame(2, ListTransactionsResponse::VERSION);
+        self::assertSame(1, ListTransactionsResponseV1::VERSION);
         self::assertSame(0, ListTransactionsResponseV0::VERSION);
         self::assertSame(
             ListTransactionsResponse::getScheme(),
             ListTransactionsResponseV0::getScheme(),
-            'the two versions declare the same fields'
+            'the three versions declare the same fields'
         );
+        self::assertSame(ListTransactionsResponse::getScheme(), ListTransactionsResponseV1::getScheme());
+        self::assertSame(bin2hex((string) $atVersion2), bin2hex((string) $atVersion0));
         self::assertSame(bin2hex((string) $atVersion1), bin2hex((string) $atVersion0));
         self::assertSame(
             array_keys($atVersion1->transactionStates),

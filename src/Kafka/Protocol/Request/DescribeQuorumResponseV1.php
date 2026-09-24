@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see \Protocol\Kafka\Protocol\Data\DescribeQuorumResponsePartitionV1} and its replica states carry the two
  * timestamps of KIP-836 alone.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
+ * @see docs/protocol/4.3.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The nodes, the directory ids and the error messages of KIP-853 (v2)"
  */
 final class DescribeQuorumResponseV1 extends DescribeQuorumResponse
 {
