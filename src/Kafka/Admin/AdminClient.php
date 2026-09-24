@@ -113,6 +113,8 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequest;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\ListTransactionsRequest;
@@ -3009,15 +3011,23 @@ class AdminClient
      * default -1 ({@see ListTransactionsRequest::NO_DURATION_FILTER}) is every transaction. The age is measured
      * against the `txnStartTimestamp` the coordinator holds, which is set when the transaction opens and is never
      * cleared, so a transactional id that has never begun a transaction carries the -1 of "no start" and passes
-     * **every** filter; the three filters are ANDed by the coordinator.
+     * **every** filter; the filters are ANDed by the coordinator.
      *
-     * @param list<TransactionState|string> $stateFilters      States to list, empty for every state
-     * @param list<int>                     $producerIdFilters Producer ids to list, empty for every producer id
-     * @param list<string>|null             $unknownStateFilters Filled with the state names no coordinator knew
-     * @param int                           $durationFilterMs  Age in ms a transaction has to exceed, -1 for all
+     * **The `$transactionalIdPattern` of KIP-1152 (Kafka 4.1, version 2)** bounds the listing by the transactional
+     * id: a regular expression of RE2/J that the **whole** id has to match (`ListTransactionsOptions
+     * .filterOnTransactionalIdPattern()` of the Java client); null or the empty string is every id, and a pattern the
+     * coordinator cannot compile is refused with the 128 (`InvalidRegularExpression`).
+     *
+     * @param list<TransactionState|string> $stateFilters           States to list, empty for every state
+     * @param list<int>                     $producerIdFilters      Producer ids to list, empty for every producer id
+     * @param list<string>|null             $unknownStateFilters    Filled with the state names no coordinator knew
+     * @param int                           $durationFilterMs       Age in ms a transaction has to exceed, -1 for all
+     * @param string|null                   $transactionalIdPattern Regular expression the whole transactional id
+     *        has to match, null for every id
      *
      * @throws KafkaException If a broker refused to list its transactions - 14 while it is still reading a
-     *         `__transaction_state` partition, 15 while its coordinator is not available
+     *         `__transaction_state` partition, 15 while its coordinator is not available, 128 for a pattern it cannot
+     *         compile
      * @throws AllBrokersNotAvailableException If no broker of the cluster answered the metadata request
      *
      * @return array<string, TransactionListing> Every transaction of the cluster, indexed by the transactional id
@@ -3026,7 +3036,8 @@ class AdminClient
         array $stateFilters = [],
         array $producerIdFilters = [],
         ?array &$unknownStateFilters = null,
-        int $durationFilterMs = ListTransactionsRequest::NO_DURATION_FILTER
+        int $durationFilterMs = ListTransactionsRequest::NO_DURATION_FILTER,
+        ?string $transactionalIdPattern = null
     ): array {
         $states = array_map(
             static fn(TransactionState|string $state): string => $state instanceof TransactionState
@@ -3046,14 +3057,19 @@ class AdminClient
                     array_values($producerIdFilters),
                     $this->clientId(),
                     $correlationId,
-                    $durationFilterMs
+                    $durationFilterMs,
+                    $transactionalIdPattern
                 ),
                 ListTransactionsResponse::class,
                 ['node' => $node->nodeId]
             );
 
             if ($response->errorCode !== KafkaException::NO_ERROR) {
-                throw KafkaException::fromCode($response->errorCode, ['node' => $node->nodeId]);
+                throw KafkaException::fromCode(
+                    $response->errorCode,
+                    ['node' => $node->nodeId]
+                        + ($transactionalIdPattern !== null ? ['transactionalIdPattern' => $transactionalIdPattern] : [])
+                );
             }
 
             foreach ($response->unknownStateFilters as $filter) {
@@ -3940,5 +3956,56 @@ class AdminClient
             ?? throw new InvalidGroupIdException(
                 ['groupId' => $groupId, 'error' => "The coordinator answered with no description of {$groupId}"]
             );
+    }
+
+    /**
+     * Lists the configuration resources of the cluster, of the given types (ApiKey 74 v1, Kafka 4.1, KIP-1142)
+     *
+     * `Admin.listConfigResources(Set<ConfigResource.Type>, …)` of the Java client @ 4.1.0: the api key 74 of
+     * KIP-714 became `ListConfigResources` with its version 1, which names every resource a DescribeConfigs could
+     * be asked about - the topics, the brokers, the broker loggers, the client-metrics subscriptions and the groups
+     * with a configuration of their own. An empty `$resourceTypes` is every type the broker supports; a type it
+     * does not know (a byte that is not one of the five) is refused with the **35** `UnsupportedVersion`, and a
+     * principal without `DESCRIBE_CONFIGS` on the cluster with the 31.
+     *
+     * The answer comes from any one broker: the topics and the brokers of its metadata cache, the subscriptions of
+     * its `ClientMetricsManager` and the groups of its group configuration manager. Every resource is an
+     * {@see ConfigResource} whose `$type` is the byte of `ConfigResource.Type` @ 4.1.0 - the
+     * `ListClientMetricsResourcesRequest::RESOURCE_TYPE_*` constants: 2 topic, 4 broker, 8 broker logger, 16 client
+     * metrics, 32 group (**not** the {@see ConfigResource::TYPE_GROUP} 3 of the ACL resource types). A broker is
+     * listed once per type, so the same name can come back twice.
+     *
+     * @param list<int> $resourceTypes Types to list, `ListClientMetricsResourcesRequest::RESOURCE_TYPE_*`; empty for
+     *        every type the broker supports
+     *
+     * @throws KafkaException If the broker refused the request - 35 for a type it does not support, 31 for a
+     *         principal that may not describe the configuration of the cluster
+     *
+     * @return list<ConfigResource> Every config resource of those types, in the order of the answer
+     *
+     * @see docs/protocol/4.3.md, section "The config resources of KIP-1142 (v1)"
+     */
+    public function listConfigResources(array $resourceTypes = []): array
+    {
+        /** @var ListClientMetricsResourcesResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): ListClientMetricsResourcesRequest => new ListClientMetricsResourcesRequest(
+                $this->clientId(),
+                $correlationId,
+                array_values($resourceTypes)
+            ),
+            ListClientMetricsResourcesResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['resourceTypes' => $resourceTypes]);
+        }
+
+        $resources = [];
+        foreach ($response->clientMetricsResources as $resource) {
+            $resources[] = new ConfigResource($resource->resourceType, $resource->name);
+        }
+
+        return $resources;
     }
 }

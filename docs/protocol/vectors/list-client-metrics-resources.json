@@ -1,13 +1,13 @@
 {
     "api": "list-client-metrics-resources",
     "apiKey": 74,
-    "section": "ListClientMetricsResources API (key 74, v0)",
-    "description": "Wire vectors of the ListClientMetricsResources API (key 74, v0), replayed by tests/Compliance.",
+    "section": "ListClientMetricsResources API (key 74, v0 and v1)",
+    "description": "Wire vectors of the ListClientMetricsResources API (key 74, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "listclientmetricsresources.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequestV0",
             "version": 0,
             "source": "broker",
             "description": "ListClientMetricsResources request v0 (Kafka 3.7, KIP-714), whose body is **empty**: the request header v2 and the tag buffer of the body, and nothing else at all.",
@@ -24,7 +24,7 @@
         {
             "id": "listclientmetricsresources.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of a node on which no operator has written a `client-metrics` resource: the code 0 and an **empty** array, thirteen bytes behind the size field.",
@@ -41,7 +41,7 @@
         {
             "id": "listclientmetricsresources.request.v0.subscribed",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequestV0",
             "version": 0,
             "source": "broker",
             "description": "The very same frame, one correlation id later, sent while the resource `t1-37-metrics` exists.",
@@ -58,7 +58,7 @@
         {
             "id": "listclientmetricsresources.response.v0.subscribed",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The one name the cluster has. The api answers **names only** - what the subscription contains is read with DescribeConfigs (32) on the resource type `CLIENT_METRICS`, which is a resource type this client does not speak.",
@@ -74,6 +74,174 @@
                         "name": "t1-37-metrics"
                     }
                 }
+            }
+        },
+        {
+            "id": "listclientmetricsresources.request.v1.metrics-and-groups",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The api key 74 at **version 1** (Kafka 4.1, KIP-1142), where it became `ListConfigResources`: the `resource_types` `16` (`CLIENT_METRICS`) and `32` (`GROUP`), captured while the client-metrics resource `t1-41-metrics` and a configuration of the group `t1-41-config-group` existed on the node.",
+            "hex": "00000021004a00010000119f00126b61666b612d636c69656e742d74312d34310003102000",
+            "fields": {
+                "messageSize": 33,
+                "apiKey": 74,
+                "apiVersion": 1,
+                "correlationId": 4511,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "resourceTypes": [
+                    16,
+                    32
+                ]
+            }
+        },
+        {
+            "id": "listclientmetricsresources.response.v1.metrics-and-groups",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Both resources with the byte of their type behind their name - the group first, then the subscription, in the order of `KafkaApis.handleListConfigResources` @ 4.3.1. The group has no member and no offset: a group configuration (`kafka-configs.sh --entity-type groups`) is a resource of its own.",
+            "hex": "000000320000119f00000000000000031374312d34312d636f6e6669672d67726f757020000e74312d34312d6d657472696373100000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 4511,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "clientMetricsResources": [
+                    {
+                        "name": "t1-41-config-group",
+                        "resourceType": 32
+                    },
+                    {
+                        "name": "t1-41-metrics",
+                        "resourceType": 16
+                    }
+                ]
+            }
+        },
+        {
+            "id": "listclientmetricsresources.request.v1.brokers",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The types `4` (`BROKER`) and `8` (`BROKER_LOGGER`).",
+            "hex": "00000021004a0001000011a000126b61666b612d636c69656e742d74312d34310003040800",
+            "fields": {
+                "messageSize": 33,
+                "apiKey": 74,
+                "apiVersion": 1,
+                "correlationId": 4512,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "resourceTypes": [
+                    4,
+                    8
+                ]
+            }
+        },
+        {
+            "id": "listclientmetricsresources.response.v1.brokers",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The node **1** twice, once as a broker logger and once as a broker: two entries of the same name, which is why the entries of this version are a list and no longer keyed by the name.",
+            "hex": "00000015000011a00000000000000003023108000231040000",
+            "fields": {
+                "messageSize": 21,
+                "correlationId": 4512,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "clientMetricsResources": [
+                    {
+                        "name": "1",
+                        "resourceType": 8
+                    },
+                    {
+                        "name": "1",
+                        "resourceType": 4
+                    }
+                ]
+            }
+        },
+        {
+            "id": "listclientmetricsresources.request.v1.unknown-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The type `3` - the `GROUP` of the ACL resource types, which is not a config resource type (that group is `32`).",
+            "hex": "00000020004a0001000011a100126b61666b612d636c69656e742d74312d343100020300",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 74,
+                "apiVersion": 1,
+                "correlationId": 4513,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "resourceTypes": [
+                    3
+                ]
+            }
+        },
+        {
+            "id": "listclientmetricsresources.response.v1.unknown-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **35** (`UnsupportedVersion`) and no resource: the broker refuses every type outside `ListConfigResourcesRequest.supportedResourceTypes()` @ 4.3.1 - the five types at version 1, `CLIENT_METRICS` alone at version 0 - with that code.",
+            "hex": "0000000d000011a1000000000000230100",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 4513,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 35,
+                "clientMetricsResources": []
+            }
+        },
+        {
+            "id": "listclientmetricsresources.request.v1.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The type `16`, sent by the SASL user `acltest`.",
+            "hex": "00000020004a0001000011a200126b61666b612d636c69656e742d74312d343100021000",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 74,
+                "apiVersion": 1,
+                "correlationId": 4514,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "resourceTypes": [
+                    16
+                ]
+            }
+        },
+        {
+            "id": "listclientmetricsresources.response.v1.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **31** (`ClusterAuthorizationFailed`): the api needs `DESCRIBE_CONFIGS` on the cluster before it lists anything.",
+            "hex": "0000000d000011a20000000000001f0100",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 4514,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 31,
+                "clientMetricsResources": []
             }
         }
     ]

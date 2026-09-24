@@ -1,0 +1,132 @@
+{
+    "api": "read-share-group-state",
+    "apiKey": 84,
+    "section": "ReadShareGroupState API (key 84, v0)",
+    "description": "Wire vectors of the ReadShareGroupState API (key 84, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "readsharegroupstate.request.v0.uninitialized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ReadShareGroupState **v0** (key 84) of the partition 0 of a topic of the capture (the topic was deleted afterwards) for the share group that does not exist, with the leader epoch **-1**, which a read never writes back.",
+            "hex": "00000054005400000000125e00126b61666b612d636c69656e742d74312d3431001a74312d34312d6e6f2d737563682d73686172652d67726f7570021d5d10c01ac6490d8b5b1faa8c75c66c0200000000ffffffff000000",
+            "fields": {
+                "messageSize": 84,
+                "apiKey": 84,
+                "apiVersion": 0,
+                "correlationId": 4702,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "groupId": "t1-41-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstate.response.v0.uninitialized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The per-partition **42** (`InvalidRequest`) of `ShareCoordinatorShard` @ 4.3.1: `Read operation on uninitialized share partition not allowed.` Every other field is the zero of its type - the start offset is `0` here, not the `-1` of \"not initialized\" - and the state batches are empty.",
+            "hex": "0000006a0000125e00021d5d10c01ac6490d8b5b1faa8c75c66c0200000000002a3d52656164206f7065726174696f6e206f6e20756e696e697469616c697a656420736861726520706172746974696f6e206e6f7420616c6c6f7765642e00000000000000000000000001000000",
+            "fields": {
+                "messageSize": 106,
+                "correlationId": 4702,
+                "headerTaggedFields": [],
+                "results": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 42,
+                                "errorMessage": "Read operation on uninitialized share partition not allowed.",
+                                "stateEpoch": 0,
+                                "startOffset": 0,
+                                "stateBatches": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstate.request.v0.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same request, sent by the SASL user `acltest`.",
+            "hex": "00000054005400000000125f00126b61666b612d636c69656e742d74312d3431001a74312d34312d6e6f2d737563682d73686172652d67726f7570021d5d10c01ac6490d8b5b1faa8c75c66c0200000000ffffffff000000",
+            "fields": {
+                "messageSize": 84,
+                "apiKey": 84,
+                "apiVersion": 0,
+                "correlationId": 4703,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "groupId": "t1-41-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstate.response.v0.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **31** (`ClusterAuthorizationFailed`) with the message `Cluster authorization failed.`, per partition: the api needs `CLUSTER_ACTION` on the cluster, the operation of inter-broker traffic, and `ReadShareGroupStateResponse.toGlobalErrorResponse` puts the refusal into every partition of the request.",
+            "hex": "0000004b0000125f00021d5d10c01ac6490d8b5b1faa8c75c66c0200000000001f1e436c757374657220617574686f72697a6174696f6e206661696c65642e00000000000000000000000001000000",
+            "fields": {
+                "messageSize": 75,
+                "correlationId": 4703,
+                "headerTaggedFields": [],
+                "results": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 31,
+                                "errorMessage": "Cluster authorization failed.",
+                                "stateEpoch": 0,
+                                "startOffset": 0,
+                                "stateBatches": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+}

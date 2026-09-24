@@ -107,9 +107,12 @@ final class VectorFile
         if ($files === false) {
             throw new RuntimeException('Vector directory ' . self::VECTORS_DIRECTORY . ' can not be listed');
         }
-        sort($files);
+        // Sorted by the base name, not by the path: `read-share-group-state-summary.json` sorts before
+        // `read-share-group-state.json` (`-` is below `.`), while the two names sort the other way round
+        $names = array_map(static fn(string $file): string => basename($file, '.json'), $files);
+        sort($names);
 
-        return array_map(static fn(string $file): string => basename($file, '.json'), $files);
+        return $names;
     }
 
     /**
