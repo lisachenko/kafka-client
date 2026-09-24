@@ -1,4 +1,4 @@
-Wire vectors of the Kafka 3.9.2 protocol
+Wire vectors of the Kafka 4.3.1 protocol
 ========================================
 The 4.x line has captured **286** vectors of its own so far, on the `kafka-4-3-1` node — the 8 frames of
 DescribeLogDirs v5 of Kafka 4.3 (the cordon flag of KIP-1066) in `describe-log-dirs.json`. And the 40 frames of Kafka 4.2

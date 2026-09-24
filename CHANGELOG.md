@@ -4,20 +4,20 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `main` is the **4.x line**, built towards the **Kafka 4.x wire protocol** one Kafka minor at a time on top
-of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client speaks **Kafka 4.3**
-(the milestone of the line reached so far) and the KIP-848 consumer protocol. The lines
+own: `main` is the **4.x line** and speaks the **Kafka 4.3.1 wire protocol** — everything Kafka 4.0 to 4.3 added,
+the KIP-848 consumer protocol and the KIP-932 share consumer — built one Kafka minor at a time on top of the finished
+3.x line, verified against a Kafka **4.3.1** KRaft node, and complete. The lines
 below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
 into the next one, so the sections below accumulate: what a line added stays true of every line above it.
 
-Unreleased — the 4.x line (towards Kafka 4.3.1)
------------------------------------------------
+Unreleased — the 4.x line (Kafka 4.0 to 4.3 and the KIP-932 share consumer, complete at 4.3.1)
+-----------------------------------------------------------------------------------------------
 
 The 4.x line, built on `main` on top of the finished 3.x line (branched off as `3.x`), on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213)). The plan
-of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **the KIP-932 share consumer**, the last wave: every minor of the line is in, and the share
-consumer with its admin methods.
+of the line is [docs/handoff/main.md](docs/handoff/main.md). **The line is complete**: every minor of Kafka 4.x (4.0 to 4.3) and the KIP-932 share consumer with its admin
+methods; the record of the line is the release notes above the plan in [docs/handoff/main.md](docs/handoff/main.md).
 
 ### Added
 

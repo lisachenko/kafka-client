@@ -1,5 +1,5 @@
-PHP Native Apache Kafka Client — 4.x (towards Kafka 4.3.1)
-==========================================================
+PHP Native Apache Kafka Client — 4.x (Kafka 4.3.1)
+==================================================
 
 ![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=main)
 [![Code Coverage](https://img.shields.io/codecov/c/github/lisachenko/kafka-client/main)](https://app.codecov.io/gh/lisachenko/kafka-client)
@@ -11,21 +11,19 @@ protocol — no `ext-rdkafka` required. It ships a Producer, a Consumer and a lo
 client, designed to stay close in spirit to the official Java client's API while feeling
 natural in PHP.
 
-**This branch is the 4.x line and is being built towards the Apache Kafka 4.3.1 wire protocol**, one Kafka
-minor at a time (4.0, 4.1, 4.2, 4.3), on top of the finished 3.x line (branched off as `3.x`), with the **KIP-932
-share consumer** (`Consumer\KafkaShareConsumer`) as its last wave. The node of the line is a Kafka **4.3.1** **KRaft** node, and the milestone
-reached is **Kafka 4.3**: the client speaks every version Kafka 4.0 to 4.3 added to the apis it implements — the
-transaction protocol v2 of KIP-890 part 2, Produce and the group offsets by topic id and the share-group wire of
-KIP-932 among them — on
-top of the **KIP-848 consumer protocol** of the 3.x line, and the versions Kafka 4.0 removed (KIP-896) are never sent
-to a 4.x node. The version of every api the client
+**This branch is the 4.x line and speaks the Apache Kafka 4.3.1 wire protocol** — everything Kafka 4.0 to 4.3
+added to the apis the client implements, the transaction protocol v2 of KIP-890 part 2, Produce and the group offsets
+by topic id among them, and the **KIP-932 share consumer** (`Consumer\KafkaShareConsumer`) with its admin methods —
+on top of the **KIP-848 consumer protocol** of the finished 3.x line (branched off as `3.x`), built one Kafka minor at
+a time and verified against a 4.3.1 **KRaft** node; the versions Kafka 4.0 removed (KIP-896) are never sent to a 4.x
+node. The version of every api the client
 sends is listed under
 [Supported Kafka protocol versions](#supported-kafka-protocol-versions). `main` is the top of the cascade:
 the frozen protocol snapshots below it live on `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x`
 (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every
 wire vector those lines captured is replayed against the classes of this branch. The grammar this branch
 implements is written down, byte for byte, in [docs/protocol/4.3.md](docs/protocol/4.3.md), verified against
-a real Kafka 4.3.1 node running in KRaft mode (the frames of the 3.x line were captured on a 3.9.2 one); the plan of the 4.x line is
+a real Kafka 4.3.1 node running in KRaft mode (the frames of the 3.x line were captured on a 3.9.2 one); the record of the 4.x line — its release notes above the plan it was built from — is
 [docs/handoff/main.md](docs/handoff/main.md), and the records of the finished lines are
 [docs/handoff/3.x.md](docs/handoff/3.x.md), [docs/handoff/2.x.md](docs/handoff/2.x.md) and
 [docs/handoff/1.x.md](docs/handoff/1.x.md).
@@ -877,11 +875,10 @@ Produce v0 to v2 too, which the answer still lists — closes the connection. Th
 of every key at its maximum version, one above it and one below every minimum.
 
 The "main" column lists the versions this client has a class for; the one in **bold** is the version it
-sends, and a version the node serves that the current milestone has not reached yet is **not yet implemented
-on this line** until its milestone lands. The streams-group apis 88 and 89 are out by decision (the "leaves out"
-table below). The `2.x` column is where the 3.x line started.
+sends; every version the node serves to a client is spoken, and what is left out says so in its row. The
+streams-group apis 88 and 89 are out by decision (the "leaves out" table below). The `2.x` column is where the 3.x line started.
 
-| Api key | API | Versions served by 4.3.1 | Client-facing | `2.x` | `main` (4.x, towards Kafka 4.3.1) |
+| Api key | API | Versions served by 4.3.1 | Client-facing | `2.x` | `main` (4.x, Kafka 4.3.1) |
 |---|---|---|---|---|---|
 | 0 | Produce | v3 … v13 (v0 … v2 listed, refused) | yes | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0) | v0 … v12, **v13** (Kafka 4.1, KIP-516: every topic named by its **topic id**, resolved through `Cluster::topicIdsOf()`, the 100 `UnknownTopicId` of a stale id retried; sent through `Client::produceVersion()`; `ProduceRequestV12`/`ProduceResponseV12` keep the v12 of Kafka 4.0, the v11 frame of KIP-890 part 2; `ProduceRequestV11` keeps the version a transaction of the protocol v1 is capped at, and the **120** `TransactionAbortable` of KIP-890, Kafka 3.8, it is refused with for a partition the coordinator has not verified; `ProduceRequestV10`/`ProduceResponseV10` keep the leader discovery of KIP-951; **v2** for `message.format.version` below 0.11.0, refused client-side against a 4.x node) |
 | 1 | Fetch | v4 … v18 | yes | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) | v0 … v17 and **v18** (Kafka 4.1, KIP-1166: the tagged `high_watermark` of a follower, `FetchRequestTopicPartition::$highWatermark`, left off the wire by a consumer, whose frame is the v17 frame; `FetchRequestV17`/`FetchResponseV17` keep the version below; the tagged `replica_directory_id` of KIP-853, Kafka 3.9, in every partition entry — the log directory a **follower** fetches for, left off the wire by a consumer whose zero uuid is the default of the field; the tagged `node_endpoints` of the answer, KIP-951, Kafka 3.7, which the node writes for the 6 of a follower fetch; every topic named by its **topic id**, KIP-516, Kafka 3.1; session-less in `fetchPartitions()`, with an incremental fetch session per broker in the consumer; `FetchRequestV12` keeps the frame that names its topics, `FetchRequestV13` to `FetchRequestV16` the versions in between) |
@@ -1105,7 +1102,7 @@ current milestone):
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 133** (the constants of 4.3.1, declared by the foundation of the 4.x line; 105 is 3.0's, 128 is 4.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x and the 4.x line; everything else the
-4.3.1 node serves is "not yet" until its milestone lands):
+4.3.1 node serves to a client is implemented):
 
 | Feature                                          | Arrived in | On this branch                        |
 |--------------------------------------------------|------------|---------------------------------------|
