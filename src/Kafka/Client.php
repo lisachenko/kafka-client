@@ -3548,16 +3548,23 @@ class Client
      * the interval at which the coordinator wants to hear from it again and, once the coordinator has computed
      * one, its assignment.
      *
-     * A member that was fenced (110, 113 or 25) joins again with this very request and a **fresh member id**.
+     * A member that was fenced (110, 113 or 25) joins again with this very request, under the member id it had:
+     * version 1 (Kafka 4.0, KIP-1082) wants the id the consumer generated *"kept during the entire lifetime of the
+     * consumer process"*, and refuses a frame without one with the 42 "MemberId can't be empty.".
      *
-     * @param Node          $coordinatorNode    Coordinator of the group
-     * @param string        $groupId            Name of the group
-     * @param string        $memberId           Member id of this member, the uuid it generated for itself
-     * @param list<string>  $topics             Subscription of the member, which a join has to carry
-     * @param int           $rebalanceTimeoutMs `max.poll.interval.ms`, how long the coordinator waits for a revoke
-     * @param string|null   $instanceId         `group.instance.id` of a static member (KIP-345)
-     * @param string|null   $rackId             `client.rack` of the member (KIP-881), null for none
-     * @param string|null   $serverAssignor     Server-side assignor to ask for, null for the coordinator's choice
+     * A member may subscribe by a **regular expression** instead of topic names (`$subscribedTopicRegex`, version 1),
+     * which the coordinator matches against the topics of the cluster; `$topics` is the empty list then, as the Java
+     * consumer sends it, and a regex the coordinator cannot compile is the **128** `InvalidRegularExpression`.
+     *
+     * @param Node          $coordinatorNode      Coordinator of the group
+     * @param string        $groupId              Name of the group
+     * @param string        $memberId             Member id of this member, the uuid it generated for itself
+     * @param list<string>  $topics               Subscription of the member, which a join has to carry
+     * @param int           $rebalanceTimeoutMs   `max.poll.interval.ms`, how long the coordinator waits for a revoke
+     * @param string|null   $instanceId           `group.instance.id` of a static member (KIP-345)
+     * @param string|null   $rackId               `client.rack` of the member (KIP-881), null for none
+     * @param string|null   $serverAssignor       Server-side assignor to ask for, null for the coordinator's choice
+     * @param string|null   $subscribedTopicRegex Regex subscription of the member (version 1), null for none
      *
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
@@ -3566,8 +3573,9 @@ class Client
      * @throws Common\Errors\UnreleasedInstanceIdException If another member still holds the instance id
      * @throws Common\Errors\GroupMaxSizeReachedException If the group is full (`group.consumer.max.size`)
      * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a (re-)join
+     * @throws Common\Errors\InvalidRegularExpressionException If the coordinator cannot compile the regex (128)
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function joinConsumerGroup(
         Node $coordinatorNode,
@@ -3577,7 +3585,8 @@ class Client
         int $rebalanceTimeoutMs,
         ?string $instanceId = null,
         ?string $rackId = null,
-        ?string $serverAssignor = null
+        ?string $serverAssignor = null,
+        ?string $subscribedTopicRegex = null
     ): ConsumerGroupHeartbeatResponse {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -3592,7 +3601,8 @@ class Client
                 $rackId,
                 $serverAssignor,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $subscribedTopicRegex
             ),
             ConsumerGroupHeartbeatResponse::class,
             static fn(ConsumerGroupHeartbeatResponse $response): ConsumerGroupHeartbeatResponse
@@ -3617,6 +3627,8 @@ class Client
      *        of the topic id => its partitions, null when they did not change
      * @param int                           $rebalanceTimeoutMs New rebalance timeout, -1 when it did not change
      * @param string|null                   $serverAssignor     New server-side assignor, null when unchanged
+     * @param string|null                   $subscribedTopicRegex New regex subscription (version 1), null when
+     *        unchanged, the empty string to drop the regex
      *
      * @throws Common\Errors\FencedMemberEpochException If the coordinator fenced this member (110)
      * @throws Common\Errors\StaleMemberEpochException If the epoch is not the one the coordinator holds (113)
@@ -3624,8 +3636,9 @@ class Client
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
+     * @throws Common\Errors\InvalidRegularExpressionException If the coordinator cannot compile the regex (128)
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function consumerGroupHeartbeat(
         Node $coordinatorNode,
@@ -3635,7 +3648,8 @@ class Client
         ?array $topics = null,
         ?array $topicPartitions = null,
         int $rebalanceTimeoutMs = ConsumerGroupHeartbeatRequest::UNCHANGED_REBALANCE_TIMEOUT_MS,
-        ?string $serverAssignor = null
+        ?string $serverAssignor = null,
+        ?string $subscribedTopicRegex = null
     ): ConsumerGroupHeartbeatResponse {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -3650,7 +3664,8 @@ class Client
                 $rebalanceTimeoutMs,
                 $serverAssignor,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $subscribedTopicRegex
             ),
             ConsumerGroupHeartbeatResponse::class,
             static fn(ConsumerGroupHeartbeatResponse $response): ConsumerGroupHeartbeatResponse
@@ -3676,7 +3691,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function leaveConsumerGroup(
         Node $coordinatorNode,

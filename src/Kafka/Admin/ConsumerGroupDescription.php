@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribedGroup;
  * `Reconciling`, `Stable` or `Dead`. There is no `PreparingRebalance` and no `CompletingRebalance` in this
  * protocol - nothing stops the world - and {@see self::isStable()} is the question a tool really asks.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 final class ConsumerGroupDescription
 {

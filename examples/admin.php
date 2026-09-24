@@ -24,7 +24,7 @@
  *   php examples/admin.php [topic] [groupId]
  *
  * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)", "ListGroups API (key 16, v0 to v5)",
- *      "DescribeGroups API (key 15, v0 to v5)" and "DeleteGroups API (key 42, v0 to v2)"
+ *      "DescribeGroups API (key 15, v0 to v6)" and "DeleteGroups API (key 42, v0 to v2)"
  */
 
 declare(strict_types=1);
@@ -33,6 +33,7 @@ use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
@@ -132,16 +133,22 @@ foreach ($groups as $listedGroupId => $listedGroup) {
     echo "  {$listedGroupId} ({$listedGroup->protocolType})\n";
 }
 
-// DescribeGroups is answered by the coordinator of the group. A group that has no members - because nobody has
-// joined it, or because everybody has left - is reported with the state Dead and the error code 0, not as an error.
+// DescribeGroups is answered by the coordinator of the group. A group whose members all left but whose offsets are
+// still there is Empty; a group the coordinator does not hold at all - it never existed, or it is a group of the
+// consumer protocol of KIP-848 - is the 69 (GroupIdNotFound) of DescribeGroups v6 (Kafka 4.0, KIP-1043), which the
+// versions up to 5 reported as the state Dead with the error code 0.
 echo "\nDescription of the group {$groupId}\n";
-$description = $admin->describeGroup($groupId);
-echo "  state: {$description->state}\n";
-echo "  protocol type: '{$description->protocolType}', protocol: '{$description->protocol}'\n";
-foreach ($description->members as $memberId => $member) {
-    $assignmentSize = strlen($member->memberAssignment);
-    echo "  member {$memberId} of the client {$member->clientId} at {$member->clientHost}, "
-        . "{$assignmentSize} bytes of assignment\n";
+try {
+    $description = $admin->describeGroup($groupId);
+    echo "  state: {$description->state}\n";
+    echo "  protocol type: '{$description->protocolType}', protocol: '{$description->protocol}'\n";
+    foreach ($description->members as $memberId => $member) {
+        $assignmentSize = strlen($member->memberAssignment);
+        echo "  member {$memberId} of the client {$member->clientId} at {$member->clientHost}, "
+            . "{$assignmentSize} bytes of assignment\n";
+    }
+} catch (GroupIdNotFoundException $exception) {
+    echo '  the coordinator does not hold the group: ' . $exception->getMessage() . "\n";
 }
 
 // DeleteGroups (key 42, Kafka 1.1, KIP-229) makes the coordinator forget a group and the offsets it committed.

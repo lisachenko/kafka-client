@@ -15,12 +15,13 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribedGroup;
+use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribedGroupV0;
 
 /**
- * ConsumerGroupDescribe response object, version 0 (key 69, Kafka 3.7, KIP-848)
+ * ConsumerGroupDescribe response object, version 1 (key 69, Kafka 3.7, KIP-848)
  *
  * <pre>
- *   ConsumerGroupDescribe Response (Version: 0) => throttle_time_ms [groups]
+ *   ConsumerGroupDescribe Response (Version: 0 and 1) => throttle_time_ms [groups]
  *     throttle_time_ms => INT32
  *     groups           => error_code error_message group_id group_state group_epoch assignment_epoch
  *                         assignor_name [members] authorized_operations
@@ -32,14 +33,19 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribedGroup;
  * together with **both** assignments, the one it owns and the one it is meant to own
  * ({@see ConsumerGroupDescribedGroup}, {@see \Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember}).
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * **Version 1 (Kafka 4.0, KIP-1099) closes every member entry with an int8 `member_type`**: 0 for a member of the
+ * classic protocol that joined a group of the consumer protocol - the online upgrade of KIP-848 - 1 for a member
+ * of the consumer protocol and -1 for "unknown", the default. {@see ConsumerGroupDescribeResponseV0} decodes the
+ * answer of version 0, whose members end with the target assignment.
+ *
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 class ConsumerGroupDescribeResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * The api is flexible from its first version: it was born after KIP-482 (Kafka 2.4)
@@ -67,7 +73,9 @@ class ConsumerGroupDescribeResponse extends AbstractResponse
 
         return $header + [
             'throttleTimeMs' => BinarySchema::TYPE_INT32,
-            'groups'         => ['groupId' => ConsumerGroupDescribedGroup::class],
+            'groups'         => ['groupId' => static::VERSION >= 1
+                ? ConsumerGroupDescribedGroup::class
+                : ConsumerGroupDescribedGroupV0::class],
         ];
     }
 }

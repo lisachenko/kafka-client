@@ -53,10 +53,15 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * no `CompletingRebalance`, because the new protocol has no stop-the-world rebalance to prepare or complete.
  *
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponse
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 class ConsumerGroupDescribedGroup implements BinarySchemaInterface
 {
+    /**
+     * Version of the ConsumerGroupDescribe API that this DTO decodes an entry of
+     */
+    public const int VERSION = 1;
+
     /**
      * A group that has no member and no assignment: `ConsumerGroup.ConsumerGroupState.EMPTY` @ 3.9.2
      */
@@ -142,7 +147,9 @@ class ConsumerGroupDescribedGroup implements BinarySchemaInterface
             'groupEpoch'           => BinarySchema::TYPE_INT32,
             'assignmentEpoch'      => BinarySchema::TYPE_INT32,
             'assignorName'         => BinarySchema::TYPE_STRING,
-            'members'              => ['memberId' => ConsumerGroupDescribeMember::class],
+            'members'              => ['memberId' => static::VERSION >= 1
+                ? ConsumerGroupDescribeMember::class
+                : ConsumerGroupDescribeMemberV0::class],
             'authorizedOperations' => BinarySchema::TYPE_INT32,
         ];
     }

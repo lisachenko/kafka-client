@@ -1,13 +1,13 @@
 {
     "api": "consumer-group-describe",
     "apiKey": 69,
-    "section": "ConsumerGroupDescribe API (key 69, v0)",
+    "section": "ConsumerGroupDescribe API (key 69, v0 and v1)",
     "description": "Wire vectors of the ConsumerGroupDescribe API (key 69, v0, KIP-848), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "consumergroupdescribe.v0.two-members.request",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "ConsumerGroupDescribe of the group of two members, without the authorized operations of KIP-430.",
@@ -28,7 +28,7 @@
         {
             "id": "consumergroupdescribe.v0.two-members.response",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer: the group epoch, the assignment epoch, the assignor the coordinator ran, and both members with their member epoch, their subscription as plain topic names and BOTH assignments - the one they own and the one they are meant to own.",
@@ -135,7 +135,7 @@
         {
             "id": "consumergroupdescribe.v0.authorized-operations.request",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "The same question with `include_authorized_operations` on, the flag of KIP-430.",
@@ -156,7 +156,7 @@
         {
             "id": "consumergroupdescribe.v0.authorized-operations.response",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer whose `authorized_operations` is the acl bit field of this connection instead of the -2147483648 of \"not requested\".",
@@ -263,7 +263,7 @@
         {
             "id": "consumergroupdescribe.v0.static-member.request",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "ConsumerGroupDescribe of a group with one STATIC member that named no `server_assignor` at all.",
@@ -284,7 +284,7 @@
         {
             "id": "consumergroupdescribe.v0.static-member.response",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer: the `instance_id` of the member and the assignor the coordinator picked by itself, which is the first of `group.consumer.assignors`.",
@@ -355,7 +355,7 @@
         {
             "id": "consumergroupdescribe.v0.classic-group.request",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "ConsumerGroupDescribe (key 69) of a group of the CLASSIC protocol.",
@@ -376,7 +376,7 @@
         {
             "id": "consumergroupdescribe.v0.classic-group.response",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer, which is where the two describe apis separate the two protocols.",
@@ -404,7 +404,7 @@
         {
             "id": "consumergroupdescribe.v0.unknown-group.request",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "ConsumerGroupDescribe of a group the coordinator has never heard of.",
@@ -425,7 +425,7 @@
         {
             "id": "consumergroupdescribe.v0.unknown-group.response",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The 69 `GroupIdNotFound` inside the entry of that group, with the frame itself error-free - there is no top-level error code in this answer.",
@@ -453,7 +453,7 @@
         {
             "id": "consumergroupdescribe.v0.empty-group-id.request",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "The same api asked for the EMPTY group id.",
@@ -474,7 +474,7 @@
         {
             "id": "consumergroupdescribe.v0.empty-group-id.response",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponseV0",
             "version": 0,
             "source": "broker",
             "description": "Which is refused with its own code, before any coordinator is asked.",
@@ -502,7 +502,7 @@
         {
             "id": "consumergroupdescribe.v0.unauthorized.request",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "And the same principal describing that group, with the authorized operations asked for.",
@@ -523,7 +523,7 @@
         {
             "id": "consumergroupdescribe.v0.unauthorized.response",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The refusal, which this api reports per ENTRY and not at the top level.",
@@ -543,6 +543,224 @@
                         "assignmentEpoch": 0,
                         "assignorName": "",
                         "members": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v1.member-types.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ConsumerGroupDescribe v1 (Kafka 4.0, KIP-1099) of the group of the regex member, which a CLASSIC consumer has just joined with JoinGroup: the request is the frame of version 0 with another version.",
+            "hex": "000000340045000100009c4600126b61666b612d636c69656e742d74332d343000021474332d34302d766563746f72732d72656765780000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 69,
+                "apiVersion": 1,
+                "correlationId": 40006,
+                "clientId": "kafka-client-t3-40",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-40-vectors-regex"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v1.member-types.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Both members, and behind the target assignment of each the int8 `member_type` of version 1: **1** for the member of the consumer protocol - with its regex in `subscribed_topic_regex` and no topic name - and **0** for the classic member, whose subscription the coordinator read out of its JoinGroup. The classic member has joined, so the group epoch moved on and the group is `Assigning`.",
+            "hex": "0000013b00009c460000000000020000001474332d34302d766563746f72732d72656765780a41737369676e696e67000000030000000208756e69666f726d0317765073757777564c5375573952726277366d68703277000000000002136b61666b612d636c69656e742d74332d34300c2f3137322e31382e302e31020e74332d34302d766563746f727301010001000000177669474d73335643536a5363304967575f7a4e523851000000000002136b61666b612d636c69656e742d74332d34300c2f3137322e31382e302e31010c74332d34302d7665632e2a021a581f66584642b68ea4ff10816059d50e74332d34302d766563746f7273040000000000000001000000020000021a581f66584642b68ea4ff10816059d50e74332d34302d766563746f72730400000000000000010000000200000100800000000000",
+            "fields": {
+                "messageSize": 315,
+                "correlationId": 40006,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-40-vectors-regex": {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "groupId": "t3-40-vectors-regex",
+                        "groupState": "Assigning",
+                        "groupEpoch": 3,
+                        "assignmentEpoch": 2,
+                        "assignorName": "uniform",
+                        "members": {
+                            "vPsuwwVLSuW9Rrbw6mhp2w": {
+                                "memberId": "vPsuwwVLSuW9Rrbw6mhp2w",
+                                "instanceId": null,
+                                "rackId": null,
+                                "memberEpoch": 2,
+                                "clientId": "kafka-client-t3-40",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [
+                                    "t3-40-vectors"
+                                ],
+                                "subscribedTopicRegex": "",
+                                "assignment": {
+                                    "topicPartitions": []
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": []
+                                },
+                                "memberType": 0
+                            },
+                            "viGMs3VCSjSc0IgW_zNR8Q": {
+                                "memberId": "viGMs3VCSjSc0IgW_zNR8Q",
+                                "instanceId": null,
+                                "rackId": null,
+                                "memberEpoch": 2,
+                                "clientId": "kafka-client-t3-40",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [],
+                                "subscribedTopicRegex": "t3-40-vec.*",
+                                "assignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "1a581f66584642b68ea4ff10816059d5"
+                                            },
+                                            "topicName": "t3-40-vectors",
+                                            "partitions": [
+                                                0,
+                                                1,
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "1a581f66584642b68ea4ff10816059d5"
+                                            },
+                                            "topicName": "t3-40-vectors",
+                                            "partitions": [
+                                                0,
+                                                1,
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "memberType": 1
+                            }
+                        },
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.member-types.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "The same question at version 0.",
+            "hex": "000000340045000000009c4700126b61666b612d636c69656e742d74332d343000021474332d34302d766563746f72732d72656765780000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 69,
+                "apiVersion": 0,
+                "correlationId": 40007,
+                "clientId": "kafka-client-t3-40",
+                "headerTaggedFields": [],
+                "groupIds": [
+                    "t3-40-vectors-regex"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "consumergroupdescribe.v0.member-types.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupDescribeResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "The same two members without a `member_type`: every member entry ends with its target assignment, and nothing in the frame tells the classic member from the other one.",
+            "hex": "0000013900009c470000000000020000001474332d34302d766563746f72732d72656765780a41737369676e696e67000000030000000208756e69666f726d0317765073757777564c5375573952726277366d68703277000000000002136b61666b612d636c69656e742d74332d34300c2f3137322e31382e302e31020e74332d34302d766563746f7273010100010000177669474d73335643536a5363304967575f7a4e523851000000000002136b61666b612d636c69656e742d74332d34300c2f3137322e31382e302e31010c74332d34302d7665632e2a021a581f66584642b68ea4ff10816059d50e74332d34302d766563746f7273040000000000000001000000020000021a581f66584642b68ea4ff10816059d50e74332d34302d766563746f727304000000000000000100000002000000800000000000",
+            "fields": {
+                "messageSize": 313,
+                "correlationId": 40007,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-40-vectors-regex": {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "groupId": "t3-40-vectors-regex",
+                        "groupState": "Assigning",
+                        "groupEpoch": 3,
+                        "assignmentEpoch": 2,
+                        "assignorName": "uniform",
+                        "members": {
+                            "vPsuwwVLSuW9Rrbw6mhp2w": {
+                                "memberId": "vPsuwwVLSuW9Rrbw6mhp2w",
+                                "instanceId": null,
+                                "rackId": null,
+                                "memberEpoch": 2,
+                                "clientId": "kafka-client-t3-40",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [
+                                    "t3-40-vectors"
+                                ],
+                                "subscribedTopicRegex": "",
+                                "assignment": {
+                                    "topicPartitions": []
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": []
+                                }
+                            },
+                            "viGMs3VCSjSc0IgW_zNR8Q": {
+                                "memberId": "viGMs3VCSjSc0IgW_zNR8Q",
+                                "instanceId": null,
+                                "rackId": null,
+                                "memberEpoch": 2,
+                                "clientId": "kafka-client-t3-40",
+                                "clientHost": "/172.18.0.1",
+                                "subscribedTopicNames": [],
+                                "subscribedTopicRegex": "t3-40-vec.*",
+                                "assignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "1a581f66584642b68ea4ff10816059d5"
+                                            },
+                                            "topicName": "t3-40-vectors",
+                                            "partitions": [
+                                                0,
+                                                1,
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "targetAssignment": {
+                                    "topicPartitions": [
+                                        {
+                                            "topicId": {
+                                                "$bytes": "1a581f66584642b68ea4ff10816059d5"
+                                            },
+                                            "topicName": "t3-40-vectors",
+                                            "partitions": [
+                                                0,
+                                                1,
+                                                2
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
                         "authorizedOperations": -2147483648
                     }
                 }

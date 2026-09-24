@@ -678,9 +678,13 @@ class AdminClient
      * The request goes to the coordinator of the group ({@see self::findCoordinator()}), the only broker that knows
      * anything about it. The state is one of `PreparingRebalance`, `CompletingRebalance`, `Stable`, `Empty` and
      * `Dead` (`kafka/coordinator/group/GroupMetadata.scala` @ 1.1.1), i.e. one of the `STATE_*` constants of
-     * {@see DescribeGroupResponseMetadata}; a group the coordinator has never heard of, or that has lost its last
-     * member and outlived its committed offsets, is NOT an error - it is answered with the error code 0, the state
-     * `Dead`, an empty protocol type and no members.
+     * {@see DescribeGroupResponseMetadata}. A group the coordinator does not hold - it has never heard of it, the
+     * group has lost its last member and outlived its committed offsets, or it is a group of the consumer protocol of
+     * KIP-848 - **is an error since Kafka 4.0**: the version 6 of KIP-1043 that this client sends answers it with the
+     * **69** `GroupIdNotFound` and a message, which this method throws as a
+     * {@see \Protocol\Kafka\Common\Errors\GroupIdNotFoundException}, as the Java admin client of 4.0 does. The
+     * versions up to 5 answered the same group with the error code 0, the state `Dead`, an empty protocol type and
+     * no members.
      *
      * Kafka 1.0 renamed the state between the last JoinGroup and the leader's SyncGroup from `AwaitingSync` to
      * **`CompletingRebalance`**; a broker of this line answers the new name, and
@@ -694,6 +698,8 @@ class AdminClient
      * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If the group moved to another coordinator
      *         between the lookup and this request
      * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe the group
+     * @throws \Protocol\Kafka\Common\Errors\GroupIdNotFoundException If the coordinator does not hold the group
+     *         (DescribeGroups v6, KIP-1043)
      * @throws InvalidGroupIdException If the coordinator answered without an entry for the group
      */
     public function describeGroup(
@@ -723,6 +729,8 @@ class AdminClient
      *
      * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If a group moved to another coordinator
      * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe a group
+     * @throws \Protocol\Kafka\Common\Errors\GroupIdNotFoundException If the coordinator does not hold a group
+     *         (DescribeGroups v6, KIP-1043)
      *
      * @return array<string, DescribeGroupResponseMetadata> Descriptions, indexed by the group id
      */
@@ -753,7 +761,12 @@ class AdminClient
 
             foreach ($response->groups as $groupId => $description) {
                 if ($description->errorCode !== KafkaException::NO_ERROR) {
-                    throw KafkaException::fromCode($description->errorCode, ['groupId' => $groupId]);
+                    throw KafkaException::fromCode(
+                        $description->errorCode,
+                        ['groupId' => $groupId] + ($description->errorMessage === null
+                            ? []
+                            : ['error' => $description->errorMessage])
+                    );
                 }
                 $descriptions[$groupId] = $description;
             }
@@ -3669,7 +3682,7 @@ class AdminClient
      *
      * @return array<string, ConsumerGroupDescription> Descriptions, indexed by the group id
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
      */
     public function describeConsumerGroups(array $groupIds, bool $includeAuthorizedOperations = false): array
     {
@@ -3717,7 +3730,7 @@ class AdminClient
      *
      * @throws InvalidGroupIdException If the coordinator answered with no description of the group at all
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
      */
     public function describeConsumerGroup(
         string $groupId,

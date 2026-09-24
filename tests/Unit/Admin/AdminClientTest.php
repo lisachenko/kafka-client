@@ -112,14 +112,16 @@ final class AdminClientTest extends TestCase
         . '00';
 
     /**
-     * DescribeGroups answer v1 of a broker that is not the coordinator of `t4-vectors-group`: group error 16
+     * DescribeGroups answer v6 of a broker that is not the coordinator of `t4-vectors-group`: group error 16
      */
-    private const string NOT_COORDINATOR_RESPONSE = '00000027'
+    private const string NOT_COORDINATOR_RESPONSE = '00000028'
         . '00000000'
         . '00'
         . '00000000'
         . '02'
         . '0010'
+        // the `error_message` of version 6 (KIP-1043, Kafka 4.0): null
+        . '00'
         . '11' . '74342d766563746f72732d67726f7570'
         . '01' . '01' . '01'
         . '01'
@@ -562,18 +564,26 @@ final class AdminClientTest extends TestCase
         );
     }
 
-    public function testDescribeGroupReportsAnUnknownGroupAsDead(): void
+    /**
+     * DescribeGroups v6 (KIP-1043, Kafka 4.0) answers a group the coordinator does not hold with the 69, where the
+     * versions below answered the state `Dead` with the error code 0 - and the admin client reports the 69
+     */
+    public function testDescribeGroupThrowsTheSixtyNineOfAnUnknownGroup(): void
     {
         $this->scriptBroker(
             ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
-            ResponseFrame::describeGroups(0, [self::UNKNOWN_GROUP => [0, 'Dead', '', '', []]])
+            ResponseFrame::describeGroups(
+                0,
+                [self::UNKNOWN_GROUP => [69, 'Dead', '', '', [], 'Group ' . self::UNKNOWN_GROUP . ' not found.']]
+            )
         );
 
-        $group = $this->adminClient()->describeGroup(self::UNKNOWN_GROUP);
-
-        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $group->state, 'this is not an error');
-        self::assertSame(0, $group->errorCode);
-        self::assertSame([], $group->members);
+        try {
+            $this->adminClient()->describeGroup(self::UNKNOWN_GROUP);
+            self::fail('an unknown group is an error from version 6 on');
+        } catch (GroupIdNotFoundException $exception) {
+            self::assertStringContainsString('Group ' . self::UNKNOWN_GROUP . ' not found.', $exception->getMessage());
+        }
     }
 
     public function testDescribeGroupThrowsTheErrorCodeOfTheGroup(): void
