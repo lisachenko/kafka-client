@@ -5,7 +5,7 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
 own: `main` is the **4.x line**, built towards the **Kafka 4.x wire protocol** one Kafka minor at a time on top
-of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client speaks **Kafka 4.1**
+of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client speaks **Kafka 4.2**
 (the milestone of the line reached so far) and the KIP-848 consumer protocol. The lines
 below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
@@ -16,8 +16,8 @@ Unreleased — the 4.x line (towards Kafka 4.3.1)
 
 The 4.x line, built on `main` on top of the finished 3.x line (branched off as `3.x`), on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213)). The plan
-of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **Kafka 4.1**. Two milestones
-follow, one per Kafka minor (4.2, 4.3), and the KIP-932 share consumer as the last wave.
+of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **Kafka 4.2**. One milestone
+follows (4.3), and the KIP-932 share consumer as the last wave.
 
 ### Added
 
@@ -65,6 +65,49 @@ brought every one of them to what the node answers (see "Kafka 4.0 — Changed" 
   [docs/handoff/3.x.md](docs/handoff/3.x.md) and the plan of the 4.x line took its place as
   `docs/handoff/main.md`; the tables of tag points and milestone commits left the handoff records — the tags of
   the repository are the record.
+
+### Kafka 4.2 — Added
+
+Milestone `chore(4.x): Kafka 4.2 complete`, PRs #228 (T4), #229 (T1), #230 (T2) and #231 (T3).
+
+- **ListOffsets v11** (KIP-1023): the target time `OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP` (`-6`) and
+  `AdminClient::listEarliestPendingUploadOffsets()`, the `OffsetSpec.earliestPendingUpload()` of the Java admin client;
+  the client sends v11 wherever it sent v10, and `OffsetsRequestV10`/`OffsetsResponseV10` keep the version below. A
+  node without remote storage answers the offset -1 with the code 0, and a v10 frame of the `-6` a per-partition 35.
+  Produce, Fetch and Metadata have no 4.2 or 4.3 version.
+- **OffsetCommit v10 and OffsetFetch v10** (KIP-848): every topic named by its **topic id**, resolved through
+  `Cluster::topicIdsOf()` and named back in the answer, in both consumer coordinators and the admin offsets methods;
+  the 100 of an unknown or deleted id reloads the metadata and is retried, and a topic the cluster gives no id goes
+  out as v9 (the fallback of the Java `CommitRequestManager`). `OffsetCommitRequestV9`/`ResponseV9`,
+  `OffsetFetchRequestV9`/`ResponseV9` and their `Data` keep-behinds keep the version below.
+- **`AdminClient::alterConsumerGroupOffsets()`** over OffsetCommit v10: the commit of an administrator (generation -1),
+  one exception or null per partition; a group with live members refuses it with the 25.
+- **ShareFetch v2 and ShareAcknowledge v2** (KIP-1206, KIP-1222): the `$shareAcquireMode` (batch-optimized or
+  record-limit) and the `$isRenewAck` of `Client::shareFetch()`, the `$isRenewAck` of `Client::shareAcknowledge()`,
+  the acknowledge type 4 `ShareAcknowledgementBatch::RENEW` and the `ShareAcknowledgeResponse::$acquisitionLockTimeoutMs`
+  of every answer; a renew extends the acquisition lock. `ShareFetchRequestV1`/`ResponseV1` and
+  `ShareAcknowledgeRequestV1`/`ResponseV1` keep the version below.
+- **AddRaftVoter v1**: `ack_when_committed`, the trailing `$ackWhenCommitted` of `AdminClient::addRaftVoter()`, which
+  changes no refusal of the node; `AddRaftVoterRequestV0`/`ResponseV0` keep the version below.
+- **WriteShareGroupState v1, ReadShareGroupStateSummary v1 and DescribeShareGroupOffsets v1** (KIP-1226), wire
+  classes: the `DeliveryCompleteCount` of a share partition and the share-partition `lag`
+  (`DescribeShareGroupOffsetsResponsePartition::$lag`), measured with real share traffic as end offset − start offset
+  − delivery-complete count. The V0 classes keep the version below.
+- **WriteTxnMarkers v2** (KIP-1228), wire only: the `transaction_version` of a marker
+  (`WriteTxnMarkersRequestMarker::$transactionVersion`); the client listener answers it to a super user, and refuses a
+  transaction-version-2 marker at the epoch of an open transaction with the 47. `WriteTxnMarkersRequestV1`/`ResponseV1`
+  keep the version below.
+- **76 wire vectors** captured on the `kafka-4-3-1` node (**278** on the 4.x line, **1413** in **74** files).
+
+### Kafka 4.2 — Changed
+
+- **The consumer and the admin offsets methods send OffsetCommit and OffsetFetch v10** on a node that serves them; the
+  classic `ConsumerCoordinator` of the Java client @ 4.2.0 still sends v9.
+- The probes of the streams apis 88 and 89 pin the answers of the 4.2 schema (a StreamsGroupHeartbeat leave carries an
+  empty `Status` array where it carried null).
+- `OffsetsByTimestampTest` probes an unknown target time with `-7`: Kafka 4.2 gave `-6` a meaning.
+- The integration suites that send raw offset frames without topic ids (`GroupTypeListingApiTest`,
+  `StaticMembershipApiTest`, `ThrottleTimeApiTest`) send them through the V9 classes.
 
 ### Kafka 4.1 — Added
 
