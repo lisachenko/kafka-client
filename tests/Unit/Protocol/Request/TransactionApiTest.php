@@ -32,6 +32,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarker;
+use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarkerV1;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponsePartition;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseTopic;
@@ -80,14 +81,16 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequest;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequestV0;
+use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequestV1;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
+use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV1;
 
 /**
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
  * @see docs/protocol/4.3.md, sections "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)",
- *      "EndTxn API (key 26, v0 to v5)", "WriteTxnMarkers API (key 27, v0 and v1)" and "TxnOffsetCommit API (key 28, v0 to v5)"
+ *      "EndTxn API (key 26, v0 to v5)", "WriteTxnMarkers API (key 27, v0 to v2)" and "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
 #[CoversClass(AddPartitionsToTxnRequestV4::class)]
@@ -128,6 +131,9 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 #[CoversClass(WriteTxnMarkersRequestV0::class)]
 #[CoversClass(WriteTxnMarkersResponse::class)]
 #[CoversClass(WriteTxnMarkersResponseV0::class)]
+#[CoversClass(WriteTxnMarkersRequestV1::class)]
+#[CoversClass(WriteTxnMarkersResponseV1::class)]
+#[CoversClass(WriteTxnMarkersRequestMarkerV1::class)]
 #[CoversClass(WriteTxnMarkersRequestMarker::class)]
 #[CoversClass(WriteTxnMarkersResponseMarker::class)]
 #[CoversClass(WriteTxnMarkersResponseTopic::class)]
@@ -612,6 +618,62 @@ final class TransactionApiTest extends TestCase
         self::assertSame(ApiKeys::WRITE_TXN_MARKERS, $request->getApiKey());
     }
 
+    /**
+     * The version 2 of Kafka 4.2 (KIP-1228) appends the transaction version to every marker, the version 1 drops it
+     */
+    public function testTheTransactionVersionOfAMarkerIsTheLastByteOfItInVersionTwo(): void
+    {
+        $marker = new WriteTxnMarkersRequestMarker(42, 3, EndTxnRequest::ABORT, ['t' => [0]], 7, 2);
+        $body   = '02'
+            . '000000000000002a' . '0003' . '00'
+            . '02' . '0274' . '02' . '00000000' . '00'
+            . '00000007';
+        $header = '001b' . '%s' . '0000000a' . '0004' . '74657374' . '00';
+
+        $v2 = new WriteTxnMarkersRequest([$marker], 'test', 10);
+        $v1 = new WriteTxnMarkersRequestV1([$marker], 'test', 10);
+
+        self::assertSame(2, WriteTxnMarkersRequest::VERSION);
+        self::assertSame(2, WriteTxnMarkersResponse::VERSION);
+        self::assertSame(self::sized(sprintf($header, '0002') . $body . '02' . '00' . '00'), bin2hex((string) $v2));
+        self::assertSame(self::sized(sprintf($header, '0001') . $body . '00' . '00'), bin2hex((string) $v1));
+        self::assertSame(0, new WriteTxnMarkersRequestMarker(42, 3)->transactionVersion, 'the default 0 of the field');
+        self::assertArrayNotHasKey('transactionVersion', WriteTxnMarkersRequestMarkerV1::getScheme());
+        self::assertSame(
+            ['producerId', 'producerEpoch', 'transactionResult', 'topics', 'coordinatorEpoch', 'transactionVersion'],
+            array_keys(WriteTxnMarkersRequestMarker::getScheme())
+        );
+    }
+
+    /**
+     * A marker given to a request is encoded as the entry of the version of that request
+     */
+    public function testTheMarkersOfARequestAreTheEntriesOfItsVersion(): void
+    {
+        $marker = new WriteTxnMarkersRequestMarker(42, 3, EndTxnRequest::COMMIT, ['t' => [0, 1]], 7, 2);
+
+        $v1 = new WriteTxnMarkersRequestV1([$marker]);
+        $v0 = new WriteTxnMarkersRequestV0([$marker]);
+        $v2 = new WriteTxnMarkersRequest([new WriteTxnMarkersRequestMarkerV1(42, 3)]);
+
+        $entryOf = static fn(WriteTxnMarkersRequest $request): WriteTxnMarkersRequestMarker => (fn(): array => $this->transactionMarkers)->call($request)[42];
+        self::assertInstanceOf(WriteTxnMarkersRequestMarkerV1::class, $entryOf($v1));
+        self::assertInstanceOf(WriteTxnMarkersRequestMarkerV1::class, $entryOf($v0));
+        self::assertSame(WriteTxnMarkersRequestMarker::class, $entryOf($v2)::class);
+        self::assertSame([0, 1], $entryOf($v1)->topics['t']->partitions);
+        self::assertSame(7, $entryOf($v1)->coordinatorEpoch);
+        self::assertSame(2, $entryOf($v1)->transactionVersion, 'kept on the object, only left off the wire');
+        self::assertSame(
+            ['producerId' => WriteTxnMarkersRequestMarkerV1::class],
+            WriteTxnMarkersRequestV1::getScheme()['transactionMarkers']
+        );
+        self::assertSame(
+            WriteTxnMarkersResponseV1::getScheme(),
+            WriteTxnMarkersResponse::getScheme(),
+            'the version 2 of the answer changed no field'
+        );
+    }
+
     public function testTheWriteTxnMarkersAnswerIsTheOnlyOneOf011WithoutAThrottleTime(): void
     {
         $response = WriteTxnMarkersResponseV0::unpack(
@@ -1056,5 +1118,13 @@ final class TransactionApiTest extends TestCase
         self::assertSame(120, $new->topics['topic']->partitions[0]->errorCode);
         self::assertSame($hex, bin2hex((string) $new));
         self::assertSame(bin2hex((string) $old), bin2hex((string) $new));
+    }
+
+    /**
+     * Puts the size field in front of the hex dump of a frame
+     */
+    private static function sized(string $hex): string
+    {
+        return sprintf('%08x', strlen($hex) / 2) . $hex;
     }
 }

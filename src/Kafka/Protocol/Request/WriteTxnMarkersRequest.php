@@ -15,20 +15,23 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarker;
+use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarkerV1;
 
 /**
- * WriteTxnMarkers, version 0: writes the control batches of a finished transaction (key 27, Kafka 0.11, KIP-98)
+ * WriteTxnMarkers: writes the control batches of a finished transaction (key 27, Kafka 0.11, KIP-98; v2 KIP-1228)
  *
  * <pre>
- *   WriteTxnMarkers Request (Version: 0) => [transaction_markers]
+ *   WriteTxnMarkers Request (Version: 2) => [transaction_markers] TAG_BUFFER
  *     transaction_markers => producer_id producer_epoch transaction_result [topics] coordinator_epoch
- *       producer_id        => INT64
- *       producer_epoch     => INT16
- *       transaction_result => BOOLEAN
- *       topics             => topic [partitions]
- *         topic      => STRING
- *         partitions => INT32
- *       coordinator_epoch  => INT32
+ *                            transaction_version TAG_BUFFER
+ *       producer_id         => INT64
+ *       producer_epoch      => INT16
+ *       transaction_result  => BOOLEAN
+ *       topics              => topic [partitions] TAG_BUFFER
+ *         topic      => COMPACT_STRING
+ *         partitions => COMPACT_ARRAY of INT32
+ *       coordinator_epoch   => INT32
+ *       transaction_version => INT8 (version 2+)
  * </pre>
  *
  * **This is a broker-to-broker request**, and the only one of the transaction protocol that a client never sends:
@@ -45,7 +48,13 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarker;
  * the unsecured container of this branch the request is served for anybody, which is what makes a wire vector of it
  * possible at all.
  *
- * @see docs/protocol/4.3.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
+ * **Kafka 4.2 added the version 2** (`"validVersions": "1-2"` @ 4.2.0, *"Version 2 adds TransactionVersion field
+ * to the WritableTxnMarker (KIP-1228)"*): every marker carries the `transaction_version` of its transaction
+ * ({@see WriteTxnMarkersRequestMarker::$transactionVersion}), and the answer is the frame of the version 1. The
+ * markers given to the constructor are encoded as the entries of the version of the class, so a marker built with a
+ * transaction version loses it in {@see WriteTxnMarkersRequestV1}, which keeps the version 1.
+ *
+ * @see docs/protocol/4.3.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 class WriteTxnMarkersRequest extends AbstractRequest
 {
@@ -57,7 +66,7 @@ class WriteTxnMarkersRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * The version 1 of Kafka 2.8 is the first flexible one of this api (KIP-482)
@@ -82,9 +91,19 @@ class WriteTxnMarkersRequest extends AbstractRequest
         string $clientId = '',
         int $correlationId = 0
     ) {
-        $markers = [];
+        $markerClass = static::markerClass();
+        $markers     = [];
         foreach ($transactionMarkers as $marker) {
-            $markers[$marker->producerId] = $marker;
+            $markers[$marker->producerId] = $marker::class === $markerClass
+                ? $marker
+                : new $markerClass(
+                    $marker->producerId,
+                    $marker->producerEpoch,
+                    $marker->transactionResult,
+                    $marker->topics,
+                    $marker->coordinatorEpoch,
+                    $marker->transactionVersion
+                );
         }
         $this->transactionMarkers = $markers;
 
@@ -99,7 +118,17 @@ class WriteTxnMarkersRequest extends AbstractRequest
         $header = parent::getScheme();
 
         return $header + [
-            'transactionMarkers' => ['producerId' => WriteTxnMarkersRequestMarker::class],
+            'transactionMarkers' => ['producerId' => static::markerClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a marker entry for the version of the API that this class sends
+     *
+     * @return class-string<WriteTxnMarkersRequestMarker>
+     */
+    protected static function markerClass(): string
+    {
+        return static::VERSION >= 2 ? WriteTxnMarkersRequestMarker::class : WriteTxnMarkersRequestMarkerV1::class;
     }
 }

@@ -15,22 +15,38 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\AlterConfigOp;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator;
+use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponsePartition;
+use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponsePartitionV0;
+use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
+use Protocol\Kafka\Protocol\Data\ShareAcknowledgementBatch;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AlterShareGroupOffsetsRequest;
 use Protocol\Kafka\Protocol\Request\AlterShareGroupOffsetsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteShareGroupOffsetsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteShareGroupOffsetsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeShareGroupOffsetsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeShareGroupOffsetsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeShareGroupOffsetsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeShareGroupOffsetsResponseV0;
+use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequest;
+use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
+use Protocol\Kafka\Protocol\Request\ShareFetchRequest;
 
 /**
  * The share-group offset apis 90 to 92 of Kafka 4.1 (KIP-932) against the 4.3.1 node, which finalizes
@@ -41,13 +57,23 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * member runs the `kafka-console-share-consumer.sh` of the image for a bounded while. Every topic and every group
  * this class creates is deleted again - a share group with DeleteGroups, the api of every group type.
  *
+ * The version 1 of DescribeShareGroupOffsets (Kafka 4.2, KIP-1226) adds the share-partition lag, which only real
+ * share traffic moves: its test joins a member with {@see Client::joinShareGroup()}, acquires records with
+ * {@see Client::shareFetch()} and acknowledges them with {@see Client::shareAcknowledge()}, and the member closes its
+ * share session and leaves before its group is deleted.
+ *
  * These are wire classes: the admin methods over them belong to the share-consumer wave.
  *
- * @see docs/protocol/4.3.md, sections "DescribeShareGroupOffsets API (key 90, v0)", "AlterShareGroupOffsets API (key
+ * @see docs/protocol/4.3.md, sections "DescribeShareGroupOffsets API (key 90, v0 and v1)", "AlterShareGroupOffsets API (key
  *      91, v0)" and "DeleteShareGroupOffsets API (key 92, v0)"
+ * @see docs/protocol/4.3.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 #[CoversClass(DescribeShareGroupOffsetsRequest::class)]
 #[CoversClass(DescribeShareGroupOffsetsResponse::class)]
+#[CoversClass(DescribeShareGroupOffsetsRequestV0::class)]
+#[CoversClass(DescribeShareGroupOffsetsResponseV0::class)]
+#[CoversClass(DescribeShareGroupOffsetsResponsePartition::class)]
+#[CoversClass(DescribeShareGroupOffsetsResponsePartitionV0::class)]
 #[CoversClass(AlterShareGroupOffsetsRequest::class)]
 #[CoversClass(AlterShareGroupOffsetsResponse::class)]
 #[CoversClass(DeleteShareGroupOffsetsRequest::class)]
@@ -61,6 +87,11 @@ final class ShareGroupOffsetsApiTest extends IntegrationTestCase
     private const int GROUP_ID_NOT_FOUND = 69;
 
     private const float TIMEOUT = 30.0;
+
+    /**
+     * The group config resource of KIP-848 and KIP-932 (`ConfigResource.Type.GROUP`, id 32)
+     */
+    private const int GROUP_CONFIG_RESOURCE = 32;
 
     private Cluster $cluster;
 
@@ -143,6 +174,8 @@ final class ShareGroupOffsetsApiTest extends IntegrationTestCase
         self::assertSame(KafkaException::NO_ERROR, $group->errorCode, 'no 69 for a group that does not exist');
         self::assertSame(-1, $group->topics[$topic]->partitions[0]->startOffset);
         self::assertSame(-1, $group->topics[$missing]->partitions[0]->startOffset);
+        self::assertSame(DescribeShareGroupOffsetsResponsePartition::UNINITIALIZED_LAG, $group->topics[$topic]->partitions[0]->lag);
+        self::assertSame(DescribeShareGroupOffsetsResponsePartition::UNINITIALIZED_LAG, $group->topics[$missing]->partitions[0]->lag);
         self::assertSame(Uuid::ZERO, $group->topics[$missing]->topicId, 'a topic the node does not have');
 
         $all = $this->exchange(
@@ -151,6 +184,78 @@ final class ShareGroupOffsetsApiTest extends IntegrationTestCase
         );
         self::assertSame([], $all->groups[$nobody]->topics);
         self::assertSame(KafkaException::NO_ERROR, $all->groups[$nobody]->errorCode);
+    }
+
+    /**
+     * The lag of the version 1 is the end offset minus the start offset minus what the group is done with past it
+     */
+    public function testTheLagOfVersionOneIsWhatTheGroupStillHasToDeliver(): void
+    {
+        $topic   = $this->topic('lag', 1);
+        $group   = $this->group('lag');
+        $nobody  = $this->group('lag-nobody');
+        $topicId = self::topicIdOf($topic);
+        $this->produce($topic, 10);
+        $this->setGroupConfig($group, 'share.auto.offset.reset', 'earliest');
+
+        $this->cluster->reload([$topic]);
+        $leader = $this->cluster->leaderFor($topic, 0);
+        $member = $this->joinedMember($group, $topic, $topicId);
+        $epoch  = ShareFetchRequest::INITIAL_EPOCH;
+
+        try {
+            $deadline = microtime(true) + self::TIMEOUT;
+            do {
+                $fetched  = $this->client->shareFetch($leader, $group, $member, $epoch++, [$topicId => [0]], [], 500);
+                $acquired = $fetched->partitionOf($topicId, 0)?->acquiredRecords ?? [];
+            } while ($acquired === [] && microtime(true) < $deadline);
+            self::assertSame([[0, 9]], array_map(static fn($range): array => [$range->firstOffset, $range->lastOffset], $acquired));
+
+            $this->client->shareAcknowledge($leader, $group, $member, $epoch++, [$topicId => [0 => [
+                ShareAcknowledgementBatch::of(0, 3, ShareAcknowledgementBatch::ACCEPT),
+                ShareAcknowledgementBatch::of(6, 7, ShareAcknowledgementBatch::ACCEPT),
+            ]]]);
+            self::assertSame(
+                4,
+                $this->partitionUntil($group, $topic, static fn($p): bool => $p->lag === 4)->lag,
+                '10 records, 6 of them accepted: 4, 5, 8 and 9 are still to be delivered'
+            );
+
+            $this->client->shareAcknowledge($leader, $group, $member, $epoch++, [$topicId => [0 => [
+                ShareAcknowledgementBatch::of(4, 5, ShareAcknowledgementBatch::RELEASE),
+                ShareAcknowledgementBatch::of(8, 8, ShareAcknowledgementBatch::REJECT),
+                ShareAcknowledgementBatch::of(9, 9, ShareAcknowledgementBatch::RELEASE),
+            ]]]);
+            $partition = $this->partitionUntil($group, $topic, static fn($p): bool => $p->startOffset === 4 && $p->lag === 3);
+            self::assertSame([4, 3], [$partition->startOffset, $partition->lag], '10 - 4 - 3: the released 4, 5 and 9');
+            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
+
+            // The version 0 answers the same start offset without the lag
+            $old = $this->exchange(
+                new DescribeShareGroupOffsetsRequestV0([$group => null], self::CLIENT_ID, $this->correlationId++),
+                DescribeShareGroupOffsetsResponseV0::class
+            )->groups[$group]->topics[$topic]->partitions[0];
+            self::assertInstanceOf(DescribeShareGroupOffsetsResponsePartitionV0::class, $old);
+            self::assertSame([4, DescribeShareGroupOffsetsResponsePartition::UNINITIALIZED_LAG], [$old->startOffset, $old->lag]);
+
+            // A group that holds no state has no lag either, and that is no error
+            $unknown = $this->exchange(
+                new DescribeShareGroupOffsetsRequest([$nobody => [$topic => [0]]], self::CLIENT_ID, $this->correlationId++),
+                DescribeShareGroupOffsetsResponse::class
+            )->groups[$nobody];
+            self::assertSame(KafkaException::NO_ERROR, $unknown->errorCode);
+            self::assertSame(
+                [-1, DescribeShareGroupOffsetsResponsePartition::UNINITIALIZED_LAG, KafkaException::NO_ERROR],
+                [$unknown->topics[$topic]->partitions[0]->startOffset, $unknown->topics[$topic]->partitions[0]->lag, $unknown->topics[$topic]->partitions[0]->errorCode]
+            );
+
+            // The lag follows the end offset of the partition
+            $this->produce($topic, 2);
+            self::assertSame(5, $this->partitionUntil($group, $topic, static fn($p): bool => $p->lag === 5)->lag);
+        } finally {
+            $this->client->shareAcknowledge($leader, $group, $member, ShareFetchRequest::FINAL_EPOCH);
+            $this->client->leaveShareGroup(new CoordinatorLookup($this->cluster, $this->configuration())->findCoordinator($group), $group, $member);
+        }
     }
 
     public function testTheDeleteForgetsATopicAndDoesNotCreateAGroup(): void
@@ -274,6 +379,81 @@ final class ShareGroupOffsetsApiTest extends IntegrationTestCase
         } while (microtime(true) < $deadline);
 
         return $offsets;
+    }
+
+    /**
+     * Describes the partition 0 of the topic for the group (version 1) until it satisfies the predicate
+     *
+     * @param callable(DescribeShareGroupOffsetsResponsePartition): bool $isFinal
+     */
+    private function partitionUntil(string $group, string $topic, callable $isFinal): DescribeShareGroupOffsetsResponsePartition
+    {
+        $deadline = microtime(true) + self::TIMEOUT;
+        do {
+            $partition = $this->exchange(
+                new DescribeShareGroupOffsetsRequest([$group => [$topic => [0]]], self::CLIENT_ID, $this->correlationId++),
+                DescribeShareGroupOffsetsResponse::class
+            )->groups[$group]->topics[$topic]->partitions[0];
+            if ($isFinal($partition)) {
+                return $partition;
+            }
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+
+        return $partition;
+    }
+
+    /**
+     * Joins a share member and heartbeats until the one partition of the topic is assigned to it
+     */
+    private function joinedMember(string $group, string $topic, string $topicId): string
+    {
+        $member      = ConsumerGroupHeartbeatCoordinator::newMemberId();
+        $coordinator = new CoordinatorLookup($this->cluster, $this->configuration())->findCoordinator($group);
+        $answer      = $this->client->joinShareGroup($coordinator, $group, $member, [$topic]);
+
+        $deadline = microtime(true) + self::TIMEOUT;
+        while (($answer->assignment?->partitionsByTopicId()[$topicId] ?? []) === [] && microtime(true) < $deadline) {
+            usleep(250000);
+            $answer = $this->client->shareGroupHeartbeat($coordinator, $group, $member, $answer->memberEpoch);
+        }
+        self::assertSame([0], $answer->assignment?->partitionsByTopicId()[$topicId] ?? [], 'the partition is assigned');
+
+        return $member;
+    }
+
+    /**
+     * Appends the given number of records to the partition 0 of the topic, through the Produce v12 of a topic name
+     */
+    private function produce(string $topic, int $count): void
+    {
+        $records = [];
+        for ($i = 0; $i < $count; $i++) {
+            $records[] = new Record("v{$i}", null, 0, null, (int) (microtime(true) * 1000));
+        }
+
+        $answer = $this->exchange(
+            new ProduceRequestV12([$topic => [0 => RecordBatch::fromRecords($records)]], -1, 10000, self::CLIENT_ID, $this->correlationId++),
+            ProduceResponseV12::class
+        );
+        self::assertSame(KafkaException::NO_ERROR, $answer->topics[$topic]->partitions[0]->errorCode);
+    }
+
+    /**
+     * Sets a group config (KIP-848 and KIP-932) through IncrementalAlterConfigs and the config resource type 32
+     */
+    private function setGroupConfig(string $group, string $name, string $value): void
+    {
+        $answer = $this->exchange(
+            new IncrementalAlterConfigsRequest(
+                [new IncrementalAlterConfigsRequestResource(self::GROUP_CONFIG_RESOURCE, $group, [AlterConfigOp::set($name, $value)])],
+                false,
+                self::CLIENT_ID,
+                $this->correlationId++
+            ),
+            IncrementalAlterConfigsResponse::class
+        );
+        self::assertSame(KafkaException::NO_ERROR, $answer->responses[0]->errorCode ?? null, "{$name} of {$group}");
     }
 
     /**
