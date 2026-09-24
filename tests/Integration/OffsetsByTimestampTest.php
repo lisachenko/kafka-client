@@ -27,6 +27,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\KafkaConsumer;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
+use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -39,6 +40,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV7;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
+use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
  * Verifies the timestamp lookup of the Offsets (ListOffset) API - version 1 of Kafka 0.10.1, and version 2 with
@@ -709,18 +711,11 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         $error = $admin->createTopics([new NewTopic($topic, 1, 1, [], $configs)])[$topic];
         self::assertNull($error, "The topic {$topic} could not be created");
 
-        $deadline = microtime(true) + self::TOPIC_TIMEOUT;
-        do {
-            $metadata = $admin->describeTopics([$topic])[$topic] ?? null;
-            if ($metadata !== null
-                && $metadata->topicErrorCode === KafkaException::NO_ERROR
-                && $metadata->partitions !== []) {
-                return;
-            }
-            usleep(200000);
-        } while (microtime(true) < $deadline);
-
-        self::fail("The topic {$topic} did not get a leader in time");
+        // A KRaft node names the leader of a fresh partition in its metadata before the replica manager serves it
+        // (the 6 NotLeaderForPartition of a produce right after the creation, seen on a slow CI runner): wait until
+        // the leader answers a ListOffsets of the partition with the code 0
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), self::TOPIC_TIMEOUT, 't5-timestamps')
+            ->awaitTopicWithLeaders($topic);
     }
 
     /**

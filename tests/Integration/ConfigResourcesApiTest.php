@@ -114,23 +114,44 @@ final class ConfigResourcesApiTest extends IntegrationTestCase
     }
 
     /**
-     * The client-metrics subscriptions and the group configurations are answered, whatever is there
+     * A group configuration of this test class is listed under the group type 32, and only the asked types come back
+     *
+     * A fresh node has no client-metrics subscription and no group configuration at all, and a list of these two
+     * types is then empty - which asserted nothing on the node of CI. The test writes one group configuration
+     * (`consumer.session.timeout.ms` of a group nobody uses) with the tool of the container, polls the answer until
+     * the controller's write has reached the broker, and removes the configuration again.
      */
     public function testTheSubscriptionsAndTheGroupConfigurationsAreTheirOwnTypes(): void
     {
-        $resources = $this->admin->listConfigResources([
-            ListClientMetricsResourcesRequest::RESOURCE_TYPE_CLIENT_METRICS,
-            ListClientMetricsResourcesRequest::RESOURCE_TYPE_GROUP,
-        ]);
+        $group = 't1-41-config-group-' . bin2hex(random_bytes(6));
+        self::groupConfig($group, '--add-config consumer.session.timeout.ms=45000');
 
-        foreach ($resources as $resource) {
-            self::assertContains(
-                $resource->type,
-                [
+        try {
+            $expected = new ConfigResource(ListClientMetricsResourcesRequest::RESOURCE_TYPE_GROUP, $group);
+            $deadline = microtime(true) + 30.0;
+            do {
+                $resources = $this->admin->listConfigResources([
                     ListClientMetricsResourcesRequest::RESOURCE_TYPE_CLIENT_METRICS,
                     ListClientMetricsResourcesRequest::RESOURCE_TYPE_GROUP,
-                ]
-            );
+                ]);
+                if (in_array($expected, $resources, false)) {
+                    break;
+                }
+                usleep(250000);
+            } while (microtime(true) < $deadline);
+
+            self::assertContainsEquals($expected, $resources, 'the group configuration written for this test');
+            foreach ($resources as $resource) {
+                self::assertContains(
+                    $resource->type,
+                    [
+                        ListClientMetricsResourcesRequest::RESOURCE_TYPE_CLIENT_METRICS,
+                        ListClientMetricsResourcesRequest::RESOURCE_TYPE_GROUP,
+                    ]
+                );
+            }
+        } finally {
+            self::groupConfig($group, '--delete-config consumer.session.timeout.ms');
         }
     }
 
@@ -206,5 +227,27 @@ final class ConfigResourcesApiTest extends IntegrationTestCase
             ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
             ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
         ];
+    }
+
+    /**
+     * Alters the configuration of a group with `kafka-configs.sh` in the container of the node
+     */
+    private static function groupConfig(string $group, string $alteration): void
+    {
+        $container = getenv('KAFKA_CONTAINER');
+        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
+
+        exec(
+            sprintf(
+                'docker exec %s /opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 --alter'
+                . ' --entity-type groups --entity-name %s %s 2>&1',
+                escapeshellarg($container),
+                escapeshellarg($group),
+                $alteration
+            ),
+            $output,
+            $exitCode
+        );
+        self::assertSame(0, $exitCode, "kafka-configs.sh could not alter the group {$group}: " . implode("\n", $output));
     }
 }
