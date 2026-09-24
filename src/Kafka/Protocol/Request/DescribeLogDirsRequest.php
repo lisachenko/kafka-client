@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
 
 /**
- * DescribeLogDirs, version 4: what each disk of one broker holds (ApiKey 35, Kafka 1.0, KIP-113)
+ * DescribeLogDirs, version 5: what each disk of one broker holds (ApiKey 35, Kafka 1.0, KIP-113)
  *
  * <pre>
  *   DescribeLogDirs Request (Version: 0 and 1) => [topics]
@@ -68,10 +68,16 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
  * **Kafka 3.3 added version 4**, and the request did not change either: "Version 4 is the same as version 2 (new
  * fields in response)" of `DescribeLogDirsRequest.json` @ 3.3.2. The higher version asks the broker for the
  * `total_bytes` and `usable_bytes` of KIP-827 - the size and the free space of the **volume** each directory sits
- * on - which is the answer to "will this disk still take the partition" that no earlier version could give. It is
- * the version this client sends; {@see DescribeLogDirsRequestV3} is the same frame for a broker below Kafka 3.3.
+ * on - which is the answer to "will this disk still take the partition" that no earlier version could give.
+ * {@see DescribeLogDirsRequestV3} is the same frame for a broker below Kafka 3.3.
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * **Kafka 4.3 added version 5**, and the request did not change again: "Version 5 is the same as version 2 (new
+ * fields in response)" of `DescribeLogDirsRequest.json` @ 4.3.1. The higher version asks the broker for the
+ * `is_cordoned` flag of KIP-1066 in every directory entry of the answer - whether the directory is listed in the
+ * dynamic per-broker option `cordoned.log.dirs` and so takes no new replica ({@see DescribeLogDirsResponse}).
+ * {@see DescribeLogDirsRequestV4} is the same frame with the version field of Kafka 3.3.
+ *
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 class DescribeLogDirsRequest extends AbstractRequest
 {
@@ -83,7 +89,7 @@ class DescribeLogDirsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The version 2 of Kafka 2.6 is the first flexible one of this api (KIP-482)

@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * are read through {@see \Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV3} - and
  * {@see DescribeLogDirsResponseV2} keeps the frame that has no top-level error code either.
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class DescribeLogDirsResponseV3 extends DescribeLogDirsResponse
 {

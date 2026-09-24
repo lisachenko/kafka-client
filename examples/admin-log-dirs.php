@@ -35,7 +35,7 @@ declare(strict_types=1);
  *   php examples/admin-log-dirs.php my-topic
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/admin-log-dirs.php
  *
- * @see docs/protocol/4.3.md, sections "DescribeLogDirs API (key 35, v0 to v4)" and
+ * @see docs/protocol/4.3.md, sections "DescribeLogDirs API (key 35, v0 to v5)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 

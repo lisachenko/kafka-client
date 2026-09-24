@@ -38,7 +38,13 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * an empty `OptionalLong` there - and for a directory the broker could not measure. Two directories of the same
  * filesystem answer the same two numbers, which is what the two log directories of the node of this line do.
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v4)"
+ * {@see self::$isCordoned} is the flag of KIP-1066 that Kafka 4.3 added to the answer (version 5): `true` for a
+ * directory listed in the dynamic per-broker option `cordoned.log.dirs`, which keeps and serves the replicas it
+ * holds but takes no new one - the `isCordoned()` of the Java `LogDirDescription`. It is `false` for every answer
+ * below the version 5, for a broker whose finalized `metadata.version` is below `4.3-IV0`, and for an offline
+ * directory.
+ *
+ * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class LogDirInfo
 {
@@ -53,6 +59,7 @@ final class LogDirInfo
      * @param array<string, ReplicaInfo> $replicaInfos Replicas in this directory, indexed by `topic-partition`
      * @param int                        $totalBytes   Size of the volume in bytes, -1 when it was not measured
      * @param int                        $usableBytes  Free bytes of the volume, -1 when it was not measured
+     * @param bool                       $isCordoned   Whether the directory is cordoned, i.e. takes no new replica
      */
     public function __construct(
         public readonly string $logDir,
@@ -60,6 +67,7 @@ final class LogDirInfo
         public readonly array $replicaInfos,
         public readonly int $totalBytes = self::UNKNOWN_BYTES,
         public readonly int $usableBytes = self::UNKNOWN_BYTES,
+        public readonly bool $isCordoned = false,
     ) {}
 
     /**
@@ -82,7 +90,8 @@ final class LogDirInfo
                 : KafkaException::fromCode($logDir->errorCode, ['logDir' => $logDir->logDir]),
             $replicaInfos,
             $logDir->totalBytes,
-            $logDir->usableBytes
+            $logDir->usableBytes,
+            $logDir->isCordoned
         );
     }
 
@@ -97,7 +106,7 @@ final class LogDirInfo
     /**
      * Tells whether the broker measured the volume of this directory, i.e. whether the two sizes are real
      *
-     * They are never measured below the version 4 of Kafka 3.3, which is the version this client sends.
+     * They are never measured below the version 4 of Kafka 3.3.
      */
     public function hasVolumeSizes(): bool
     {
