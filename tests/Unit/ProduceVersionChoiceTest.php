@@ -24,20 +24,23 @@ use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV11;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\ClusterFixture;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
 
 /**
- * The version choice of Produce (Kafka 4.0): v12 outside a transaction, v11 inside one, v2 for a message set.
+ * The version choice of Produce (Kafka 4.1): v13 outside a transaction and inside one of the transaction protocol v2,
+ * v11 inside one of the protocol v1, v2 for a message set.
  *
  * `ProduceRequest.json` @ 4.0.0 on version 12: "Note when produce requests are used in transaction, if transaction V2
  * (KIP_890 part 2) is enabled, the produce request will also include the function for a AddPartitionsToTxn call. If
  * V2 is disabled, the client can't use produce request version higher than 11 within a transaction." The choice lives
  * in {@see Client::produceVersion()}, and the cap of a transactional producer is handed to it by
- * {@see Client::produce()}.
+ * {@see Client::produce()}. Version 13 (Kafka 4.1, KIP-516) only names the topics by their ids, so it is sent wherever
+ * version 12 was, and the cap of the protocol v1 stays at 11.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v12)" and "The transaction protocol v2 of KIP-890
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
  *      part 2 (v12)"
  */
 #[CoversClass(Client::class)]
@@ -45,16 +48,17 @@ final class ProduceVersionChoiceTest extends TestCase
 {
     private const string TOPIC = 'orders';
 
-    public function testTheRecordBatchGoesOutAsVersionTwelve(): void
+    public function testTheRecordBatchGoesOutAsVersionThirteen(): void
     {
-        self::assertSame(12, Client::produceVersion(RecordBatch::MAGIC));
+        self::assertSame(13, Client::produceVersion(RecordBatch::MAGIC));
         self::assertSame(ProduceRequest::VERSION, Client::produceVersion(RecordBatch::MAGIC, null));
     }
 
     public function testACapLowersTheVersionOfTheRecordBatch(): void
     {
         self::assertSame(11, Client::produceVersion(RecordBatch::MAGIC, ProduceRequestV11::VERSION));
-        self::assertSame(12, Client::produceVersion(RecordBatch::MAGIC, 99), 'a cap above the table changes nothing');
+        self::assertSame(12, Client::produceVersion(RecordBatch::MAGIC, ProduceRequestV12::VERSION));
+        self::assertSame(13, Client::produceVersion(RecordBatch::MAGIC, 99), 'a cap above the table changes nothing');
         self::assertSame(
             ProduceRequest::BASELINE_VERSION,
             Client::produceVersion(RecordBatch::MAGIC, 1),
@@ -97,7 +101,7 @@ final class ProduceVersionChoiceTest extends TestCase
         self::assertSame(
             [ProduceRequestV11::VERSION],
             $client->produceVersionCaps,
-            'a v12 inside a transaction is the transaction protocol v2, which a producer of the v1 must not send'
+            'a v12 or v13 inside a transaction is the transaction protocol v2, which a producer of the v1 must not send'
         );
     }
 
@@ -117,9 +121,10 @@ final class ProduceVersionChoiceTest extends TestCase
         self::assertSame(11, Client::produceVersion(RecordBatch::MAGIC, $client->produceVersionCaps[0]));
     }
 
-    public function testATransactionalProducerOfTheProtocolV2SendsVersionTwelve(): void
+    public function testATransactionalProducerOfTheProtocolV2SendsVersionThirteen(): void
     {
-        // A coordinator that finalizes `transaction.version` 2 (KIP-890 part 2): the Produce v12 enrols the partition
+        // A coordinator that finalizes `transaction.version` 2 (KIP-890 part 2): the Produce v12 and every version
+        // above it enrols the partition
         $client  = $this->client(2);
         $manager = new TransactionManager($client, 'orders-tx', 30000);
         $manager->initTransactions();
@@ -129,7 +134,7 @@ final class ProduceVersionChoiceTest extends TestCase
 
         self::assertTrue($manager->isTransactionV2Enabled());
         self::assertSame([null], $client->produceVersionCaps, 'no cap');
-        self::assertSame(12, Client::produceVersion(RecordBatch::MAGIC, $client->produceVersionCaps[0]));
+        self::assertSame(13, Client::produceVersion(RecordBatch::MAGIC, $client->produceVersionCaps[0]));
     }
 
     private function client(?int $transactionVersion = null): FakeClient

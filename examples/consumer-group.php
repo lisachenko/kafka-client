@@ -53,6 +53,8 @@ use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -134,9 +136,9 @@ function produceDemoRecords(string $brokerAddress, string $topic, array $configu
     }
 
     $stream = new SocketStream($brokerAddress, $configuration, 5.0);
-    new ProduceRequest([$topic => $topicPartitions], 1, 5000, 'kafka-client-example', 1)->writeTo($stream);
+    new ProduceRequestV12([$topic => $topicPartitions], 1, 5000, 'kafka-client-example', 1)->writeTo($stream);
 
-    foreach (ProduceResponse::unpack($stream)->topics[$topic]->partitions as $partitionId => $partition) {
+    foreach (ProduceResponseV12::unpack($stream)->topics[$topic]->partitions as $partitionId => $partition) {
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode($partition->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
         }

@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * produce request version higher than 11 within a transaction", which is why this version stays the one a
  * transaction of the protocol v1 is written with, see {@see \Protocol\Kafka\Client::produceVersion()}.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v12)" and "The transaction protocol v2 of KIP-890
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
  *      part 2 (v12)"
  */
 final class ProduceRequestV11 extends ProduceRequest

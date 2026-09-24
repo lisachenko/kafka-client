@@ -39,9 +39,11 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV11;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV11;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 
 /**
  * What **Kafka 3.8** adds to the produce path: the abortable transaction error of KIP-890.
@@ -71,7 +73,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV11;
  * suites on the shared node.
  *
  * @see docs/protocol/4.3.md, sections "The abortable transaction error of KIP-890 (v11)", "The transaction protocol
- *      v2 of KIP-890 part 2 (v12)" and "Produce API (key 0, v0 to v12)"
+ *      v2 of KIP-890 part 2 (v12)" and "Produce API (key 0, v0 to v13)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
@@ -143,8 +145,10 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::NO_ERROR, $answer->errorCode);
         self::assertGreaterThanOrEqual(12, $answer->apiVersions[0]->maxVersion, 'the node serves Produce v12 (4.0)');
-        self::assertSame(12, ProduceRequest::VERSION);
-        self::assertSame(12, ProduceResponse::VERSION);
+        self::assertSame(13, ProduceRequest::VERSION, 'Produce v13 of Kafka 4.1 names the topics by id');
+        self::assertSame(13, ProduceResponse::VERSION);
+        self::assertSame(12, ProduceRequestV12::VERSION);
+        self::assertSame(12, ProduceResponseV12::VERSION);
         self::assertSame(11, ProduceRequestV11::VERSION);
         self::assertSame(11, ProduceResponseV11::VERSION);
         self::assertSame(10, ProduceRequestV10::VERSION);
@@ -175,8 +179,8 @@ final class TransactionAbortableProduceApiTest extends IntegrationTestCase
 
         try {
             $twelve    = $this->send(
-                $this->transactionalRequest(ProduceRequest::class, 3886, $transactionalId, $idAndEpoch),
-                ProduceResponse::class
+                $this->transactionalRequest(ProduceRequestV12::class, 3886, $transactionalId, $idAndEpoch),
+                ProduceResponseV12::class
             );
             $partition = $twelve->topics[$this->topic]->partitions[self::UNVERIFIED_PARTITION];
 

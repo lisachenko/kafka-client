@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * What version 12 changes lives entirely in the request, and only for a transactional batch: see
  * {@see ProduceRequestV11}.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v12)" and "The transaction protocol v2 of KIP-890
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
  *      part 2 (v12)"
  */
 final class ProduceResponseV11 extends ProduceResponse

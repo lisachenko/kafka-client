@@ -52,6 +52,7 @@ use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV11;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
@@ -61,6 +62,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV11;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV5;
@@ -82,7 +84,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * batches of the message format v2, through the lowest version the node serves, 3, and the refusal of the removed
  * versions is measured instead of sent as if they were served.
  *
- * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v12)"
+ * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v13)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceRequestV11::class)]
@@ -411,9 +413,9 @@ final class ProduceApiTest extends IntegrationTestCase
         new ProduceRequestV11([$this->topic => [0 => $batch]], 1, self::PRODUCE_TIMEOUT_MS, self::CLIENT_ID, 58)
             ->writeTo($stream);
         $eleven = ProduceResponseV11::unpack($stream);
-        new ProduceRequest([$this->topic => [0 => $batch]], 1, self::PRODUCE_TIMEOUT_MS, self::CLIENT_ID, 58)
+        new ProduceRequestV12([$this->topic => [0 => $batch]], 1, self::PRODUCE_TIMEOUT_MS, self::CLIENT_ID, 58)
             ->writeTo($stream);
-        $twelve = ProduceResponse::unpack($stream);
+        $twelve = ProduceResponseV12::unpack($stream);
 
         self::assertSame(12, $twelve::VERSION);
         self::assertSame(0, $eleven->topics[$this->topic]->partitions[0]->baseOffset);
@@ -497,7 +499,7 @@ final class ProduceApiTest extends IntegrationTestCase
         // open, which is what every version from 3 up does here.
         $stream = $this->connect();
 
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$this->topic => [0 => MessageSet::fromRecords([new Record('a message set')], 0, Message::MAGIC_V1)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -505,7 +507,7 @@ final class ProduceApiTest extends IntegrationTestCase
             59
         )->writeTo($stream);
 
-        $response  = ProduceResponse::unpack($stream);
+        $response  = ProduceResponseV12::unpack($stream);
         $partition = $response->topics[$this->topic]->partitions[0];
 
         self::assertSame(59, $response->getCorrelationId());
@@ -634,7 +636,7 @@ final class ProduceApiTest extends IntegrationTestCase
             $records[] = new Record($value)->withCreateTime(self::currentTimestampMs());
         }
 
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$this->topic => [$partition => RecordBatch::fromRecords($records)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -642,7 +644,7 @@ final class ProduceApiTest extends IntegrationTestCase
             $correlationId
         )->writeTo($stream);
 
-        return ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition];
+        return ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[$partition];
     }
 
     /**

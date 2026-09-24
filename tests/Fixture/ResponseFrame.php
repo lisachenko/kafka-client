@@ -260,7 +260,7 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Produce response (api key 0, v5 - the version this client sends for the message format v2)
+     * Builds a Produce response (api key 0, v13 - the answer of `ProduceRequest`, its topics named by id)
      *
      * The frames of the versions 2, 3 and 4 are one and the same (`PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3`
      * is `PRODUCE_RESPONSE_V2` @ 1.1.1); version 5 (Kafka 1.0) appended `LogStartOffset` to every partition entry.
@@ -275,6 +275,8 @@ final class ResponseFrame
      *        for a topic that keeps the `CreateTime` of the producer
      * @param array<string, array<int, int>>             $logStartOffsets Log start offset of a partition, 0 by
      *        default as on a log nothing was deleted from
+     * @param array<string, string>                      $topicIds Id a topic is answered under, the 16 raw bytes of
+     *        its uuid; the stable id of {@see self::topicIdOf()} by default, the one `metadata()` names it with
      */
     public static function produce(
         int $correlationId,
@@ -282,11 +284,34 @@ final class ResponseFrame
         int $throttleTime = 0,
         int $logAppendTime = -1,
         array $logStartOffsets = [],
-        array $recordErrors = []
+        array $recordErrors = [],
+        array $topicIds = []
     ): string {
         // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it, and
         // version 9 (Kafka 2.8, KIP-482) writes the whole frame with the compact types and the tagged-field
-        // sections of a flexible version, behind a response header v1
+        // sections of a flexible version, behind a response header v1. Version 13 (Kafka 4.1, KIP-516) names
+        // every topic by its id, the stable id `topicIdOf()` gives the topic in the Metadata answer of `metadata()`
+        $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets, $recordErrors, true, $topicIds)
+            . pack('N', $throttleTime) . self::tagBuffer();
+
+        return self::flexible($correlationId, $body);
+    }
+
+    /**
+     * Builds a Produce response of the versions 9 to 12, i.e. the answer of `produce()` naming its topics by name
+     *
+     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
+     * @param array<string, array<int, int>>             $logStartOffsets Log start offset of a partition
+     * @param array<string, array<int, array{0: array<int, string|null>, 1: string|null}>> $recordErrors
+     */
+    public static function produceV12(
+        int $correlationId,
+        array $topics,
+        int $throttleTime = 0,
+        int $logAppendTime = -1,
+        array $logStartOffsets = [],
+        array $recordErrors = []
+    ): string {
         $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets, $recordErrors, true)
             . pack('N', $throttleTime) . self::tagBuffer();
 
@@ -333,13 +358,17 @@ final class ResponseFrame
         ?int $logAppendTime,
         ?array $logStartOffsets,
         ?array $recordErrors = null,
-        bool $flexible = false
+        bool $flexible = false,
+        ?array $topicIds = null
     ): string {
         $body = $flexible ? self::compactCount(count($topics)) : pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= $flexible
-                ? self::compactString((string) $topic) . self::compactCount(count($partitions))
-                : self::string((string) $topic) . pack('N', count($partitions));
+            $body .= match (true) {
+                $topicIds !== null => ($topicIds[$topic] ?? self::topicIdOf((string) $topic))
+                    . self::compactCount(count($partitions)),
+                $flexible  => self::compactString((string) $topic) . self::compactCount(count($partitions)),
+                default    => self::string((string) $topic) . pack('N', count($partitions)),
+            };
             foreach ($partitions as $partitionId => [$errorCode, $baseOffset]) {
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $baseOffset);
                 if ($logAppendTime !== null) {

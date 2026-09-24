@@ -29,8 +29,8 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -144,7 +144,7 @@ final class SslTransportTest extends IntegrationTestCase
             static fn(array $record): Record => new Record($record[1], $record[0])->withCreateTime($now),
             $records
         ));
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$topic => [0 => $batch]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -152,7 +152,7 @@ final class SslTransportTest extends IntegrationTestCase
             201
         )->writeTo($stream);
 
-        $produced = ProduceResponse::unpack($stream);
+        $produced = ProduceResponseV12::unpack($stream);
         self::assertSame(201, $produced->getCorrelationId());
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->baseOffset);

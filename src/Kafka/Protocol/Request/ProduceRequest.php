@@ -17,13 +17,16 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
+use Protocol\Kafka\Protocol\Data\ProduceRequestTopicV12;
 
 /**
- * The produce API, version 12
+ * The produce API, version 13
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -128,8 +131,8 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * coordinator has not verified is answered **120** at this version and **48** with the message "Partition was
  * not added to the transaction" at version 10, see the section of the document.
  *
- * **Version 12 (Kafka 4.0, KIP-890 part 2) sends the very same body a ninth time**, which is the version this class
- * sends. `ProduceRequest.json` @ 4.0.0 declares no field of it - "Version 12 is the same as version 11 (KIP-890)"
+ * **Version 12 (Kafka 4.0, KIP-890 part 2) sends the very same body a ninth time**; {@see ProduceRequestV12} keeps
+ * it. `ProduceRequest.json` @ 4.0.0 declares no field of it - "Version 12 is the same as version 11 (KIP-890)"
  * - and what the number changes is the meaning of a **transactional** batch on a node that finalizes the feature
  * `transaction.version` 2 (the transaction protocol v2): "if transaction V2 (KIP_890 part 2) is enabled, the
  * produce request will also include the function for a AddPartitionsToTxn call. If V2 is disabled, the client
@@ -144,7 +147,15 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * otherwise" - and closes the connection on a frame of them. The classes of those versions stay, for the wire
  * vectors of the lines below and for a peer of Kafka 3.x.
  *
- * {@see ProduceRequestV11}, {@see ProduceRequestV10}, {@see ProduceRequestV9}, {@see ProduceRequestV8}, {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
+ * **Version 13 (Kafka 4.1, KIP-516) names every topic by its id**, and this class is version 13:
+ * `ProduceRequest.json` @ 4.1.0, "Version 13 replaces topic names with topic IDs (KIP-516). May return
+ * UNKNOWN_TOPIC_ID error code" - the `Name` of a topic entry is `"versions": "0-12"`, the new `TopicId` `"13+"`. So
+ * a client can not produce to a topic whose id it does not know; the `$topicIds` of the constructor are where it
+ * states them ({@see \Protocol\Kafka\Common\Cluster::topicIdsOf()} is where it learns them), and a version 13
+ * request without the id of one of its topics is refused before it is built, with
+ * {@see UnknownTopicIdException}. The partitions and the record sets did not change.
+ *
+ * {@see ProduceRequestV12}, {@see ProduceRequestV11}, {@see ProduceRequestV10}, {@see ProduceRequestV9}, {@see ProduceRequestV8}, {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
  * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
  * them the legacy message sets - available.
  *
@@ -153,8 +164,9 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v12)", "The abortable transaction error of
- *      KIP-890 (v11)" and "The transaction protocol v2 of KIP-890 part 2 (v12)"
+ * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)", "The abortable transaction error of
+ *      KIP-890 (v11)", "The transaction protocol v2 of KIP-890 part 2 (v12)" and "The topic ids of the produce path
+ *      (v13, KIP-516)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -166,7 +178,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 12;
+    public const int VERSION = 13;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -203,11 +215,20 @@ class ProduceRequest extends AbstractRequest
     public const int ACKS_NONE = 0;
 
     /**
-     * Record sets to append, indexed by the topic name
+     * Record sets to append, indexed by the topic name - a list from version 13 on, whose entries carry no name
      *
-     * @var array<string, ProduceRequestTopic>
+     * @var array<array-key, ProduceRequestTopic>
      */
     public array $topicMessages = [];
+
+    /**
+     * Id of every topic this request names, as topic name => the 16 raw bytes of its uuid (KIP-516)
+     *
+     * Version 13 names every topic by its id and by nothing else; every version below it ignores the map.
+     *
+     * @var array<string, string>
+     */
+    protected readonly array $topicIds;
 
     /**
      * @param array<string, array<int, string|\Stringable>> $topicPartitionRecords Encoded record sets in the format
@@ -240,15 +261,27 @@ class ProduceRequest extends AbstractRequest
          * `transactional` attribute bit is set without one; a plain or a merely idempotent producer leaves it null.
          * The field exists since version 3 (Kafka 0.11.0, KIP-98).
          */
-        protected readonly ?string $transactionalId = null
+        protected readonly ?string $transactionalId = null,
+        /**
+         * Id of every topic named above, as name => the 16 raw bytes of its uuid; **version 13 needs one per topic**
+         * (KIP-516) and throws {@see UnknownTopicIdException} without it, every lower version ignores the map.
+         */
+        array $topicIds = []
     ) {
+        $this->topicIds = $topicIds;
+        $topicClass     = static::topicClass();
         foreach ($topicPartitionRecords as $topic => $partitionRecordSets) {
             $partitions = [];
             foreach ($partitionRecordSets as $partition => $recordSet) {
                 $partitions[$partition] = new ProduceRequestPartition($partition, $recordSet);
             }
 
-            $this->topicMessages[$topic] = new ProduceRequestTopic((string) $topic, $partitions);
+            if (static::VERSION >= 13) {
+                // A version 13 entry carries no name at all, so the list it travels in is the only honest shape
+                $this->topicMessages[] = new $topicClass((string) $topic, $partitions, self::idOf($topicIds, (string) $topic));
+            } else {
+                $this->topicMessages[$topic] = new $topicClass((string) $topic, $partitions);
+            }
         }
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
@@ -266,9 +299,58 @@ class ProduceRequest extends AbstractRequest
         }
         $body['requiredAcks']  = BinarySchema::TYPE_INT16;
         $body['timeout']       = BinarySchema::TYPE_INT32;
-        $body['topicMessages'] = ['topic' => ProduceRequestTopic::class];
+        // From version 13 the entries carry no name, so there is no field to index the array by
+        $body['topicMessages'] = static::VERSION >= 13
+            ? [static::topicClass()]
+            : ['topic' => static::topicClass()];
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this class sends
+     *
+     * @return class-string<ProduceRequestTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 13 ? ProduceRequestTopic::class : ProduceRequestTopicV12::class;
+    }
+
+    /**
+     * Returns the id of a topic from the map of the caller
+     *
+     * A version below 13 names its topics by name and never looks at the map; a version 13 frame can not name a
+     * topic at all without its id, and a client that does not know it refreshes its metadata instead of guessing.
+     *
+     * @param array<string, string> $topicIds Id of every topic, as name => the 16 raw bytes of its uuid
+     *
+     * @throws UnknownTopicIdException If a version 13 request names a topic whose id the caller did not state
+     */
+    private static function idOf(array $topicIds, string $topic): string
+    {
+        $topicId = $topicIds[$topic] ?? Uuid::ZERO;
+        if (Uuid::isZero($topicId)) {
+            throw new UnknownTopicIdException(
+                [
+                    'error' => 'A Produce request of version 13 names its topics by id (KIP-516), and this client'
+                        . ' does not know the id of this one yet',
+                    'topic' => $topic,
+                ]
+            );
+        }
+
+        return $topicId;
+    }
+
+    /**
+     * Returns the id of every topic this request names, as topic name => the 16 raw bytes of its uuid
+     *
+     * @return array<string, string>
+     */
+    public function getTopicIds(): array
+    {
+        return $this->topicIds;
     }
 
     /**

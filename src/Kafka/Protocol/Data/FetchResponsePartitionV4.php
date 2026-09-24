@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * that {@see FetchResponsePartition::getScheme()} follows; `$logStartOffset` keeps its default of -1, "the broker
  * reported none".
  *
- * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v17)"
+ * @see docs/protocol/4.3.md, section "Fetch API (key 1, v0 to v18)"
  */
 final class FetchResponsePartitionV4 extends FetchResponsePartition
 {

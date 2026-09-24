@@ -26,8 +26,10 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV9;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV9;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV6;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV6;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -100,7 +102,7 @@ final class ZstdCodecTest extends IntegrationTestCase
     {
         // The records are produced uncompressed; the topic configuration is what turns them into a zstd batch,
         // because a `compression.type` other than `producer` makes the broker recompress on append
-        $this->produce($this->zstdTopic, 'zstd-value', ProduceRequest::class, 1000);
+        $this->produce($this->zstdTopic, 'zstd-value', ProduceRequestV12::class, 1000);
 
         $served = $this->fetch($this->zstdTopic, FetchRequestV9::class, FetchResponseV9::class, 1001);
 
@@ -120,7 +122,7 @@ final class ZstdCodecTest extends IntegrationTestCase
 
     public function testTheSamePartitionIsServedToAFetchOfVersionTen(): void
     {
-        $this->produce($this->zstdTopic, 'zstd-value', ProduceRequest::class, 1010);
+        $this->produce($this->zstdTopic, 'zstd-value', ProduceRequestV12::class, 1010);
 
         $served = $this->fetch($this->zstdTopic, FetchRequest::class, FetchResponse::class, 1011);
 
@@ -162,7 +164,7 @@ final class ZstdCodecTest extends IntegrationTestCase
         self::assertSame(-1, $refused->baseOffset);
         self::assertSame(-1, $refused->logStartOffset);
 
-        $accepted = $this->produceBatch($this->plainTopic, $zstdBatch, ProduceRequest::class, ProduceResponse::class, 1021);
+        $accepted = $this->produceBatch($this->plainTopic, $zstdBatch, ProduceRequestV12::class, ProduceResponseV12::class, 1021);
 
         self::assertSame(KafkaException::NO_ERROR, $accepted->errorCode, 'version 7 is the version that may');
         self::assertGreaterThanOrEqual(0, $accepted->baseOffset);
@@ -175,8 +177,8 @@ final class ZstdCodecTest extends IntegrationTestCase
         $this->produceBatch(
             $this->plainTopic,
             $this->zstdBatchOfTheBroker(),
-            ProduceRequest::class,
-            ProduceResponse::class,
+            ProduceRequestV12::class,
+            ProduceResponseV12::class,
             1030
         );
 
@@ -198,7 +200,7 @@ final class ZstdCodecTest extends IntegrationTestCase
      */
     private function zstdBatchOfTheBroker(): string
     {
-        $this->produce($this->zstdTopic, 'zstd-value', ProduceRequest::class, 1040);
+        $this->produce($this->zstdTopic, 'zstd-value', ProduceRequestV12::class, 1040);
 
         $partition = $this->fetch($this->zstdTopic, FetchRequest::class, FetchResponse::class, 1041);
         self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
@@ -220,7 +222,7 @@ final class ZstdCodecTest extends IntegrationTestCase
             [new Record($value, null, 0, null, (int) round(microtime(true) * 1000))]
         )->toBuffer();
 
-        $partition = $this->produceBatch($topic, $batch, $requestClass, ProduceResponse::class, $correlationId);
+        $partition = $this->produceBatch($topic, $batch, $requestClass, ProduceResponseV12::class, $correlationId);
         self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, "the record was not appended to {$topic}");
     }
 
