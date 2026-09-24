@@ -305,7 +305,12 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
 
         $described = $this->admin()->describeConsumerGroup($groupId)->members;
 
-        self::assertSame([$member, $classic], array_keys($described), 'both are members of the group');
+        $expected = [$member, $classic];
+        sort($expected);
+        $members = array_map(strval(...), array_keys($described));
+        sort($members);
+
+        self::assertSame($expected, $members, 'both are members of the group, in no particular order');
         self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CONSUMER, $described[$member]->memberType);
         self::assertTrue($described[$member]->upgraded());
         self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CLASSIC, $described[$classic]->memberType);
@@ -321,7 +326,10 @@ final class ConsumerGroupDescribeApiTest extends IntegrationTestCase
         new ConsumerGroupDescribeRequestV0([$groupId], false, self::CLIENT_ID, 70)->writeTo($stream);
         $versionZero = ConsumerGroupDescribeResponseV0::unpack($stream)->groups[$groupId];
 
-        self::assertSame([$member, $classic], array_keys($versionZero->members));
+        $versionZeroMembers = array_map(strval(...), array_keys($versionZero->members));
+        sort($versionZeroMembers);
+
+        self::assertSame($expected, $versionZeroMembers);
         foreach ($versionZero->members as $entry) {
             self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_UNKNOWN, $entry->memberType);
             self::assertNull(ConsumerGroupMemberDescription::fromMember($entry)->upgraded());
