@@ -49,9 +49,10 @@ use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
-use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
-use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
-use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV9;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV9;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
@@ -132,7 +133,7 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         )->writeTo($stream);
         $throttleTimes['offsets.v2'] = OffsetsResponse::unpack($stream)->throttleTimeMs;
 
-        new OffsetCommitRequest(
+        new OffsetCommitRequestV9(
             $groupId,
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
@@ -141,11 +142,11 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
             self::CLIENT_ID,
             102
         )->writeTo($stream);
-        $commit                           = OffsetCommitResponse::unpack($stream);
+        $commit                           = OffsetCommitResponseV9::unpack($stream);
         $throttleTimes['offsetcommit.v3'] = $commit->throttleTimeMs;
 
-        new OffsetFetchRequest($groupId, [$topic => [0]], self::CLIENT_ID, 103)->writeTo($stream);
-        $fetch                           = OffsetFetchResponse::unpack($stream);
+        new OffsetFetchRequestV9($groupId, [$topic => [0]], self::CLIENT_ID, 103)->writeTo($stream);
+        $fetch                           = OffsetFetchResponseV9::unpack($stream);
         $throttleTimes['offsetfetch.v3'] = $fetch->throttleTimeMs;
 
         new ListGroupsRequest(self::CLIENT_ID, 104)->writeTo($stream);

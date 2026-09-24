@@ -46,7 +46,8 @@ use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
-use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV9;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -328,7 +329,7 @@ final class StaticMembershipApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::FENCED_INSTANCE_ID, SyncGroupResponse::unpack($stream)->errorCode);
 
-        new OffsetCommitRequest(
+        new OffsetCommitRequestV9(
             $groupId,
             $first->generationId,
             $first->memberId,
@@ -341,7 +342,7 @@ final class StaticMembershipApiTest extends IntegrationTestCase
 
         self::assertSame(
             KafkaException::FENCED_INSTANCE_ID,
-            OffsetCommitResponse::unpack($stream)->topics[$this->topic]->partitions[0]->errorCode,
+            OffsetCommitResponseV9::unpack($stream)->topics[$this->topic]->partitions[0]->errorCode,
             'the commit reports the code per partition, as every error of that api does'
         );
     }
