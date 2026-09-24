@@ -30,8 +30,8 @@ use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
 use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV1;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsRequest;
 use Protocol\Kafka\Protocol\Request\GetTelemetrySubscriptionsResponse;
-use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequest;
-use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponse;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequestV0;
+use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponseV0;
 use Protocol\Kafka\Protocol\Request\PushTelemetryRequest;
 use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
 
@@ -56,8 +56,8 @@ use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
 #[CoversClass(GetTelemetrySubscriptionsResponse::class)]
 #[CoversClass(PushTelemetryRequest::class)]
 #[CoversClass(PushTelemetryResponse::class)]
-#[CoversClass(ListClientMetricsResourcesRequest::class)]
-#[CoversClass(ListClientMetricsResourcesResponse::class)]
+#[CoversClass(ListClientMetricsResourcesRequestV0::class)]
+#[CoversClass(ListClientMetricsResourcesResponseV0::class)]
 #[CoversClass(ClientMetricsResource::class)]
 final class ClientMetricsAndEndpointTypeTest extends TestCase
 {
@@ -323,11 +323,11 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
     }
 
     /**
-     * ListClientMetricsResources is the one request of this protocol without a body
+     * ListClientMetricsResources v0 is the one request of this protocol without a body (v1 of Kafka 4.1 has one)
      */
     public function testTheResourceListRequestHasNoBodyAtAll(): void
     {
-        $request = new ListClientMetricsResourcesRequest('test', 9);
+        $request = new ListClientMetricsResourcesRequestV0('test', 9);
         $header  = bin2hex((string) $request);
 
         self::assertSame(ApiKeys::LIST_CLIENT_METRICS_RESOURCES, $request->getApiKey());
@@ -340,7 +340,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
      */
     public function testTheResourceListAnswersNamesOnly(): void
     {
-        $response = ListClientMetricsResourcesResponse::unpack(
+        $response = ListClientMetricsResourcesResponseV0::unpack(
             new StringStream((string) hex2bin(self::RESOURCES_RESPONSE_HEX))
         );
 
@@ -349,7 +349,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
         self::assertSame('t1-37-metrics', $response->clientMetricsResources['t1-37-metrics']->name);
         self::assertSame(self::RESOURCES_RESPONSE_HEX, bin2hex((string) $response));
 
-        $empty = ListClientMetricsResourcesResponse::unpack(
+        $empty = ListClientMetricsResourcesResponseV0::unpack(
             new StringStream((string) hex2bin('0000000d00000e7e000000000000000100'))
         );
 

@@ -1,8 +1,8 @@
 {
     "api": "list-transactions",
     "apiKey": 66,
-    "section": "ListTransactions API (key 66, v0 and v1)",
-    "description": "Wire vectors of the ListTransactions API (key 66, v0 and v1), replayed by tests/Compliance.",
+    "section": "ListTransactions API (key 66, v0 to v2)",
+    "description": "Wire vectors of the ListTransactions API (key 66, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "listtransactions.request.v0",
@@ -202,7 +202,7 @@
         {
             "id": "listtransactions.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "ListTransactions request **v1** (Kafka 3.8, KIP-994) bounded by one producer id, with the duration filter at its default **-1**: the version 0 body plus eight bytes, and those eight bytes mean \"every transaction, whatever its age\".",
@@ -224,7 +224,7 @@
         {
             "id": "listtransactions.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The open transaction of that producer id, `Ongoing`.",
@@ -248,7 +248,7 @@
         {
             "id": "listtransactions.request.v1.duration",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The same listing with the duration filter **0**: every transaction that started more than zero milliseconds ago, which is every transaction that has started at all.",
@@ -270,7 +270,7 @@
         {
             "id": "listtransactions.response.v1.duration",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The same answer as with -1 - the coordinator drops an entry only while `now - txnStartTimestamp` is not greater than the filter.",
@@ -294,7 +294,7 @@
         {
             "id": "listtransactions.request.v1.duration-nothing",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The same listing with the duration filter **60000**: only a transaction that has been running for a minute.",
@@ -316,7 +316,7 @@
         {
             "id": "listtransactions.response.v1.duration-nothing",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The empty listing of a filter that matches nothing - fourteen bytes, the error code 0 and two empty arrays.",
@@ -334,7 +334,7 @@
         {
             "id": "listtransactions.request.v1.never-started",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The same minute-old filter, asked for a producer id whose transactional id has only ever run `InitProducerId`.",
@@ -356,7 +356,7 @@
         {
             "id": "listtransactions.response.v1.never-started",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The trap of the filter: the id IS listed, `Empty`. Its `txnStartTimestamp` is the **-1** of \"no transaction has ever started\", and `now - (-1)` is greater than every filter a client can send, so an id that never began a transaction passes every duration filter there is.",
@@ -372,6 +372,227 @@
                     "t1-38-txn-empty": {
                         "transactionalId": "t1-38-txn-empty",
                         "producerId": 71,
+                        "transactionState": "Empty"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listtransactions.request.v2.pattern",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "ListTransactions **v2** (Kafka 4.1, KIP-1152): the version 1 frame plus the nullable `transactional_id_pattern` `t1-41-vectors-.*`, with no other filter - the two empty arrays and the duration -1.",
+            "hex": "00000039004200020000119500126b61666b612d636c69656e742d74312d3431000101ffffffffffffffff1174312d34312d766563746f72732d2e2a00",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 66,
+                "apiVersion": 2,
+                "correlationId": 4501,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [],
+                "durationFilter": -1,
+                "transactionalIdPattern": "t1-41-vectors-.*"
+            }
+        },
+        {
+            "id": "listtransactions.response.v2.pattern",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The two transactional ids of the capture, `t1-41-vectors-a` and `t1-41-vectors-b`, each after one `InitProducerId` and therefore `Empty`, and no other id of the node. The answer is the frame of the versions 0 and 1.",
+            "hex": "0000004c000011950000000000000001031074312d34312d766563746f72732d61000000000000005506456d707479001074312d34312d766563746f72732d62000000000000005606456d7074790000",
+            "fields": {
+                "messageSize": 76,
+                "correlationId": 4501,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": {
+                    "t1-41-vectors-a": {
+                        "transactionalId": "t1-41-vectors-a",
+                        "producerId": 85,
+                        "transactionState": "Empty"
+                    },
+                    "t1-41-vectors-b": {
+                        "transactionalId": "t1-41-vectors-b",
+                        "producerId": 86,
+                        "transactionState": "Empty"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listtransactions.request.v2.pattern-whole-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The pattern `t1-41-vectors` without a wildcard: the prefix of both ids.",
+            "hex": "00000036004200020000119600126b61666b612d636c69656e742d74312d3431000101ffffffffffffffff0e74312d34312d766563746f727300",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 66,
+                "apiVersion": 2,
+                "correlationId": 4502,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [],
+                "durationFilter": -1,
+                "transactionalIdPattern": "t1-41-vectors"
+            }
+        },
+        {
+            "id": "listtransactions.response.v2.pattern-whole-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "An empty list with the code 0: `TransactionStateManager.listTransactionStates` @ 4.1.0 asks `matcher(id).matches()`, so the pattern has to match the **whole** id, not a part of it.",
+            "hex": "0000000e0000119600000000000000010100",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 4502,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": []
+            }
+        },
+        {
+            "id": "listtransactions.request.v2.invalid-pattern",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The pattern `t1-41-(vectors`, whose group is never closed.",
+            "hex": "00000037004200020000119700126b61666b612d636c69656e742d74312d3431000101ffffffffffffffff0f74312d34312d28766563746f727300",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 66,
+                "apiVersion": 2,
+                "correlationId": 4503,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [],
+                "durationFilter": -1,
+                "transactionalIdPattern": "t1-41-(vectors"
+            }
+        },
+        {
+            "id": "listtransactions.response.v2.invalid-pattern",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The top-level **128** (`InvalidRegularExpression`, Kafka 4.0) with an empty list - \"This API can return InvalidRegularExpression (KIP-1152)\" says `ListTransactionsResponse.json` @ 4.1.0. The answer has no field for the message the coordinator builds (`Transaction ID pattern ... is not a valid regular expression`).",
+            "hex": "0000000e0000119700000000000080010100",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 4503,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 128,
+                "unknownStateFilters": [],
+                "transactionStates": []
+            }
+        },
+        {
+            "id": "listtransactions.request.v2.no-pattern",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "A version 2 request without a pattern - the compact null `00` - bounded by the producer id of `t1-41-vectors-a` instead.",
+            "hex": "00000031004200020000119800126b61666b612d636c69656e742d74312d34310001020000000000000055ffffffffffffffff0000",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 66,
+                "apiVersion": 2,
+                "correlationId": 4504,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [
+                    85
+                ],
+                "durationFilter": -1,
+                "transactionalIdPattern": null
+            }
+        },
+        {
+            "id": "listtransactions.response.v2.no-pattern",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The one id of that producer.",
+            "hex": "0000002d000011980000000000000001021074312d34312d766563746f72732d61000000000000005506456d7074790000",
+            "fields": {
+                "messageSize": 45,
+                "correlationId": 4504,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": {
+                    "t1-41-vectors-a": {
+                        "transactionalId": "t1-41-vectors-a",
+                        "producerId": 85,
+                        "transactionState": "Empty"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listtransactions.request.v1.no-pattern",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The same question at **version 1**, the frame of `ListTransactionsRequestV1`: one byte shorter, because the version has no field for the pattern - the caller named `t1-41-ignored`, and it never reached the wire.",
+            "hex": "00000030004200010000119900126b61666b612d636c69656e742d74312d34310001020000000000000055ffffffffffffffff00",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 66,
+                "apiVersion": 1,
+                "correlationId": 4505,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "stateFilters": [],
+                "producerIdFilters": [
+                    85
+                ],
+                "durationFilter": -1
+            }
+        },
+        {
+            "id": "listtransactions.response.v1.no-pattern",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListTransactionsResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The same answer, byte for byte but the correlation id: KIP-1152 changed what the coordinator selects, not what it writes.",
+            "hex": "0000002d000011990000000000000001021074312d34312d766563746f72732d61000000000000005506456d7074790000",
+            "fields": {
+                "messageSize": 45,
+                "correlationId": 4505,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "unknownStateFilters": [],
+                "transactionStates": {
+                    "t1-41-vectors-a": {
+                        "transactionalId": "t1-41-vectors-a",
+                        "producerId": 85,
                         "transactionState": "Empty"
                     }
                 }

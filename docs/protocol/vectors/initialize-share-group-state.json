@@ -1,0 +1,49 @@
+{
+    "api": "initialize-share-group-state",
+    "apiKey": 83,
+    "section": "InitializeShareGroupState API (key 83, v0)",
+    "description": "Wire vectors of the InitializeShareGroupState API (key 83, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "initializesharegroupstate.request.v0.no-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitializeShareGroupStateRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "InitializeShareGroupState **v0** (key 83, Kafka 4.1, KIP-932) for the share group `t1-41-no-such-share-group`, which does not exist, with one topic id and **no partition** - a frame that can initialize nothing.",
+            "hex": "0000004b005300000000125d00126b61666b612d636c69656e742d74312d3431001a74312d34312d6e6f2d737563682d73686172652d67726f7570021d5d10c01ac6490d8b5b1faa8c75c66c010000",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 83,
+                "apiVersion": 0,
+                "correlationId": 4701,
+                "clientId": "kafka-client-t1-41",
+                "headerTaggedFields": [],
+                "groupId": "t1-41-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "1d5d10c01ac6490d8b5b1faa8c75c66c"
+                        },
+                        "partitions": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "initializesharegroupstate.response.v0.no-partition",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitializeShareGroupStateResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "An empty result array and nothing else: seven bytes behind the size field. The answer of these apis has neither a throttle time nor a top-level error, and `ShareCoordinatorService` @ 4.3.1 answers a topic without a partition before it looks up a key.",
+            "hex": "000000070000125d000100",
+            "fields": {
+                "messageSize": 7,
+                "correlationId": 4701,
+                "headerTaggedFields": [],
+                "results": []
+            }
+        }
+    ]
+}
