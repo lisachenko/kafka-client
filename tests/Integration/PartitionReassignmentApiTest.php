@@ -53,7 +53,7 @@ use Throwable;
  * null topic array**: that would ask about - or reassign - the partitions of every other suite on the shared
  * container.
  *
- * @see docs/protocol/4.3.md, sections "AlterPartitionReassignments API (key 45, v0)" and
+ * @see docs/protocol/4.3.md, sections "AlterPartitionReassignments API (key 45, v0 and v1)" and
  *      "ListPartitionReassignments API (key 46, v0)"
  */
 #[CoversClass(AdminClient::class)]
@@ -264,6 +264,75 @@ final class PartitionReassignmentApiTest extends IntegrationTestCase
             $this->admin->listPartitionReassignments([]),
             'and the empty topic array asks about nothing at all'
         );
+    }
+
+    /**
+     * Kafka 4.1 (version 1): a target of the same size is accepted with `allow_replication_factor_change` false
+     */
+    public function testTheReplicationFactorFlagAcceptsATargetOfTheSameSize(): void
+    {
+        $topic    = $this->topic();
+        $brokerId = array_key_first($this->admin->findAllBrokers());
+
+        $result = $this->admin->alterPartitionReassignments(
+            [$topic => [1 => new NewPartitionReassignment([$brokerId])]],
+            30000,
+            false
+        );
+
+        self::assertSame([$topic => [1 => null]], $result);
+    }
+
+    /**
+     * Kafka 4.1 (version 1): the change of the replication factor the flag forbids is the 39 on a one-node cluster
+     *
+     * `ReplicationControlManager.changePartitionReassignment()` @ 4.3.1 validates the replica list before it
+     * compares its size with the current one, so a second replica - which on one node can only be a broker the
+     * cluster does not have - is refused by the validation, and the 38 `InvalidReplicationFactor` of the flag needs
+     * a cluster of two brokers.
+     */
+    public function testAReplicationFactorChangeIsRefusedByTheReplicaValidationFirstOnOneNode(): void
+    {
+        $topic    = $this->topic();
+        $brokerId = array_key_first($this->admin->findAllBrokers());
+
+        foreach ([false, true] as $allowReplicationFactorChange) {
+            $error = $this->admin->alterPartitionReassignments(
+                [$topic => [1 => new NewPartitionReassignment([$brokerId, self::UNKNOWN_BROKER_ID])]],
+                30000,
+                $allowReplicationFactorChange
+            )[$topic][1];
+
+            self::assertInstanceOf(InvalidReplicaAssignmentException::class, $error);
+            self::assertStringContainsString(
+                'includes broker ' . self::UNKNOWN_BROKER_ID . ', but no such broker is registered.',
+                (string) $error->getContext()['error']
+            );
+        }
+    }
+
+    /**
+     * Kafka 4.1 (version 1): the answer repeats the flag of the request behind the throttle time
+     */
+    public function testTheVersionOneAnswerRepeatsTheFlagOfTheRequest(): void
+    {
+        $topic    = $this->topic();
+        $brokerId = array_key_first($this->admin->findAllBrokers());
+
+        foreach ([false, true] as $index => $allowReplicationFactorChange) {
+            $stream = $this->connect();
+            new AlterPartitionReassignmentsRequest(
+                [$topic => [2 => [$brokerId]]],
+                30000,
+                'kafka-client-t4-41',
+                4150 + $index,
+                $allowReplicationFactorChange
+            )->writeTo($stream);
+            $answer = AlterPartitionReassignmentsResponse::unpack($stream);
+
+            self::assertSame($allowReplicationFactorChange, $answer->allowReplicationFactorChange);
+            self::assertSame(KafkaException::NO_ERROR, $answer->responses[$topic]->partitions[2]->errorCode);
+        }
     }
 
     /**

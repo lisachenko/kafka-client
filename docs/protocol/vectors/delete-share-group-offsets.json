@@ -1,0 +1,151 @@
+{
+    "api": "delete-share-group-offsets",
+    "apiKey": 92,
+    "section": "DeleteShareGroupOffsets API (key 92, v0)",
+    "description": "Wire vectors of the DeleteShareGroupOffsets API (key 92, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "deletesharegroupoffsets.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DeleteShareGroupOffsets request v0 (Kafka 4.1, KIP-932): the state of the whole topic `t4-41-vectors` and of `t4-41-vectors-missing` for `t4-41-vectors-share` - the api names topics, not partitions.",
+            "hex": "00000059005c00000000100a00126b61666b612d636c69656e742d74342d3431001474342d34312d766563746f72732d7368617265030e74342d34312d766563746f7273001674342d34312d766563746f72732d6d697373696e670000",
+            "fields": {
+                "messageSize": 89,
+                "apiKey": 92,
+                "apiVersion": 0,
+                "correlationId": 4106,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groupId": "t4-41-vectors-share",
+                "topics": {
+                    "t4-41-vectors": {
+                        "topicName": "t4-41-vectors"
+                    },
+                    "t4-41-vectors-missing": {
+                        "topicName": "t4-41-vectors-missing"
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletesharegroupoffsets.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The top-level 0, the topic that had state answered 0 with its topic id, and the missing topic the **3** with the zero uuid.",
+            "hex": "000000890000100a0000000000000000030e74342d34312d766563746f72735ada87210cb34fbb8c130e523583ce5f000000001674342d34312d766563746f72732d6d697373696e6700000000000000000000000000000000000330546869732073657276657220646f6573206e6f7420686f7374207468697320746f7069632d706172746974696f6e2e0000",
+            "fields": {
+                "messageSize": 137,
+                "correlationId": 4106,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "responses": {
+                    "t4-41-vectors": {
+                        "topicName": "t4-41-vectors",
+                        "topicId": {
+                            "$bytes": "5ada87210cb34fbb8c130e523583ce5f"
+                        },
+                        "errorCode": 0,
+                        "errorMessage": null
+                    },
+                    "t4-41-vectors-missing": {
+                        "topicName": "t4-41-vectors-missing",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "errorCode": 3,
+                        "errorMessage": "This server does not host this topic-partition."
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletesharegroupoffsets.request.v0.unknown-group",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same api for `t4-41-vectors-nobody`, a group that does not exist.",
+            "hex": "00000043005c00000000100b00126b61666b612d636c69656e742d74342d3431001574342d34312d766563746f72732d6e6f626f6479020e74342d34312d766563746f72730000",
+            "fields": {
+                "messageSize": 67,
+                "apiKey": 92,
+                "apiVersion": 0,
+                "correlationId": 4107,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groupId": "t4-41-vectors-nobody",
+                "topics": {
+                    "t4-41-vectors": {
+                        "topicName": "t4-41-vectors"
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletesharegroupoffsets.response.v0.unknown-group",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The top-level **69** `GroupIdNotFound` with `Group t4-41-vectors-nobody not found.` and an empty result array: unlike an alter, a delete does not create the group.",
+            "hex": "000000330000100b000000000000452647726f75702074342d34312d766563746f72732d6e6f626f6479206e6f7420666f756e642e0100",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 4107,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 69,
+                "errorMessage": "Group t4-41-vectors-nobody not found.",
+                "responses": []
+            }
+        },
+        {
+            "id": "deletesharegroupoffsets.request.v0.non-empty",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DeleteShareGroupOffsets for the same group while its member is still there.",
+            "hex": "00000043005c00000000100e00126b61666b612d636c69656e742d74342d3431001574342d34312d766563746f72732d6d656d626572020e74342d34312d766563746f72730000",
+            "fields": {
+                "messageSize": 67,
+                "apiKey": 92,
+                "apiVersion": 0,
+                "correlationId": 4110,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groupId": "t4-41-vectors-member",
+                "topics": {
+                    "t4-41-vectors": {
+                        "topicName": "t4-41-vectors"
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletesharegroupoffsets.response.v0.non-empty",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The same top-level **68** `NonEmptyGroup` with `The group is not empty.`",
+            "hex": "000000250000100e00000000000044185468652067726f7570206973206e6f7420656d7074792e0100",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 4110,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 68,
+                "errorMessage": "The group is not empty.",
+                "responses": []
+            }
+        }
+    ]
+}

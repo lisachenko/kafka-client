@@ -1,0 +1,246 @@
+{
+    "api": "describe-share-group-offsets",
+    "apiKey": 90,
+    "section": "DescribeShareGroupOffsets API (key 90, v0)",
+    "description": "Wire vectors of the DescribeShareGroupOffsets API (key 90, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describesharegroupoffsets.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeShareGroupOffsets request v0 (Kafka 4.1, KIP-932) for `t4-41-vectors-share` with a **null** topic array (`00`): every topic-partition the group holds state for.",
+            "hex": "00000035005a00000000100700126b61666b612d636c69656e742d74342d343100021474342d34312d766563746f72732d7368617265000000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 90,
+                "apiVersion": 0,
+                "correlationId": 4103,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t4-41-vectors-share": {
+                        "groupId": "t4-41-vectors-share",
+                        "topics": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "describesharegroupoffsets.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The start offsets the alter above wrote: **3** for partition 0 and 0 for partition 1, each with the leader epoch 0 and the code 0; the group-level error code and message come after the topics.",
+            "hex": "0000006c000010070000000000021474342d34312d766563746f72732d7368617265020e74342d34312d766563746f72735ada87210cb34fbb8c130e523583ce5f0300000000000000000000000300000000000000000000000100000000000000000000000000000000000000000000",
+            "fields": {
+                "messageSize": 108,
+                "correlationId": 4103,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t4-41-vectors-share": {
+                        "groupId": "t4-41-vectors-share",
+                        "topics": {
+                            "t4-41-vectors": {
+                                "topicName": "t4-41-vectors",
+                                "topicId": {
+                                    "$bytes": "5ada87210cb34fbb8c130e523583ce5f"
+                                },
+                                "partitions": [
+                                    {
+                                        "partitionIndex": 0,
+                                        "startOffset": 3,
+                                        "leaderEpoch": 0,
+                                        "errorCode": 0,
+                                        "errorMessage": null
+                                    },
+                                    {
+                                        "partitionIndex": 1,
+                                        "startOffset": 0,
+                                        "leaderEpoch": 0,
+                                        "errorCode": 0,
+                                        "errorMessage": null
+                                    }
+                                ]
+                            }
+                        },
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "describesharegroupoffsets.request.v0.named",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same api with named partitions for two groups in one frame: partition 0 of `t4-41-vectors` and partition 0 of `t4-41-vectors-missing` for the share group, and partition 1 of `t4-41-vectors` for `t4-41-vectors-nobody`, a group that does not exist.",
+            "hex": "00000090005a00000000100800126b61666b612d636c69656e742d74342d343100031474342d34312d766563746f72732d7368617265030e74342d34312d766563746f72730200000000001674342d34312d766563746f72732d6d697373696e67020000000000001574342d34312d766563746f72732d6e6f626f6479020e74342d34312d766563746f72730200000001000000",
+            "fields": {
+                "messageSize": 144,
+                "apiKey": 90,
+                "apiVersion": 0,
+                "correlationId": 4104,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t4-41-vectors-share": {
+                        "groupId": "t4-41-vectors-share",
+                        "topics": {
+                            "t4-41-vectors": {
+                                "topicName": "t4-41-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            },
+                            "t4-41-vectors-missing": {
+                                "topicName": "t4-41-vectors-missing",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    },
+                    "t4-41-vectors-nobody": {
+                        "groupId": "t4-41-vectors-nobody",
+                        "topics": {
+                            "t4-41-vectors": {
+                                "topicName": "t4-41-vectors",
+                                "partitions": [
+                                    1
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "describesharegroupoffsets.response.v0.named",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "No error anywhere: the start offset 3 of the share group, and the **-1** \"uninitialized offset\" for the topic the node does not have (with the zero uuid) and for the group that does not exist - `GroupCoordinatorService.describeShareGroupOffsets()` @ 4.3.1 treats absent state as absence of data, \"consistent with OffsetFetch\".",
+            "hex": "000000e2000010080000000000031474342d34312d766563746f72732d7368617265030e74342d34312d766563746f72735ada87210cb34fbb8c130e523583ce5f020000000000000000000000030000000000000000001674342d34312d766563746f72732d6d697373696e67000000000000000000000000000000000200000000ffffffffffffffff000000000000000000000000001574342d34312d766563746f72732d6e6f626f6479020e74342d34312d766563746f72735ada87210cb34fbb8c130e523583ce5f0200000001ffffffffffffffff0000000000000000000000000000",
+            "fields": {
+                "messageSize": 226,
+                "correlationId": 4104,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t4-41-vectors-share": {
+                        "groupId": "t4-41-vectors-share",
+                        "topics": {
+                            "t4-41-vectors": {
+                                "topicName": "t4-41-vectors",
+                                "topicId": {
+                                    "$bytes": "5ada87210cb34fbb8c130e523583ce5f"
+                                },
+                                "partitions": [
+                                    {
+                                        "partitionIndex": 0,
+                                        "startOffset": 3,
+                                        "leaderEpoch": 0,
+                                        "errorCode": 0,
+                                        "errorMessage": null
+                                    }
+                                ]
+                            },
+                            "t4-41-vectors-missing": {
+                                "topicName": "t4-41-vectors-missing",
+                                "topicId": {
+                                    "$bytes": "00000000000000000000000000000000"
+                                },
+                                "partitions": [
+                                    {
+                                        "partitionIndex": 0,
+                                        "startOffset": -1,
+                                        "leaderEpoch": 0,
+                                        "errorCode": 0,
+                                        "errorMessage": null
+                                    }
+                                ]
+                            }
+                        },
+                        "errorCode": 0,
+                        "errorMessage": null
+                    },
+                    "t4-41-vectors-nobody": {
+                        "groupId": "t4-41-vectors-nobody",
+                        "topics": {
+                            "t4-41-vectors": {
+                                "topicName": "t4-41-vectors",
+                                "topicId": {
+                                    "$bytes": "5ada87210cb34fbb8c130e523583ce5f"
+                                },
+                                "partitions": {
+                                    "1": {
+                                        "partitionIndex": 1,
+                                        "startOffset": -1,
+                                        "leaderEpoch": 0,
+                                        "errorCode": 0,
+                                        "errorMessage": null
+                                    }
+                                }
+                            }
+                        },
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "describesharegroupoffsets.request.v0.no-state",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeShareGroupOffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A null topic array for `t4-41-vectors-nobody`, the group that does not exist.",
+            "hex": "00000036005a00000000100900126b61666b612d636c69656e742d74342d343100021574342d34312d766563746f72732d6e6f626f6479000000",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 90,
+                "apiVersion": 0,
+                "correlationId": 4105,
+                "clientId": "kafka-client-t4-41",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t4-41-vectors-nobody": {
+                        "groupId": "t4-41-vectors-nobody",
+                        "topics": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "describesharegroupoffsets.response.v0.no-state",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeShareGroupOffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "An empty topic array and the code 0: the group holds no initialized partition, so there is nothing to read - the describe of this api never answers the 69 for a group the coordinator does not hold.",
+            "hex": "00000025000010090000000000021574342d34312d766563746f72732d6e6f626f6479010000000000",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 4105,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t4-41-vectors-nobody": {
+                        "groupId": "t4-41-vectors-nobody",
+                        "topics": [],
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        }
+    ]
+}

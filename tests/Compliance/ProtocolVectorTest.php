@@ -528,6 +528,30 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function describeShareGroupOffsetsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterShareGroupOffsetsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteShareGroupOffsetsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function consumerGroupHeartbeatVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -1189,6 +1213,33 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('describeTopicPartitionsVectors')]
     public function testDescribeTopicPartitionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeShareGroupOffsetsVectors')]
+    public function testDescribeShareGroupOffsetsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterShareGroupOffsetsVectors')]
+    public function testAlterShareGroupOffsetsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteShareGroupOffsetsVectors')]
+    public function testDeleteShareGroupOffsetsApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
