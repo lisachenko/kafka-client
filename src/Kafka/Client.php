@@ -1232,9 +1232,11 @@ class Client
      * Looks the offsets of the given topic partitions up and reports the timestamp of every message that was found
      *
      * The timestamp-based version 1 of the Offsets api answers each partition with one offset and the timestamp of
-     * the message it points at. The request goes out as **version 10** (Kafka 4.0, KIP-1075), whose `timeout_ms` is
-     * the `request.timeout.ms` of this client - how long a broker may wait for a lookup in remote storage, which is
-     * what the Java consumer sends as well; {@see OffsetsRequest::DEFAULT_TIMEOUT_MS} when nothing is configured. A partition whose log holds no message at or after the target time - and every
+     * the message it points at. The request goes out as **version 11** (Kafka 4.2, KIP-1023: the version 10 frame
+     * that also accepts {@see OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP}), whose `timeout_ms` of Kafka 4.0
+     * (KIP-1075) is the `request.timeout.ms` of this client - how long a broker may wait for a lookup in remote
+     * storage, which is what the Java consumer sends as well; {@see OffsetsRequest::DEFAULT_TIMEOUT_MS} when nothing
+     * is configured. A partition whose log holds no message at or after the target time - and every
      * partition of an empty log - is answered with the error code 0 and the offset -1, which arrives here as `null`.
      * {@see OffsetsRequest::LATEST} and {@see OffsetsRequest::EARLIEST} always find an offset, and the broker
      * answers them with the timestamp {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP}, because it does not read

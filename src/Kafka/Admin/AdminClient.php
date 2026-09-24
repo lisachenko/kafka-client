@@ -4035,4 +4035,45 @@ class AdminClient
 
         return $resources;
     }
+
+    /**
+     * Looks the **earliest pending upload offset** of every one of the given partitions up (KIP-1023)
+     *
+     * This is `OffsetSpec.earliestPendingUpload()` of the Java admin client @ 4.2.0, the question that **Kafka 4.2**
+     * added with **KIP-1023** and that version 11 of the Offsets api carries as the special target time
+     * {@see OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP} (`-6`): "the first offset of this partition that has
+     * not been copied to remote storage yet". It is the offset behind the one {@see self::listLatestTieredOffsets()}
+     * answers - `UnifiedLog.fetchEarliestPendingUploadOffset` @ 4.2.0 computes it as
+     * `max(highestOffsetInRemoteStorage() + 1, logStartOffset())` - and the log start offset of a tiered partition
+     * of which nothing was uploaded yet.
+     *
+     * A partition of a topic **without** remote storage - which is every topic of a broker whose
+     * `remote.log.storage.system.enable` is off - has nothing pending upload: the broker answers the offset **-1**
+     * with the error code 0, as it answers the `-5` of {@see self::listLatestTieredOffsets()}. The offset -1 of this
+     * method therefore means "nothing of this partition is pending upload", and not that the lookup failed; a tiered
+     * partition answers the same -1 for a moment after a leader change, while its new leader does not know yet what
+     * the previous one uploaded.
+     *
+     * It is deliberately an **admin** method and has no counterpart on the consumer, exactly as in the Java client
+     * and exactly as {@see self::listLatestTieredOffsets()} and {@see self::listEarliestLocalOffsets()} are.
+     *
+     * The request goes to the leader of each partition, as every request of this api does, and it is sent as
+     * version 11. A broker of Kafka 4.0 or 4.1 does not know the target time and answers the partition with the
+     * error code 35, which is thrown as an {@see UnsupportedVersionException}.
+     *
+     * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions Partitions to look up
+     *
+     * @throws \Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException If the cluster does not host one of the partitions
+     * @throws \Protocol\Kafka\Common\Errors\NotLeaderForPartitionException If the leader of a partition changed in the meantime
+     * @throws UnsupportedVersionException If the cluster does not know the target time -6, i.e. below Kafka 4.2
+     *
+     * @return array<string, array<int, int>> Earliest pending upload offsets as topic => partition => offset, -1
+     *         for a partition of which nothing is pending upload
+     *
+     * @see docs/protocol/4.3.md, section "The earliest pending upload offset of KIP-1023 (v11)"
+     */
+    public function listEarliestPendingUploadOffsets(iterable $topicPartitions): array
+    {
+        return $this->listOffsets($topicPartitions, OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP);
+    }
 }

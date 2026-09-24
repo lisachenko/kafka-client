@@ -32,14 +32,17 @@ use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV10;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV8;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV9;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV10;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV7;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV8;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV9;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -59,7 +62,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * index. The code stays in {@see KafkaException} and in the error table, it is simply not reachable from a client
  * of a 3.x broker.
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
+ *      and "The earliest pending upload offset of KIP-1023 (v11)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]
@@ -71,6 +75,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(OffsetsResponse::class)]
 #[CoversClass(OffsetsResponseV7::class)]
 #[CoversClass(OffsetsResponseV8::class)]
+#[CoversClass(OffsetsRequestV10::class)]
+#[CoversClass(OffsetsResponseV10::class)]
 #[CoversClass(OffsetsResponsePartition::class)]
 final class OffsetsByTimestampTest extends IntegrationTestCase
 {
@@ -393,10 +399,10 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         }
 
         // The same branch of the broker refuses every negative target time it does not know at all: the map of
-        // `KafkaApis.handleListOffsetRequestV1AndAbove` @ 3.9.2 ends at the -5 of KIP-1005, which the version 9
-        // this client sends does carry, so -6 is the first value no version of this api can ask for
+        // `timestampMinSupportedVersion` (`ReplicaManager` @ 4.2.0) ends at the -6 of KIP-1023, which the version
+        // 11 this client sends does carry, so -7 is the first value no version of this api can ask for
         try {
-            $this->client($topic)->fetchTopicPartitionOffsetsForTimes([$topic => [self::PARTITION => -6]]);
+            $this->client($topic)->fetchTopicPartitionOffsetsForTimes([$topic => [self::PARTITION => -7]]);
             self::fail('A target time this cluster does not know is expected to fail');
         } catch (TopicPartitionRequestException $exception) {
             self::assertInstanceOf(
@@ -647,8 +653,165 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         self::assertSame(8, OffsetsRequestV8::VERSION);
         self::assertSame(8, OffsetsResponseV8::VERSION);
         self::assertSame(9, OffsetsRequestV9::VERSION);
-        self::assertSame(10, OffsetsRequest::VERSION, 'the version Kafka 4.0 added (KIP-1075)');
+        self::assertSame(11, OffsetsRequest::VERSION, 'the version Kafka 4.2 added (KIP-1023)');
         self::assertSame(-5, OffsetsRequest::LATEST_TIERED_TIMESTAMP);
+    }
+
+    public function testTheEarliestPendingUploadOffsetOfKip1023IsMinusOneWithoutRemoteStorage(): void
+    {
+        // KIP-1023 (Kafka 4.2), the target time -6: "which offset of this partition is the first that has not been
+        // copied to remote storage yet?". `UnifiedLog.fetchEarliestPendingUploadOffset` @ 4.2.0 writes the literal
+        // TimestampAndOffset(NO_TIMESTAMP, -1L, Optional.of(-1)) unless `remoteLogEnabled()`, and this node runs
+        // with `remote.log.storage.system.enable=false`
+        $topic         = $this->preparedTopic('max-timestamp');
+        $configuration = $this->configuration();
+        $admin         = new AdminClient(Cluster::bootstrap($configuration, $topic), $configuration);
+
+        self::assertSame(
+            [$topic => [self::PARTITION => OffsetsResponsePartition::UNKNOWN_OFFSET]],
+            $admin->listEarliestPendingUploadOffsets([$topic => [self::PARTITION]]),
+            'AdminClient::listEarliestPendingUploadOffsets() is the OffsetSpec.earliestPendingUpload() of Java @ 4.2.0'
+        );
+        self::assertSame(
+            [$topic => [self::PARTITION => OffsetsResponsePartition::UNKNOWN_OFFSET]],
+            $admin->listLatestTieredOffsets([$topic => [self::PARTITION]]),
+            'the -5 of the same partition: without remote storage both ends of the tiered range are -1'
+        );
+        self::assertNull(
+            $this->lookUp($topic, OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP),
+            'the -1 / -1 of "nothing is pending upload" is what this client hands a timestamp lookup out as null'
+        );
+
+        // The error code is 0 at the version 11, whatever the isolation level and the timeout of KIP-1075
+        $stream = $this->connect();
+
+        try {
+            foreach ([[FetchRequest::READ_UNCOMMITTED, 30000, 4081], [FetchRequest::READ_COMMITTED, 0, 4082]] as [$isolationLevel, $timeoutMs, $correlationId]) {
+                new OffsetsRequest(
+                    [$topic => [self::PARTITION => OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP]],
+                    OffsetsRequest::CONSUMER_REPLICA_ID,
+                    $isolationLevel,
+                    self::CLIENT_ID,
+                    $correlationId,
+                    $timeoutMs
+                )->writeTo($stream);
+                $answer    = OffsetsResponse::unpack($stream);
+                $partition = $answer->topics[$topic]->partitions[self::PARTITION];
+
+                self::assertSame($correlationId, $answer->getCorrelationId());
+                self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
+                self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+                self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+                self::assertSame(-1, $partition->leaderEpoch, 'and the leader epoch of a -1 offset is -1 as well');
+            }
+        } finally {
+            $stream->disconnect();
+        }
+    }
+
+    public function testAnEmptyPartitionAnswersTheSameEarliestPendingUploadOffsetAsAFilledOne(): void
+    {
+        // Like -5 and unlike -4, the -6 of a broker without tiered storage does not depend on the log at all
+        $topic         = $this->preparedTopic('empty');
+        $configuration = $this->configuration();
+        $admin         = new AdminClient(Cluster::bootstrap($configuration, $topic), $configuration);
+
+        self::assertSame(
+            [$topic => [self::PARTITION => OffsetsResponsePartition::UNKNOWN_OFFSET]],
+            $admin->listEarliestPendingUploadOffsets([$topic => [self::PARTITION]])
+        );
+        self::assertSame(
+            [$topic => [self::PARTITION => 0]],
+            $admin->listEarliestLocalOffsets([$topic => [self::PARTITION]]),
+            'where the local log start offset of an empty log is its 0'
+        );
+    }
+
+    public function testAVersionBelowElevenIsRefusedTheEarliestPendingUploadOffsetPerPartition(): void
+    {
+        // `ReplicaManager` @ 4.2.0 demands version 11 for the target time -6 (`timestampMinSupportedVersion`) and
+        // answers the partition of a lower version with 35 - without closing the connection
+        $topic  = $this->preparedTopic('max-timestamp');
+        $stream = $this->connect();
+
+        try {
+            new OffsetsRequestV10(
+                [$topic => [self::PARTITION => OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4091
+            )->writeTo($stream);
+            $refusal = OffsetsResponseV10::unpack($stream);
+
+            self::assertSame(4091, $refusal->getCorrelationId());
+            $partition = $refusal->topics[$topic]->partitions[self::PARTITION];
+            self::assertSame(KafkaException::UNSUPPORTED_VERSION, $partition->errorCode);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+            self::assertSame(-1, $partition->leaderEpoch);
+
+            // The connection is untouched, and the very same version answers the last tiered offset of KIP-1005
+            new OffsetsRequestV10(
+                [$topic => [self::PARTITION => OffsetsRequest::LATEST_TIERED_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4092
+            )->writeTo($stream);
+            $served = OffsetsResponseV10::unpack($stream);
+
+            self::assertSame(4092, $served->getCorrelationId());
+            self::assertSame(
+                KafkaException::NO_ERROR,
+                $served->topics[$topic]->partitions[self::PARTITION]->errorCode
+            );
+
+            // A version 9 is refused the same way
+            new OffsetsRequestV9(
+                [$topic => [self::PARTITION => OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4093
+            )->writeTo($stream);
+            self::assertSame(
+                KafkaException::UNSUPPORTED_VERSION,
+                OffsetsResponseV9::unpack($stream)->topics[$topic]->partitions[self::PARTITION]->errorCode
+            );
+
+            // And -7, which no release knows, is refused even at the version 11
+            new OffsetsRequest(
+                [$topic => [self::PARTITION => -7]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4094
+            )->writeTo($stream);
+            self::assertSame(
+                KafkaException::UNSUPPORTED_VERSION,
+                OffsetsResponse::unpack($stream)->topics[$topic]->partitions[self::PARTITION]->errorCode
+            );
+        } finally {
+            $stream->disconnect();
+        }
+
+        // And the frame of the version 11 is the frame of the version 10, byte for byte behind the api version
+        $arguments = [
+            [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+            OffsetsRequest::CONSUMER_REPLICA_ID,
+            FetchRequest::READ_UNCOMMITTED,
+            self::CLIENT_ID,
+            4095,
+        ];
+        $eleven = bin2hex((string) new OffsetsRequest(...$arguments));
+        $ten    = bin2hex((string) new OffsetsRequestV10(...$arguments));
+
+        self::assertSame($ten, substr_replace($eleven, '000a', 12, 4));
+        self::assertSame(10, OffsetsRequestV10::VERSION);
+        self::assertSame(10, OffsetsResponseV10::VERSION);
+        self::assertSame(11, OffsetsRequest::VERSION, 'the version Kafka 4.2 added (KIP-1023)');
+        self::assertSame(-6, OffsetsRequest::EARLIEST_PENDING_UPLOAD_TIMESTAMP);
     }
 
 

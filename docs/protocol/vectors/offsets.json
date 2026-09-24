@@ -1,8 +1,8 @@
 {
     "api": "offsets",
     "apiKey": 2,
-    "section": "Offsets API (key 2, v0 to v10), a.k.a. ListOffset",
-    "description": "Wire vectors of the Offsets API (key 2, v0 to v10), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "section": "Offsets API (key 2, v0 to v11), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0 to v11), a.k.a. ListOffset, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsets.request.v0.latest",
@@ -1401,7 +1401,7 @@
         {
             "id": "offsets.request.v10.latest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV10",
             "version": 10,
             "source": "broker",
             "description": "ListOffsets request v10 (Kafka 4.0, KIP-1075): the flexible body of version 6 with the target time -1 LATEST, followed by the new timeout_ms = 30000 - the request.timeout.ms the Java consumer sends (OffsetFetcher.sendListOffsetRequest @ 4.0.0) - in front of the tag buffer of the body.",
@@ -1433,7 +1433,7 @@
         {
             "id": "offsets.response.v10.latest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV10",
             "version": 10,
             "source": "broker",
             "description": "The answer: ListOffsetsResponse.json @ 4.0.0 adds no field of version 10, so it is the version 9 frame - the error code 0, the timestamp -1 and the offset 3, the end of a log that holds the two records of produce.request.v12 and the transactional one of produce.request.v12.transactional, with the leader epoch 0. The timeout only matters for a topic with remote storage, which the node has not.",
@@ -1462,7 +1462,7 @@
         {
             "id": "offsets.request.v10.timestamp",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV10",
             "version": 10,
             "source": "broker",
             "description": "The same version asked for the offset of a timestamp, CreateTime + 500 ms of the first record, with timeout_ms = 0 - which the broker reads as \"use my remote.list.offsets.request.timeout.ms\" (ReplicaManager.fetchOffset @ 4.0.0).",
@@ -1494,7 +1494,7 @@
         {
             "id": "offsets.response.v10.timestamp",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV10",
             "version": 10,
             "source": "broker",
             "description": "The answer: the first record whose timestamp is at or after the target, the second record of the batch at the offset 1 with its CreateTime 1790000001000 - a lookup in the local log, answered at once.",
@@ -1514,6 +1514,250 @@
                                 "timestamp": 1790000001000,
                                 "offset": 1,
                                 "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v11.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 11,
+            "source": "broker",
+            "description": "ListOffsets request v11 (Kafka 4.2, KIP-1023): ListOffsetsRequest.json @ 4.2.0 declares no field of the version, so it is the version 10 frame with the number 11 in its header - the target time -1 LATEST and the timeout_ms = 30000 of KIP-1075 in front of the tag buffer of the body. The topic t2-42-vectors holds two records, written through Produce v12 for the capture.",
+            "hex": "000000490002000b0000106900126b61666b612d636c69656e742d74322d343200ffffffff00020e74322d34322d766563746f72730200000000ffffffffffffffffffffffff00000000753000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 2,
+                "apiVersion": 11,
+                "correlationId": 4201,
+                "clientId": "kafka-client-t2-42",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-42-vectors": {
+                        "topic": "t2-42-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                },
+                "timeoutMs": 30000
+            }
+        },
+        {
+            "id": "offsets.response.v11.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 11,
+            "source": "broker",
+            "description": "The answer: ListOffsetsResponse.json @ 4.2.0 adds no field of version 11 either, so it is the version 10 frame - the error code 0, the timestamp -1, the offset 2 (the end of the log of two records) and the leader epoch 0.",
+            "hex": "00000036000010690000000000020e74322d34322d766563746f727302000000000000ffffffffffffffff000000000000000200000000000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 4201,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-42-vectors": {
+                        "topic": "t2-42-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 2,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v11.earliest-pending-upload",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 11,
+            "source": "broker",
+            "description": "The sixth special target time, -6 EARLIEST_PENDING_UPLOAD_TIMESTAMP (ff ff ff ff ff ff ff fa, ListOffsetsRequest.java @ 4.2.0), which the version 11 of KIP-1023 made legal: the first offset of the partition that has not been copied to remote storage yet, asked of the same log of two records.",
+            "hex": "000000490002000b0000106a00126b61666b612d636c69656e742d74322d343200ffffffff00020e74322d34322d766563746f72730200000000fffffffffffffffffffffffa00000000753000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 2,
+                "apiVersion": 11,
+                "correlationId": 4202,
+                "clientId": "kafka-client-t2-42",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-42-vectors": {
+                        "topic": "t2-42-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -6
+                            }
+                        ]
+                    }
+                },
+                "timeoutMs": 30000
+            }
+        },
+        {
+            "id": "offsets.response.v11.earliest-pending-upload",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 11,
+            "source": "broker",
+            "description": "The answer of a node without tiered storage (remote.log.storage.system.enable=false): the error code 0 with the timestamp, the offset and the leader epoch -1 - the literal TimestampAndOffset(NO_TIMESTAMP, -1L, Optional.of(-1)) of UnifiedLog.fetchEarliestPendingUploadOffset @ 4.2.0 when remoteLogEnabled() is false. Nothing of the partition is pending upload, and that is not an error; the log has two records all the same.",
+            "hex": "000000360000106a0000000000020e74322d34322d766563746f727302000000000000ffffffffffffffffffffffffffffffffffffffff000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 4202,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-42-vectors": {
+                        "topic": "t2-42-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": -1,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v11.earliest-pending-upload-empty",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 11,
+            "source": "broker",
+            "description": "The same question of the empty partition of t2-42-vectors-empty.",
+            "hex": "0000004f0002000b0000106b00126b61666b612d636c69656e742d74322d343200ffffffff00021474322d34322d766563746f72732d656d7074790200000000fffffffffffffffffffffffa00000000753000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 2,
+                "apiVersion": 11,
+                "correlationId": 4203,
+                "clientId": "kafka-client-t2-42",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-42-vectors-empty": {
+                        "topic": "t2-42-vectors-empty",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -6
+                            }
+                        ]
+                    }
+                },
+                "timeoutMs": 30000
+            }
+        },
+        {
+            "id": "offsets.response.v11.earliest-pending-upload-empty",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 11,
+            "source": "broker",
+            "description": "The same answer, byte for byte behind the topic name: the error code 0 and -1 / -1 / -1. On a node without tiered storage the -6 does not depend on the log at all, like the -5 of KIP-1005 and unlike the -4 of KIP-405, which answers the offset 0 of both logs.",
+            "hex": "0000003c0000106b0000000000021474322d34322d766563746f72732d656d70747902000000000000ffffffffffffffffffffffffffffffffffffffff000000",
+            "fields": {
+                "messageSize": 60,
+                "correlationId": 4203,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-42-vectors-empty": {
+                        "topic": "t2-42-vectors-empty",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": -1,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v10.earliest-pending-upload",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV10",
+            "version": 10,
+            "source": "broker",
+            "description": "The very same question as offsets.request.v11.earliest-pending-upload with the api version 10 in its header: the target time -6 of KIP-1023 asked by a client that did not promise to understand it.",
+            "hex": "000000490002000a0000106c00126b61666b612d636c69656e742d74322d343200ffffffff00020e74322d34322d766563746f72730200000000fffffffffffffffffffffffa00000000753000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 2,
+                "apiVersion": 10,
+                "correlationId": 4204,
+                "clientId": "kafka-client-t2-42",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-42-vectors": {
+                        "topic": "t2-42-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -6
+                            }
+                        ]
+                    }
+                },
+                "timeoutMs": 30000
+            }
+        },
+        {
+            "id": "offsets.response.v10.earliest-pending-upload-unsupported",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV10",
+            "version": 10,
+            "source": "broker",
+            "description": "The refusal: the error code 35 UnsupportedVersion for THAT PARTITION, with the timestamp, the offset and the leader epoch -1, the connection untouched and the throttle time 0. ReplicaManager @ 4.2.0 maps every negative target time to the version that introduced it (timestampMinSupportedVersion) and demands the version 11 for -6; a version 9 frame is answered the same 35, and -7, which no release knows, is refused at every version up to 11.",
+            "hex": "000000360000106c0000000000020e74322d34322d766563746f727302000000000023ffffffffffffffffffffffffffffffffffffffff000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 4204,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-42-vectors": {
+                        "topic": "t2-42-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 35,
+                                "timestamp": -1,
+                                "offset": -1,
+                                "leaderEpoch": -1
                             }
                         ]
                     }
