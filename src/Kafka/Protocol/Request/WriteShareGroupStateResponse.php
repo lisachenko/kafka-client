@@ -16,10 +16,10 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\Data\ShareGroupStateTopicResult;
 
 /**
- * WriteShareGroupState response object, version 0 (key 85, Kafka 4.1, KIP-932)
+ * WriteShareGroupState response object, version 1 (key 85, Kafka 4.1, KIP-932)
  *
  * <pre>
- *   WriteShareGroupState Response (Version: 0) => [results]
+ *   WriteShareGroupState Response (Version: 0 to 1) => [results]
  *     results => topic_id [partitions]
  * </pre>
  *
@@ -27,14 +27,19 @@ use Protocol\Kafka\Protocol\Data\ShareGroupStateTopicResult;
  * own key (the group, the topic id and the partition), and a request without a topic, without a partition or
  * without a group id is answered with an empty result array.
  *
- * @see docs/protocol/4.3.md, section "WriteShareGroupState API (key 85, v0)"
+ * **Version 1 (Kafka 4.2, KIP-1226) is the frame of version 0**: "Version 1 introduces DeliveryCompleteCount in the
+ * request (KIP-1226)" is the comment above the `validVersions` of `WriteShareGroupStateResponse.json` @ 4.2.0, and
+ * the answer declares no new field. {@see WriteShareGroupStateResponseV0} is the answer of a
+ * {@see WriteShareGroupStateRequestV0}.
+ *
+ * @see docs/protocol/4.3.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 class WriteShareGroupStateResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc
