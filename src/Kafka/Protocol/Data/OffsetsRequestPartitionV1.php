@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * nothing on the wire at all. **Version 4 (Kafka 2.1, KIP-320)** is what added a leader epoch to both sides, see
  * {@see OffsetsRequestPartition}.
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  */
 final class OffsetsRequestPartitionV1 extends OffsetsRequestPartition
 {

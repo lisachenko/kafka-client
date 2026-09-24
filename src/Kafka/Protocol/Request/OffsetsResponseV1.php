@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * partition entries are the `timestamp offset` pair of version 1, not the offset array of
  * {@see OffsetsResponseV0}.
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  */
 final class OffsetsResponseV1 extends OffsetsResponse
 {

@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * A request of this version is answered with **5** `LEADER_NOT_AVAILABLE` in that state instead, see
  * {@see OffsetsRequest}.
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  */
 final class OffsetsRequestV4 extends OffsetsRequest
 {
