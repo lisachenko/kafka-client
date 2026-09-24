@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * sends the ApiVersions that asks the new voter which `kraft.version` it supports, and a request without it is
  * answered 42 (`InvalidRequest`) before anything else is looked at.
  *
- * @see docs/protocol/4.3.md, section "AddRaftVoter API (key 80, v0)"
+ * @see docs/protocol/4.3.md, section "AddRaftVoter API (key 80, v0 and v1)"
  */
 class AddRaftVoterRequestListener implements BinarySchemaInterface
 {

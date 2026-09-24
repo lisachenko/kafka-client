@@ -3796,6 +3796,12 @@ class AdminClient
      * never appended (7, or 42 for the feature range), and the method returns only once the new voter set is
      * committed.
      *
+     * The request is AddRaftVoter **v1** (Kafka 4.2), whose `ack_when_committed` is the last parameter: true - the
+     * default of the field and the behaviour of v0 - waits for the commit, false returns as soon as the leader has
+     * appended the new voter set, with its commit still ahead (`AddVoterHandler` @ 4.2.0). The Java admin client
+     * @ 4.2.0 has no option for it and always sends the default; the controller's own auto-join is what sends false.
+     * Every refusal above comes before the flag is read and is the same with either value.
+     *
      * @param int                     $voterId          Replica id (`node.id`) of the new voter
      * @param string                  $voterDirectoryId The 16 raw bytes of its metadata log directory id,
      *        {@see Uuid::fromString()} turns the text form of `meta.properties` into them
@@ -3803,18 +3809,22 @@ class AdminClient
      * @param string|null             $clusterId        Id of the cluster, null to leave the check to nobody (the
      *        `AddRaftVoterOptions.clusterId()` of the Java client)
      * @param int                     $timeoutMs        How long the controller may take over the request
+     * @param bool                    $ackWhenCommitted True to return once the new voter set is committed, false
+     *        once the leader has written it (AddRaftVoter v1, Kafka 4.2)
      *
      * @throws KafkaException            If the controller refused or aborted the change
      * @throws UnexpectedValueException If the directory id is not 16 bytes
      *
-     * @see docs/protocol/4.3.md, section "AddRaftVoter API (key 80, v0)"
+     * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode
+     *      of Kafka 4.2 (v1)"
      */
     public function addRaftVoter(
         int $voterId,
         string $voterDirectoryId,
         array $endpoints,
         ?string $clusterId = null,
-        int $timeoutMs = 30000
+        int $timeoutMs = 30000,
+        bool $ackWhenCommitted = true
     ): void {
         // The text form of the key, for the exception; a directory id that is not 16 bytes is refused here
         $directoryId = Uuid::toString($voterDirectoryId);
@@ -3832,7 +3842,8 @@ class AdminClient
                 $voterDirectoryId,
                 $listeners,
                 $this->clientId(),
-                $correlationId
+                $correlationId,
+                $ackWhenCommitted
             ),
             AddRaftVoterResponse::class
         );

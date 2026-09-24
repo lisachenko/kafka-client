@@ -21,21 +21,26 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\AddRaftVoterRequestListener;
 use Protocol\Kafka\Protocol\Request\AddRaftVoterRequest;
+use Protocol\Kafka\Protocol\Request\AddRaftVoterRequestV0;
 use Protocol\Kafka\Protocol\Request\AddRaftVoterResponse;
+use Protocol\Kafka\Protocol\Request\AddRaftVoterResponseV0;
 use Protocol\Kafka\Protocol\Request\RemoveRaftVoterRequest;
 use Protocol\Kafka\Protocol\Request\RemoveRaftVoterResponse;
 
 /**
- * Byte-exact tests for the two raft-voter apis of KIP-853, AddRaftVoter (key 80) and RemoveRaftVoter (key 81), v0
+ * Byte-exact tests for the two raft-voter apis of KIP-853, AddRaftVoter (key 80, v0 and v1) and RemoveRaftVoter
+ * (key 81, v0)
  *
  * The frames are the ones the 4.3.1 node answered - a quorum at `kraft.version` 1 with the one voter
  * `ReplicaKey(id=1, directoryId=7QxpXGVBQTWaHmiG7IDrEQ)` - for the two requests that can never change it: an add
  * of the voter id 1, which is the 126, and a remove of the voter 4242, which is the 127.
  *
- * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0)" and "RemoveRaftVoter API (key 81, v0)"
+ * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "RemoveRaftVoter API (key 81, v0)"
  */
 #[CoversClass(AddRaftVoterRequest::class)]
 #[CoversClass(AddRaftVoterResponse::class)]
+#[CoversClass(AddRaftVoterRequestV0::class)]
+#[CoversClass(AddRaftVoterResponseV0::class)]
 #[CoversClass(AddRaftVoterRequestListener::class)]
 #[CoversClass(RemoveRaftVoterRequest::class)]
 #[CoversClass(RemoveRaftVoterResponse::class)]
@@ -65,7 +70,7 @@ final class RaftVoterTest extends TestCase
 
     public function testTheAddRequestIsTheVoterKeyAndItsEndpoints(): void
     {
-        $request = new AddRaftVoterRequest(
+        $request = new AddRaftVoterRequestV0(
             null,
             30000,
             1,
@@ -90,7 +95,7 @@ final class RaftVoterTest extends TestCase
      */
     public function testTheListenerPortIsAnUnsignedShort(): void
     {
-        $request = new AddRaftVoterRequest(
+        $request = new AddRaftVoterRequestV0(
             'c',
             1,
             7,
@@ -99,6 +104,64 @@ final class RaftVoterTest extends TestCase
         );
 
         self::assertStringEndsWith('0b434f4e54524f4c4c4552' . '0268' . 'ffff' . '00' . '00', bin2hex((string) $request));
+    }
+
+    /**
+     * AddRaftVoter v1 (Kafka 4.2) is the frame of v0 plus the boolean `ack_when_committed` at the end of the body
+     *
+     * The two frames the 4.3.1 node answered with the 126, captured with the flag true and false (the node's voter
+     * directory id `IpNOvhXLTxiMH2J_81GOUw`): one byte longer than v0, `01` or `00` in front of the tag buffer.
+     */
+    public function testTheVersionOneAppendsTheAcknowledgementModeToTheFrameOfVersionZero(): void
+    {
+        $directoryId = (string) hex2bin('22934ebe15cb4f188c1f627ff3518e53');
+        $listeners   = [new AddRaftVoterRequestListener('CONTROLLER', '127.0.0.1', 1)];
+        $body        = '00' . '00007530' . '00000001' . '22934ebe15cb4f188c1f627ff3518e53'
+            . '02' . '0b' . '434f4e54524f4c4c4552' . '0a' . '3132372e302e302e31' . '0001' . '00';
+        $header      = '0012' . '6b61666b612d636c69656e742d74312d3432' . '00';
+
+        foreach ([[true, '01', 4201], [false, '00', 4202]] as [$ack, $flag, $correlationId]) {
+            $request = new AddRaftVoterRequest(null, 30000, 1, $directoryId, $listeners, 'kafka-client-t1-42', $correlationId, $ack);
+
+            self::assertSame(1, $request->getApiVersion());
+            self::assertSame($ack, $request->isAckWhenCommitted());
+            self::assertSame(
+                '00000051' . '0050' . '0001' . sprintf('%08x', $correlationId) . $header . $body . $flag . '00',
+                bin2hex((string) $request),
+                'the frame the node answered, captured as addraftvoter.request.v1.*'
+            );
+
+            $v0 = new AddRaftVoterRequestV0(null, 30000, 1, $directoryId, $listeners, 'kafka-client-t1-42', $correlationId, $ack);
+            self::assertSame(
+                '00000050' . '0050' . '0000' . sprintf('%08x', $correlationId) . $header . $body . '00',
+                bin2hex((string) $v0),
+                'the flag of a version 0 request never reaches the wire'
+            );
+        }
+
+        self::assertTrue(
+            new AddRaftVoterRequest(null, 1, 7, Uuid::ZERO, [])->isAckWhenCommitted(),
+            'the default of the field is true, the only behaviour of version 0'
+        );
+    }
+
+    /**
+     * The answer of v1 is the frame of v0: "Version 1 is the same as version 0"
+     */
+    public function testTheVersionOneAnswerIsTheFrameOfVersionZero(): void
+    {
+        $message = 'Aborted add voter operation for since API_VERSIONS returned an error BROKER_NOT_AVAILABLE';
+        $hex     = '00000066' . '0000106b' . '00' . '00000000' . '0007' . '5a' . bin2hex($message) . '00';
+
+        foreach ([AddRaftVoterResponse::class, AddRaftVoterResponseV0::class] as $class) {
+            $response = $class::unpack(new StringStream((string) hex2bin($hex)));
+
+            self::assertSame(KafkaException::REQUEST_TIMED_OUT, $response->errorCode);
+            self::assertSame($message, $response->errorMessage);
+            self::assertSame($hex, bin2hex((string) $response));
+        }
+        self::assertSame(1, AddRaftVoterResponse::VERSION);
+        self::assertSame(0, AddRaftVoterResponseV0::VERSION);
     }
 
     /**
@@ -112,7 +175,7 @@ final class RaftVoterTest extends TestCase
             . 'a301' . bin2hex($message)
             . '00';
 
-        $response = AddRaftVoterResponse::unpack(new StringStream((string) hex2bin($hex)));
+        $response = AddRaftVoterResponseV0::unpack(new StringStream((string) hex2bin($hex)));
 
         self::assertSame(KafkaException::DUPLICATE_VOTER, $response->errorCode);
         self::assertSame($message, $response->errorMessage, 'a compact string of 162 bytes: its length is two varint bytes');

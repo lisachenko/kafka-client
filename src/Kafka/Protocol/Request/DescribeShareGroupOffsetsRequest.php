@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsRequestGroup;
 
 /**
- * Reads the share-partition start offsets of share groups (ApiKey 90, Kafka 4.1, KIP-932)
+ * Reads the share-partition start offsets and lags of share groups (ApiKey 90, Kafka 4.1, KIP-932; v1 KIP-1226)
  *
  * <pre>
- *   DescribeShareGroupOffsets Request (Version: 0) => [Groups] TAG_BUFFER
+ *   DescribeShareGroupOffsets Request (Version: 1) => [Groups] TAG_BUFFER
  *     Groups => COMPACT_ARRAY of {@see DescribeShareGroupOffsetsRequestGroup}
  * </pre>
  *
@@ -33,10 +33,12 @@ use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsRequestGroup;
  * with a null topic array, for every partition the group holds state for.
  *
  * **Kafka 4.1 added the api** (`DescribeShareGroupOffsetsRequest.json` @ 4.1.0, `"validVersions": "0"`,
- * flexible from its version 0, a `broker` listener api). The version 1 of Kafka 4.2 adds the `lag` of KIP-1226 to
- * the answer and is not part of the 4.1 milestone.
+ * flexible from its version 0, a `broker` listener api). **Kafka 4.2 added the version 1** (`"validVersions":
+ * "0-1"` @ 4.2.0, *"Version 1 introduces Lag in the response (KIP-1226)"*): the request is the frame of the version
+ * 0, and the answer carries the share-partition `lag` of every partition. {@see DescribeShareGroupOffsetsRequestV0}
+ * keeps the version 0.
  *
- * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0)"
+ * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
  */
 class DescribeShareGroupOffsetsRequest extends AbstractRequest
 {
@@ -48,7 +50,7 @@ class DescribeShareGroupOffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc

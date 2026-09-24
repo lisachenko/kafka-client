@@ -16,10 +16,10 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * AddRaftVoter response object, version 0 (key 80, Kafka 3.9, KIP-853)
+ * AddRaftVoter response object, version 1 (key 80, Kafka 3.9, KIP-853)
  *
  * <pre>
- *   AddRaftVoter Response (Version: 0) => throttle_time_ms error_code error_message
+ *   AddRaftVoter Response (Version: 0 to 1) => throttle_time_ms error_code error_message
  *     throttle_time_ms => INT32
  *     error_code       => INT16
  *     error_message    => COMPACT_NULLABLE_STRING
@@ -29,14 +29,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * check that stopped the request with the sentence the raft client wrote for it - 104, 42, 35, 7, 126 or, when
  * the new voter could not be asked, the 7 of an aborted operation (see {@see AddRaftVoterRequest}).
  *
- * @see docs/protocol/4.3.md, section "AddRaftVoter API (key 80, v0)"
+ * **Version 1 (Kafka 4.2) is the frame of version 0**: "Version 1 is the same as version 0" is the comment above the
+ * `validVersions` of `AddRaftVoterResponse.json` @ 4.2.0. What the `ack_when_committed` of the request changes is
+ * *when* the 0 is written - once the new voter set is committed, or as soon as the leader has appended it - never
+ * the frame. {@see AddRaftVoterResponseV0} is the answer of a {@see AddRaftVoterRequestV0}.
+ *
+ * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
+ *      Kafka 4.2 (v1)"
  */
 class AddRaftVoterResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc

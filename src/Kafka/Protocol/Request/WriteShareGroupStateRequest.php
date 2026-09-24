@@ -16,18 +16,20 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\WriteShareGroupStateRequestTopic;
+use Protocol\Kafka\Protocol\Data\WriteShareGroupStateRequestTopicV0;
 
 /**
- * WriteShareGroupState, version 0: writes the state of share partitions (ApiKey 85, Kafka 4.1, KIP-932)
+ * WriteShareGroupState, version 1: writes the state of share partitions (ApiKey 85, Kafka 4.1, KIP-932)
  *
  * <pre>
- *   WriteShareGroupState Request (Version: 0) => group_id [topics]
+ *   WriteShareGroupState Request (Version: 0 to 1) => group_id [topics]
  *     group_id => COMPACT_STRING
  *     [topics] => topic_id [partitions]
- *       partition     => INT32
- *       state_epoch   => INT32
- *       leader_epoch  => INT32
- *       start_offset  => INT64
+ *       partition               => INT32
+ *       state_epoch             => INT32
+ *       leader_epoch            => INT32
+ *       start_offset            => INT64
+ *       delivery_complete_count => INT32   -- since version 1 (Kafka 4.2, KIP-1226), "default": -1
  *       state_batches => first_offset last_offset delivery_state delivery_count
  * </pre>
  *
@@ -41,7 +43,16 @@ use Protocol\Kafka\Protocol\Data\WriteShareGroupStateRequestTopic;
  * not a broker has no business sending it; the frames were captured for the grammar and never touch the state of a
  * share group another component owns.
  *
- * @see docs/protocol/4.3.md, section "WriteShareGroupState API (key 85, v0)"
+ * **Version 1 (Kafka 4.2, KIP-1226) added the `DeliveryCompleteCount` of a partition**: "Version 1 introduces
+ * DeliveryCompleteCount (KIP-1226)" stands above the `validVersions` of `WriteShareGroupStateRequest.json` @ 4.2.0.
+ * The count of the offsets at or above the start offset whose delivery is complete travels with every state a
+ * partition leader writes, between the start offset and the batches (see
+ * {@see \Protocol\Kafka\Protocol\Data\WriteShareGroupStateRequestPartition}). The topics of this class are
+ * {@see WriteShareGroupStateRequestTopic}s and those of {@see WriteShareGroupStateRequestV0}, the frame below it,
+ * {@see \Protocol\Kafka\Protocol\Data\WriteShareGroupStateRequestTopicV0}s: the constructor converts what it is
+ * given into the entries of its own version.
+ *
+ * @see docs/protocol/4.3.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 class WriteShareGroupStateRequest extends AbstractRequest
 {
@@ -53,7 +64,7 @@ class WriteShareGroupStateRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc
@@ -79,7 +90,14 @@ class WriteShareGroupStateRequest extends AbstractRequest
         string $clientId = '',
         int $correlationId = 0
     ) {
-        $this->topics = array_values($topics);
+        $topicClass = static::topicClass();
+        $converted  = [];
+        foreach ($topics as $topic) {
+            $converted[] = $topic::class === $topicClass
+                ? $topic
+                : new $topicClass($topic->topicId, array_values($topic->partitions));
+        }
+        $this->topics = $converted;
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -93,8 +111,18 @@ class WriteShareGroupStateRequest extends AbstractRequest
 
         return $header + [
             'groupId' => BinarySchema::TYPE_STRING,
-            'topics'  => [WriteShareGroupStateRequestTopic::class],
+            'topics'  => [static::topicClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this class sends
+     *
+     * @return class-string<WriteShareGroupStateRequestTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 1 ? WriteShareGroupStateRequestTopic::class : WriteShareGroupStateRequestTopicV0::class;
     }
 
     /**

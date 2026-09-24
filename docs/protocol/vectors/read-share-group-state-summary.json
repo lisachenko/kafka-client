@@ -1,13 +1,13 @@
 {
     "api": "read-share-group-state-summary",
     "apiKey": 87,
-    "section": "ReadShareGroupStateSummary API (key 87, v0)",
-    "description": "Wire vectors of the ReadShareGroupStateSummary API (key 87, v0), replayed by tests/Compliance.",
+    "section": "ReadShareGroupStateSummary API (key 87, v0 and v1)",
+    "description": "Wire vectors of the ReadShareGroupStateSummary API (key 87, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "readsharegroupstatesummary.request.v0.uninitialized",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryRequestV0",
             "version": 0,
             "source": "broker",
             "description": "ReadShareGroupStateSummary **v0** (key 87): the frame of the ReadShareGroupState above with the key 87 in the header.",
@@ -38,7 +38,7 @@
         {
             "id": "readsharegroupstatesummary.response.v0.uninitialized",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryResponseV0",
             "version": 0,
             "source": "broker",
             "description": "Not an error: the summary of a partition the share coordinator has never seen is its initial state - the code 0, the state epoch 0, the leader epoch 0 and the start offset **-1** (`PartitionFactory.UNINITIALIZED_START_OFFSET` in `ShareCoordinatorShard.readStateSummary` @ 4.3.1), where the full read is the 42.",
@@ -69,7 +69,7 @@
         {
             "id": "readsharegroupstatesummary.request.v0.empty-group-id",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryRequestV0",
             "version": 0,
             "source": "broker",
             "description": "The same summary with the **empty** group id.",
@@ -100,7 +100,7 @@
         {
             "id": "readsharegroupstatesummary.response.v0.empty-group-id",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The empty result array: `ShareCoordinatorService` @ 4.3.1 answers a request without a group id with nothing at all rather than with an error.",
@@ -110,6 +110,132 @@
                 "correlationId": 4707,
                 "headerTaggedFields": [],
                 "results": []
+            }
+        },
+        {
+            "id": "readsharegroupstatesummary.request.v1.delivery-complete",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ReadShareGroupStateSummary **v1** (key 87, Kafka 4.2, KIP-1226) of the partition 0 of a topic of the capture for the share group `t1-42-share-summary-group-d08b6a296e8f`, after real traffic: six records produced, the group joined with `share.auto.offset.reset=earliest`, the six records acquired with a ShareFetch and acknowledged with a ShareAcknowledge - the offset 1 accepted, the offset 2 rejected, the offsets 0 and 3 to 5 released. The request is the frame of version 0 with the version 1 in the header. The group and the topic were deleted afterwards.",
+            "hex": "00000061005700010000107400126b61666b612d636c69656e742d74312d3432002774312d34322d73686172652d73756d6d6172792d67726f75702d643038623661323936653866022851a90357c046bfb222a2188345333e0200000000ffffffff000000",
+            "fields": {
+                "messageSize": 97,
+                "apiKey": 87,
+                "apiVersion": 1,
+                "correlationId": 4212,
+                "clientId": "kafka-client-t1-42",
+                "headerTaggedFields": [],
+                "groupId": "t1-42-share-summary-group-d08b6a296e8f",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "2851a90357c046bfb222a2188345333e"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstatesummary.response.v1.delivery-complete",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The code 0, the state epoch 2, the leader epoch 0, the start offset **0** - the released offset 0 is available again - and the **`DeliveryCompleteCount` 2** appended by version 1: the accepted offset 1 and the rejected, i.e. archived, offset 2, the two records at or above the start offset whose delivery is complete. The group coordinator subtracts both from the end offset for the lag of the share group (`GroupCoordinatorService` @ 4.3.1). Before the first ShareFetch the same partition answered the start offset -1 and the count -1.",
+            "hex": "000000350000107400022851a90357c046bfb222a2188345333e02000000000000000000000200000000000000000000000000000002000000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 4212,
+                "headerTaggedFields": [],
+                "results": [
+                    {
+                        "topicId": {
+                            "$bytes": "2851a90357c046bfb222a2188345333e"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "stateEpoch": 2,
+                                "leaderEpoch": 0,
+                                "startOffset": 0,
+                                "deliveryCompleteCount": 2
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstatesummary.request.v1.uninitialized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The summary of the same partition for the share group `t1-42-no-such-share-group`, which does not exist.",
+            "hex": "00000054005700010000107700126b61666b612d636c69656e742d74312d3432001a74312d34322d6e6f2d737563682d73686172652d67726f7570022851a90357c046bfb222a2188345333e0200000000ffffffff000000",
+            "fields": {
+                "messageSize": 84,
+                "apiKey": 87,
+                "apiVersion": 1,
+                "correlationId": 4215,
+                "clientId": "kafka-client-t1-42",
+                "headerTaggedFields": [],
+                "groupId": "t1-42-no-such-share-group",
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "2851a90357c046bfb222a2188345333e"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "readsharegroupstatesummary.response.v1.uninitialized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ReadShareGroupStateSummaryResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The initial state of a partition the share coordinator has never seen: the code 0, the state epoch 0, the leader epoch 0, the start offset **-1** and the **`DeliveryCompleteCount` -1** - `PartitionFactory.UNINITIALIZED_START_OFFSET` and `UNINITIALIZED_DELIVERY_COMPLETE_COUNT` in `ShareCoordinatorShard.readStateSummary` @ 4.3.1.",
+            "hex": "000000350000107700022851a90357c046bfb222a2188345333e02000000000000000000000000000000ffffffffffffffffffffffff000000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 4215,
+                "headerTaggedFields": [],
+                "results": [
+                    {
+                        "topicId": {
+                            "$bytes": "2851a90357c046bfb222a2188345333e"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "stateEpoch": 0,
+                                "leaderEpoch": 0,
+                                "startOffset": -1,
+                                "deliveryCompleteCount": -1
+                            }
+                        ]
+                    }
+                ]
             }
         }
     ]
