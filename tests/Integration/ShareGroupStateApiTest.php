@@ -21,6 +21,7 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Security\SaslMechanism;
 use Protocol\Kafka\Common\Security\SecurityProtocol;
+use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\DeleteShareGroupStateRequestTopic;
 use Protocol\Kafka\Protocol\Data\InitializeShareGroupStateRequestTopic;
 use Protocol\Kafka\Protocol\Data\ReadShareGroupStateRequestPartition;
@@ -36,6 +37,7 @@ use Protocol\Kafka\Protocol\Request\ReadShareGroupStateSummaryRequest;
 use Protocol\Kafka\Protocol\Request\ReadShareGroupStateSummaryResponse;
 use Protocol\Kafka\Protocol\Request\WriteShareGroupStateRequest;
 use Protocol\Kafka\Protocol\Request\WriteShareGroupStateResponse;
+use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
  * Probes the five share-group state apis of KIP-932 (keys 83 to 87, v0) on the 4.3.1 node, one frame each.
@@ -82,6 +84,11 @@ final class ShareGroupStateApiTest extends IntegrationTestCase
             $topic = self::uniqueTopicName('t1-41-share-state');
             new AdminClient(Cluster::bootstrap($configuration), $configuration)
                 ->createTopics([new NewTopic($topic, 1, 1)]);
+            // A KRaft node publishes a fresh topic before the broker has applied it, and the share coordinator
+            // answers a read of it with the 3 in the meantime (seen once under the load of a full gate): wait until
+            // the leader of the partition answers a ListOffsets
+            new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, self::CLIENT_ID)
+                ->awaitTopicWithLeaders($topic);
             self::$topicId = self::topicIdOf($topic);
         }
     }
