@@ -1,0 +1,242 @@
+{
+    "api": "share-acknowledge",
+    "apiKey": 79,
+    "section": "ShareAcknowledge API (key 79, v1)",
+    "description": "Wire vectors of the ShareAcknowledge API (key 79, v1, KIP-932), captured on the 4.3.1 node and replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "shareacknowledge.v1.accept.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareAcknowledgeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ShareAcknowledge of the session, epoch 2: accept the offset 3.",
+            "hex": "00000079004f00010000a03500126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a52517243670000000202d8993093d5c34700a265f08673aea75402000000000200000000000000030000000000000003020100000000",
+            "fields": {
+                "messageSize": 121,
+                "apiKey": 79,
+                "apiVersion": 1,
+                "correlationId": 41013,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 2,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": [
+                                    {
+                                        "firstOffset": 3,
+                                        "lastOffset": 3,
+                                        "acknowledgeTypes": [
+                                            1
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "shareacknowledge.v1.accept.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareAcknowledgeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The partition is answered the error code 0 and the `current_leader` `0 0`, `node_endpoints` is empty.",
+            "hex": "000000320000a035000000000000000002d8993093d5c34700a265f08673aea754020000000000000000000000000000000000000100",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 41013,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "shareacknowledge.v1.accept-twice.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareAcknowledgeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The same acknowledgement again, epoch 3.",
+            "hex": "00000079004f00010000a03600126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a52517243670000000302d8993093d5c34700a265f08673aea75402000000000200000000000000030000000000000003020100000000",
+            "fields": {
+                "messageSize": 121,
+                "apiKey": 79,
+                "apiVersion": 1,
+                "correlationId": 41014,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 3,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "acknowledgementBatches": [
+                                    {
+                                        "firstOffset": 3,
+                                        "lastOffset": 3,
+                                        "acknowledgeTypes": [
+                                            1
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "shareacknowledge.v1.accept-twice.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareAcknowledgeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **121** `InvalidRecordState` of the partition with the sentence \"The offset cannot be acknowledged. The offset is not acquired.\" (`SharePartition.acknowledgePerOffsetBatchRecords` @ 4.3.1); the request itself succeeds. An offset another member holds is the same 121 with \"Member is not the owner of batch record\".",
+            "hex": "000000700000a036000000000000000002d8993093d5c34700a265f08673aea754020000000000793f546865206f66667365742063616e6e6f742062652061636b6e6f776c65646765642e20546865206f6666736574206973206e6f742061637175697265642e00000000000000000000000100",
+            "fields": {
+                "messageSize": 112,
+                "correlationId": 41014,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "responses": [
+                    {
+                        "topicId": {
+                            "$bytes": "d8993093d5c34700a265f08673aea754"
+                        },
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 121,
+                                "errorMessage": "The offset cannot be acknowledged. The offset is not acquired.",
+                                "currentLeader": {
+                                    "leaderId": 0,
+                                    "leaderEpoch": 0
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "shareacknowledge.v1.epoch-zero.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareAcknowledgeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ShareAcknowledge with the epoch 0.",
+            "hex": "0000004e004f00010000a03800126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a5251724367000000000100",
+            "fields": {
+                "messageSize": 78,
+                "apiKey": 79,
+                "apiVersion": 1,
+                "correlationId": 41016,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": 0,
+                "topics": []
+            }
+        },
+        {
+            "id": "shareacknowledge.v1.epoch-zero.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareAcknowledgeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **123**: a ShareAcknowledge cannot open a session, only a ShareFetch can.",
+            "hex": "0000000f0000a0380000000000007b00010100",
+            "fields": {
+                "messageSize": 15,
+                "correlationId": 41016,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 123,
+                "errorMessage": null,
+                "responses": [],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "shareacknowledge.v1.close.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareAcknowledgeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ShareAcknowledge with the epoch -1 and no topic: the close of the share session.",
+            "hex": "0000004e004f00010000a03900126b61666b612d636c69656e742d74332d3431001474332d34312d766563746f72732d67726f7570173642357161364748514b53626d324c6d4a5251724367ffffffff0100",
+            "fields": {
+                "messageSize": 78,
+                "apiKey": 79,
+                "apiVersion": 1,
+                "correlationId": 41017,
+                "clientId": "kafka-client-t3-41",
+                "headerTaggedFields": [],
+                "groupId": "t3-41-vectors-group",
+                "memberId": "6B5qa6GHQKSbm2LmJRQrCg",
+                "shareSessionEpoch": -1,
+                "topics": []
+            }
+        },
+        {
+            "id": "shareacknowledge.v1.close.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ShareAcknowledgeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The error code 0 and no partition. The close releases what the member still held - the offsets 1, 4 and 5 go back to `Available`.",
+            "hex": "0000000f0000a0390000000000000000010100",
+            "fields": {
+                "messageSize": 15,
+                "correlationId": 41017,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "responses": [],
+                "nodeEndpoints": []
+            }
+        }
+    ]
+}
