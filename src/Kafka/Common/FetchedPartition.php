@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
  * {@see FetchedPartition::$logStartOffset}.
  *
  * @see \Protocol\Kafka\Client::fetchPartitions()
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)" and "Quotas and throttle time"
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Quotas and throttle time"
  */
 final class FetchedPartition
 {

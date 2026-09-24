@@ -24,6 +24,7 @@ use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Network\RetryPolicy;
 
@@ -40,6 +41,7 @@ final class RetryPolicyTest extends TestCase
                 KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
                 KafkaException::LEADER_NOT_AVAILABLE,
                 KafkaException::NOT_LEADER_FOR_PARTITION,
+                KafkaException::UNKNOWN_TOPIC_ID,
             ],
             RetryPolicy::RETRIABLE_ERROR_CODES
         );
@@ -53,6 +55,7 @@ final class RetryPolicyTest extends TestCase
         yield 'UnknownTopicOrPartition (3)' => [new UnknownTopicOrPartitionException(), true];
         yield 'LeaderNotAvailable (5)'      => [new LeaderNotAvailableException(), true];
         yield 'NotLeaderForPartition (6)'   => [new NotLeaderForPartitionException(), true];
+        yield 'UnknownTopicId (100)'        => [new UnknownTopicIdException(), true];
         yield 'dropped connection'          => [new NetworkException(), true];
         yield 'OffsetOutOfRange (1)'        => [new OffsetOutOfRangeException(), false];
         yield 'desynchronized connection'   => [new CorrelationIdMismatchException(), false];

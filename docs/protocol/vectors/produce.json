@@ -1,8 +1,8 @@
 {
     "api": "produce",
     "apiKey": 0,
-    "section": "Produce API (key 0, v0 to v12)",
-    "description": "Wire vectors of the Produce API (key 0, v0 to v12), replayed by tests/Compliance.",
+    "section": "Produce API (key 0, v0 to v13)",
+    "description": "Wire vectors of the Produce API (key 0, v0 to v13), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "produce.request.v3",
@@ -1480,7 +1480,7 @@
         {
             "id": "produce.request.v12",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV12",
             "version": 12,
             "source": "broker",
             "description": "Produce request v12 (Kafka 4.0, KIP-890 part 2), the frame of a plain producer: the flexible frame of version 9 once more and the same body a ninth time since version 3 - ProduceRequest.json @ 4.0.0 declares no field of the version and says \"Version 12 is the same as version 11 (KIP-890)\". What the number changes is what a TRANSACTIONAL batch means on a node that finalizes transaction.version 2 (see produce.request.v12.transactional); a batch without a transactional id is appended exactly as at version 11.",
@@ -1513,7 +1513,7 @@
         {
             "id": "produce.response.v12",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV12",
             "version": 12,
             "source": "broker",
             "description": "The answer v12 of the accepted batch on the kafka-4-3-1 node: the version 10 answer byte for byte - ProduceResponse.json @ 4.0.0, \"Version 12 is the same as version 10 (KIP-890)\" - with the base offset 0 of a fresh partition, the logAppendTime -1 of a CreateTime topic and the logStartOffset 0.",
@@ -1546,7 +1546,7 @@
         {
             "id": "produce.request.v12.transactional",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV12",
             "version": 12,
             "source": "broker",
             "description": "A transactional Produce v12 for a partition that no AddPartitionsToTxn ever announced: acks = -1, the compact transactional id t2-40-vectors-tx, and a record batch whose attributes carry the transactional bit (0x0010) with the producer id 276 and the epoch 0 that InitProducerId v5 handed out. At version 11 this is the frame the partition verification of KIP-890 part 1 refuses with the 120 (produce.request.v11.transactional); at version 12 it is the transaction protocol v2 of KIP-890 part 2.",
@@ -1579,7 +1579,7 @@
         {
             "id": "produce.response.v12.transactional",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV12",
             "version": 12,
             "source": "broker",
             "description": "The answer: the error code 0 and the base offset 2 - the batch was appended behind the two records of produce.request.v12. The node finalizes transaction.version 2, so `AddPartitionsToTxnManager.produceRequestVersionToTransactionSupportedOperation` @ 4.0.0 (`if (version > 11) addPartition`) made the broker add the partition to the transaction itself, the round trip of the protocol v1 that a v12 frame replaces.",
@@ -1671,6 +1671,146 @@
                         ]
                     }
                 },
+                "throttleTime": 0,
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "produce.request.v13",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 13,
+            "source": "broker",
+            "description": "Produce request v13 (Kafka 4.1, KIP-516), a plain batch of one record with acks = 1: the flexible frame of version 9 once more, with the 16 bytes of the topic id BHjDZ9XmTYyxZNZL5TlwaQ where the compact string of the name stood - ProduceRequest.json @ 4.1.0 declares `Name` for \"0-12\" and `TopicId` for \"13+\": \"Version 13 replaces topic names with topic IDs (KIP-516). May return UNKNOWN_TOPIC_ID error code.\" Nothing else of the body changed.",
+            "hex": "0000008e0000000d0000100500126b61666b612d636c69656e742d74322d34310000000100001388020478c367d5e64d8cb164d64be5397069020000000051000000000000000000000044ffffffff02ad7afd83000000000000000001a0c4506c00000001a0c4506c00ffffffffffffffffffffffffffff0000000124000000026b1674322d343120627920696400000000",
+            "fields": {
+                "messageSize": 142,
+                "apiKey": 0,
+                "apiVersion": 13,
+                "correlationId": 4101,
+                "clientId": "kafka-client-t2-41",
+                "headerTaggedFields": [],
+                "transactionalId": null,
+                "requiredAcks": 1,
+                "timeout": 5000,
+                "topicMessages": [
+                    {
+                        "topicId": {
+                            "$bytes": "0478c367d5e64d8cb164d64be5397069"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000044ffffffff02ad7afd83000000000000000001a0c4506c00000001a0c4506c00ffffffffffffffffffffffffffff0000000124000000026b1674322d343120627920696400"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "produce.response.v13",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 13,
+            "source": "broker",
+            "description": "The answer v13 of the kafka-4-3-1 node: the version 12 answer with the topic named by the same id - the base offset 0 of a fresh partition, the logAppendTime -1 of a CreateTime topic, the logStartOffset 0 and the empty tagged sections of KIP-951. ProduceResponse.json @ 4.1.0: \"Version 13 replaces topic names with topic IDs (KIP-516).\"",
+            "hex": "0000003e0000100500020478c367d5e64d8cb164d64be5397069020000000000000000000000000000ffffffffffffffff0000000000000000010000000000000000",
+            "fields": {
+                "messageSize": 62,
+                "correlationId": 4101,
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "0478c367d5e64d8cb164d64be5397069"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0,
+                                "logAppendTime": -1,
+                                "logStartOffset": 0,
+                                "recordErrors": [],
+                                "errorMessage": null,
+                                "currentLeader": null
+                            }
+                        ]
+                    }
+                ],
+                "throttleTime": 0,
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "produce.request.v13.unknown-topic-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 13,
+            "source": "broker",
+            "description": "The same batch for an id the node does not have, C63A3gutwN4LrcDeC63A3g (the bytes 0badc0de four times).",
+            "hex": "0000008e0000000d0000100600126b61666b612d636c69656e742d74322d34310000000100001388020badc0de0badc0de0badc0de0badc0de020000000051000000000000000000000044ffffffff02ad7afd83000000000000000001a0c4506c00000001a0c4506c00ffffffffffffffffffffffffffff0000000124000000026b1674322d343120627920696400000000",
+            "fields": {
+                "messageSize": 142,
+                "apiKey": 0,
+                "apiVersion": 13,
+                "correlationId": 4102,
+                "clientId": "kafka-client-t2-41",
+                "headerTaggedFields": [],
+                "transactionalId": null,
+                "requiredAcks": 1,
+                "timeout": 5000,
+                "topicMessages": [
+                    {
+                        "topicId": {
+                            "$bytes": "0badc0de0badc0de0badc0de0badc0de"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000044ffffffff02ad7afd83000000000000000001a0c4506c00000001a0c4506c00ffffffffffffffffffffffffffff0000000124000000026b1674322d343120627920696400"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "produce.response.v13.unknown-topic-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 13,
+            "source": "broker",
+            "description": "The refusal lives in the partition entry: the 100 UNKNOWN_TOPIC_ID with the base offset -1 and the log start offset -1, under the unknown id the request named, and nothing was appended. The same answer comes back for the zero uuid and at acks = -1; at acks = 0 the node closes the connection instead, as it does for every refused batch of a request it would not answer.",
+            "hex": "0000003e0000100600020badc0de0badc0de0badc0de0badc0de02000000000064ffffffffffffffffffffffffffffffffffffffffffffffff010000000000000000",
+            "fields": {
+                "messageSize": 62,
+                "correlationId": 4102,
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "0badc0de0badc0de0badc0de0badc0de"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 100,
+                                "baseOffset": -1,
+                                "logAppendTime": -1,
+                                "logStartOffset": -1,
+                                "recordErrors": [],
+                                "errorMessage": null,
+                                "currentLeader": null
+                            }
+                        ]
+                    }
+                ],
                 "throttleTime": 0,
                 "nodeEndpoints": []
             }

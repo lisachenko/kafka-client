@@ -27,8 +27,10 @@ use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponseRecordError;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV7;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV7;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -79,7 +81,7 @@ final class RecordErrorsTest extends IntegrationTestCase
 
     public function testARefusedBatchNamesItsBadRecordsByTheirBatchIndex(): void
     {
-        $partition = $this->produce(ProduceRequest::class, ProduceResponse::class, 1100);
+        $partition = $this->produce(ProduceRequestV12::class, ProduceResponseV12::class, 1100);
 
         self::assertSame(KafkaException::UNSUPPORTED_FOR_MESSAGE_FORMAT + 0, 43, 'sanity: the codes are stable');
         self::assertSame(87, KafkaException::INVALID_RECORD);

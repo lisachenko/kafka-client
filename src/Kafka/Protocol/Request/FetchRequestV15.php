@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the tagged `node_endpoints` that names where the leader of a refused partition can be reached, see
  * {@see FetchResponse::$nodeEndpoints}.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v17)", "The replica state of KIP-903 (v15)" and
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "The replica state of KIP-903 (v15)" and
  *      "The leader discovery of KIP-951 (v16)"
  */
 final class FetchRequestV15 extends FetchRequest

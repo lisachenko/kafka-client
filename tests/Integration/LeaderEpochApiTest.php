@@ -30,6 +30,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV10;
 use Protocol\Kafka\Protocol\Request\FetchRequestV11;
+use Protocol\Kafka\Protocol\Request\FetchRequestV17;
 use Protocol\Kafka\Protocol\Request\FetchRequestV8;
 use Protocol\Kafka\Protocol\Request\FetchRequestV9;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
@@ -57,8 +58,8 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -385,7 +386,8 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             $flexible,
             'the empty compact rack, and the tag buffer of the body behind it'
         );
-        self::assertSame(17, FetchRequest::VERSION, 'the version the directory id of KIP-853 reached');
+        self::assertSame(18, FetchRequest::VERSION, 'the version the high watermark of KIP-1166 reached');
+        self::assertSame(17, FetchRequestV17::VERSION, 'the version the directory id of KIP-853 reached');
         self::assertSame(11, FetchRequestV11::VERSION, 'the version the Kafka 2.3 part of this line sent');
         self::assertSame(10, FetchRequestV10::VERSION, 'and the version the Kafka 2.1 part sent');
     }
@@ -545,7 +547,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
     private function produce(string $value): void
     {
         $stream = $this->connect();
-        new ProduceRequest(
+        new ProduceRequestV12(
             [$this->topic => [0 => RecordBatch::fromRecords(
                 [new Record($value, null, 0, null, (int) round(microtime(true) * 1000))]
             )]],
@@ -557,7 +559,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
 
         self::assertSame(
             KafkaException::NO_ERROR,
-            ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[0]->errorCode
+            ProduceResponseV12::unpack($stream)->topics[$this->topic]->partitions[0]->errorCode
         );
     }
 

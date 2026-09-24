@@ -36,14 +36,17 @@ use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV15;
 use Protocol\Kafka\Protocol\Request\FetchRequestV16;
+use Protocol\Kafka\Protocol\Request\FetchRequestV17;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV15;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV12;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV9;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
 
 /**
@@ -65,7 +68,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
  * Every topic of this class is named `t2-37-…`, so that it can run next to the other suites on the shared node.
  *
  * @see docs/protocol/4.3.md, sections "The leader discovery of KIP-951 (v10)", "The leader discovery of KIP-951
- *      (v16)", "Produce API (key 0, v0 to v12)" and "Fetch API (key 1, v0 to v17)"
+ *      (v16)", "Produce API (key 0, v0 to v13)" and "Fetch API (key 1, v0 to v18)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
@@ -331,7 +334,8 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
         $fetched  = $client->fetchPartitions([$this->topic => [self::PARTITION => 0]], 250);
 
         self::assertSame(16, FetchRequestV16::VERSION, 'the version KIP-951 added');
-        self::assertSame(17, FetchRequest::VERSION, 'which the directory id of KIP-853 raised to 17');
+        self::assertSame(17, FetchRequestV17::VERSION, 'which the directory id of KIP-853 raised to 17');
+        self::assertSame(18, FetchRequest::VERSION, 'and the high watermark of KIP-1166 to 18');
         self::assertSame(10, ProduceRequestV10::VERSION);
         self::assertSame(
             count(self::RECORDS),
@@ -418,14 +422,14 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
         }
 
         $answer = $this->send(
-            new ProduceRequest(
+            new ProduceRequestV12(
                 [$this->topic => [self::PARTITION => RecordBatch::fromRecords($records)]],
                 1,
                 self::REQUEST_TIMEOUT_MS,
                 self::CLIENT_ID,
                 3750
             ),
-            ProduceResponse::class
+            ProduceResponseV12::class
         );
 
         self::assertSame(
