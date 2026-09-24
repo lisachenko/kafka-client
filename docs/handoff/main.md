@@ -1,6 +1,6 @@
 # The 4.x line: Kafka 4.0 to 4.3 on a 4.3.1 KRaft node — the plan
 
-**State: the foundation and the Kafka 4.0, 4.1, 4.2 and 4.3 milestones are in; current milestone: Kafka 4.3 — every minor of the line; the KIP-932 share consumer is the last wave.** The line is built on the integration branch
+**State: the foundation, the Kafka 4.0, 4.1, 4.2 and 4.3 milestones are in, and the last wave, the KIP-932 share consumer, is in; the final documentation pass (T10) follows.** The line is built on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213), tickets
 #214 T1, #215 T2, #216 T3, #217 T4 and #218 T10) towards **Kafka 4.3.1**, and merged into `main` as one pull request
 when it is complete; its release notes are then written above this plan, so that the file becomes the record of the

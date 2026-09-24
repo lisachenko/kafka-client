@@ -16,7 +16,8 @@ Unreleased — the 4.x line (towards Kafka 4.3.1)
 
 The 4.x line, built on `main` on top of the finished 3.x line (branched off as `3.x`), on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213)). The plan
-of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **Kafka 4.3**: every minor of the line is in, and the KIP-932 share consumer as the last wave.
+of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **the KIP-932 share consumer**, the last wave: every minor of the line is in, and the share
+consumer with its admin methods.
 
 ### Added
 
@@ -64,6 +65,30 @@ brought every one of them to what the node answers (see "Kafka 4.0 — Changed" 
   [docs/handoff/3.x.md](docs/handoff/3.x.md) and the plan of the 4.x line took its place as
   `docs/handoff/main.md`; the tables of tag points and milestone commits left the handoff records — the tags of
   the repository are the record.
+
+### The share consumer (KIP-932) — Added
+
+The last wave of the line, PRs #234 (T4) and #235 (T3). It adds no wire version: it builds on the share-group apis
+the milestones 4.1 and 4.2 brought to their 4.3.1 ceiling.
+
+- **`Consumer\KafkaShareConsumer`**, the `KafkaShareConsumer` of the Java client @ 4.3.1: `subscribe()`, `poll()` —
+  every record with its **delivery count** (`ConsumerRecord::$deliveryCount`) —, `acknowledge()` with
+  `Consumer\AcknowledgeType` (`ACCEPT`, `RELEASE`, `REJECT`, `RENEW`), the **implicit** (default) and **explicit**
+  acknowledgement modes of `share.acknowledgement.mode`, `commitSync()` (one error or null per partition) and
+  `commitAsync()` with a `Consumer\AcknowledgementCommitCallback`, `acquisitionLockTimeoutMs()`, the
+  `share.acquire.mode` of KIP-1206, one share session per leader (reopened at the epoch 0 after a top-level error),
+  and `close()`, which closes every session with the epoch -1 and leaves the group; the options a share group does
+  not take are refused (`ConsumerConfig::SHARE_GROUP_UNSUPPORTED_CONFIGS`). `examples/share-consumer.php`.
+- **The share-group admin methods** of `Admin.java` @ 4.3.1: `AdminClient::listShareGroups()`,
+  `listShareGroupOffsets()` (start offset, leader epoch and the lag of KIP-1226, `Admin\SharePartitionOffsetInfo`,
+  `Admin\ListShareGroupOffsetsSpec`), `alterShareGroupOffsets()`, `deleteShareGroupOffsets()` and
+  `deleteShareGroups()`, over ListGroups v5, DescribeShareGroupOffsets v1, AlterShareGroupOffsets v0,
+  DeleteShareGroupOffsets v0 and DeleteGroups v2. `examples/admin-share-groups.php`.
+- Measured on the node: two members share a partition without a record delivered twice while locked; a release
+  redelivers with the next delivery count, a reject never; the group config `share.delivery.count.limit` (at least 2)
+  archives a record; a renewal holds a record past its lock; a fresh member gets its partitions on a later heartbeat
+  (~1–1.5 s); an epoch 0 of a live session replaces it without releasing the held records; `deleteShareGroups()`
+  deletes an empty group of any type, as the Java admin client does.
 
 ### Kafka 4.3 — Added
 
