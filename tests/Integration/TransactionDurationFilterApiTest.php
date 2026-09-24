@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * The node is shared and its coordinator holds the transactional ids of every suite that ever ran against it, so
  * every assertion here is bounded by the producer ids of this class.
  *
- * @see docs/protocol/4.3.md, sections "ListTransactions API (key 66, v0 and v1)" and "The duration filter of
+ * @see docs/protocol/4.3.md, sections "ListTransactions API (key 66, v0 to v2)" and "The duration filter of
  *      KIP-994 (v1)"
  */
 #[CoversClass(AdminClient::class)]
