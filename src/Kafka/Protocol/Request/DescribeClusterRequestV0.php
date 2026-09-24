@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * answers a version 0 request the **42** (`InvalidRequest`) where a version 1 request is answered 114 or 115 -
  * although no frame of this version can reach that branch, because it carries no type to mismatch.
  *
- * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 to v2)" and "The endpoint type of KIP-919
  *      (v1)"
  */
 final class DescribeClusterRequestV0 extends DescribeClusterRequest

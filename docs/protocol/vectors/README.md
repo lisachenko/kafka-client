@@ -1,6 +1,10 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 4.x line has captured **28** vectors of its own so far, on the `kafka-4-3-1` KRaft node — the 28 frames of Kafka
+The 4.x line has captured **72** vectors of its own so far, on the `kafka-4-3-1` node — the 44 frames of the admin
+half of Kafka 4.0: the 20 of UpdateFeatures v2 and of the version 1 a 4.x controller answers in `update-features.json`,
+the 6 of DescribeCluster v2 (KIP-1073) in `describe-cluster.json`, the 2 of DescribeQuorum v2 re-measured on the
+dynamic quorum in `describe-quorum.json`, and the 16 of the two raft-voter apis of KIP-853 in the two new files
+`add-raft-voter.json` and `remove-raft-voter.json`. And the 28 frames of Kafka
 4.0 on the group apis: the 16 of ConsumerGroupHeartbeat v1 (the member id of KIP-1082 and the regex subscription with
 its 128) in `consumer-group-heartbeat.json`, the 4 of ConsumerGroupDescribe v1 (the member type of KIP-1099) in
 `consumer-group-describe.json` and the 8 of DescribeGroups v6 (the 69 of KIP-1043) in `describe-groups.json`.
@@ -77,7 +81,7 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1163** of them in **60** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **1207** of them in **62** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the

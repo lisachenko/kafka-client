@@ -26,8 +26,12 @@ use Protocol\Kafka\Common\Node;
  * which one it is: {@see self::$endpointType} is the {@see EndpointType} the server answered with, and the nodes
  * are its brokers or its controllers accordingly.
  *
- * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
- *      (v1)"
+ * Since Kafka 4.0 (KIP-1073) the brokers may include the **fenced** ones, when the caller asked for them; the Java
+ * client flags them with `Node.isFenced()`, and this description lists their ids in {@see self::$fencedNodeIds}
+ * next to the nodes, because {@see Node} is the broker of a Metadata answer and has no such field.
+ *
+ * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
+ *      (v1)" and "The fenced brokers of KIP-1073 (v2)"
  */
 final class ClusterDescription
 {
@@ -43,14 +47,25 @@ final class ClusterDescription
      * @param int              $authorizedOperations Acl bit field of KIP-430, or {@see self::OPERATIONS_NOT_REQUESTED}
      * @param EndpointType     $endpointType         Which half of the cluster {@see self::$nodes} holds (KIP-919,
      *        version 1); an answer below that version always describes the brokers
+     * @param list<int>        $fencedNodeIds        Ids of the nodes of {@see self::$nodes} the controller has fenced
+     *        (KIP-1073, version 2); empty unless the fenced brokers were asked for
      */
     public function __construct(
         public readonly string $clusterId,
         public readonly int $controllerId,
         public readonly array $nodes,
         public readonly int $authorizedOperations = self::OPERATIONS_NOT_REQUESTED,
-        public readonly EndpointType $endpointType = EndpointType::Broker
+        public readonly EndpointType $endpointType = EndpointType::Broker,
+        public readonly array $fencedNodeIds = []
     ) {}
+
+    /**
+     * Returns whether the node with the given id is a broker the controller has fenced (KIP-1073)
+     */
+    public function isFenced(int $nodeId): bool
+    {
+        return in_array($nodeId, $this->fencedNodeIds, true);
+    }
 
     /**
      * Returns the active controller of the cluster, or null while it has none

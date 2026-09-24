@@ -24,24 +24,31 @@ use Protocol\Kafka\Protocol\Data\FeatureUpdateKey;
 use Protocol\Kafka\Protocol\Data\FeatureUpdateKeyV0;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequest;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequestV0;
+use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequestV1;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponseV0;
+use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponseV1;
 
 /**
- * Byte-exact tests for the version 1 of UpdateFeatures (key 57), the two fields of KIP-778.
+ * Byte-exact tests for the versions 1 and 2 of UpdateFeatures (key 57): the two fields of KIP-778, and the answer
+ * without results of Kafka 4.0.
  *
  * Kafka 3.3 replaced the `allow_downgrade` boolean of every update with the `upgrade_type` int8 and appended the
  * top-level `validate_only`; the answer did not change at all. The version 0 of both halves lives on in
  * {@see UpdateFeaturesRequestV0} and {@see UpdateFeaturesResponseV0}, and a downgrade type that the version 0
- * cannot express - the unsafe one - is the same frame as the safe one there.
+ * cannot express - the unsafe one - is the same frame as the safe one there. Kafka 4.0 raised the api to the
+ * version 2, whose request is the version 1 frame and whose answer drops the per-feature results
+ * ({@see UpdateFeaturesRequestV1}, {@see UpdateFeaturesResponseV1}).
  *
- * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 and v1)" and "The upgrade type and the dry
- *      run of KIP-778 (v1)"
+ * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
+ *      of KIP-778 (v1)" and "The answer without results (v2, Kafka 4.0)"
  */
 #[CoversClass(UpdateFeaturesRequest::class)]
 #[CoversClass(UpdateFeaturesRequestV0::class)]
+#[CoversClass(UpdateFeaturesRequestV1::class)]
 #[CoversClass(UpdateFeaturesResponse::class)]
 #[CoversClass(UpdateFeaturesResponseV0::class)]
+#[CoversClass(UpdateFeaturesResponseV1::class)]
 #[CoversClass(FeatureUpdateKey::class)]
 #[CoversClass(FeatureUpdateKeyV0::class)]
 #[CoversClass(FeatureUpdate::class)]
@@ -49,10 +56,10 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponseV0;
 final class UpdateFeaturesTest extends TestCase
 {
     /**
-     * A version 1 request that lowers `metadata.version` to 20 with an unsafe downgrade, as a dry run.
+     * A version 2 request that lowers `metadata.version` to 20 with an unsafe downgrade, as a dry run.
      *
      *   Size            => 00 00 00 2b (43 bytes)
-     *   ApiKey          => 00 39 (57), ApiVersion => 00 01
+     *   ApiKey          => 00 39 (57), ApiVersion => 00 02
      *   CorrelationId   => 00 00 00 09
      *   ClientId        => 00 04 "test", TAG_BUFFER => 00
      *   TimeoutMs       => 00 00 ea 60 (60000)
@@ -64,7 +71,7 @@ final class UpdateFeaturesTest extends TestCase
      */
     private const string REQUEST_HEX = '0000002b'
         . '0039'
-        . '0001'
+        . '0002'
         . '00000009'
         . '0004' . '74657374'
         . '00'
@@ -89,7 +96,7 @@ final class UpdateFeaturesTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::UPDATE_FEATURES, $request->getApiKey());
-        self::assertSame(1, $request->getApiVersion());
+        self::assertSame(2, $request->getApiVersion());
         self::assertTrue($request->isValidateOnly());
         self::assertSame(60000, $request->getTimeoutMs());
         self::assertSame(
@@ -198,6 +205,48 @@ final class UpdateFeaturesTest extends TestCase
     }
 
     /**
+     * The request of the version 2 is the frame of the version 1 with another number in the header
+     */
+    public function testTheVersionTwoRequestIsTheVersionOneFrame(): void
+    {
+        $update = ['metadata.version' => new FeatureUpdateKey('metadata.version', 20, UpgradeType::UnsafeDowngrade)];
+
+        self::assertSame(
+            str_replace('00390002', '00390001', self::REQUEST_HEX),
+            bin2hex((string) new UpdateFeaturesRequestV1($update, 60000, 'test', 9, true))
+        );
+        self::assertSame(UpdateFeaturesRequest::getScheme(), UpdateFeaturesRequestV1::getScheme());
+    }
+
+    /**
+     * The version 2 answer of a request the controller accepted: the top-level 0, a null message and no result
+     *
+     *   Size => 00 00 00 0d, CorrelationId => 00 00 0f a1, TAG_BUFFER => 00
+     *   ThrottleTimeMs => 00 00 00 00, ErrorCode => 00 00, ErrorMessage => 00 (null), TAG_BUFFER => 00
+     */
+    public function testTheVersionTwoAnswerHasNoResults(): void
+    {
+        $hex = '0000000d' . '00000fa1' . '00' . '00000000' . '0000' . '00' . '00';
+
+        $response = UpdateFeaturesResponse::unpack(new StringStream((string) hex2bin($hex)));
+
+        self::assertSame(2, UpdateFeaturesResponse::VERSION);
+        self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
+        self::assertNull($response->errorMessage, 'the null of a 4.3.1 controller, not the empty string of 3.9.2');
+        self::assertSame([], $response->results);
+        self::assertArrayNotHasKey('results', UpdateFeaturesResponse::getScheme());
+        self::assertArrayHasKey('results', UpdateFeaturesResponseV1::getScheme());
+        self::assertSame($hex, bin2hex((string) $response));
+        self::assertSame(
+            '0000000e' . '00000fa1' . '00' . '00000000' . '0000' . '00' . '01' . '00',
+            bin2hex((string) UpdateFeaturesResponseV1::unpack(new StringStream((string) hex2bin(
+                '0000000e' . '00000fa1' . '00' . '00000000' . '0000' . '00' . '01' . '00'
+            )))),
+            'the version 1 answer of the same question carries the one byte of an empty result array'
+        );
+    }
+
+    /**
      * The answer of the version 1 is the answer of the version 0, field for field
      */
     public function testTheAnswerIsUnchangedByKip778(): void
@@ -215,7 +264,7 @@ final class UpdateFeaturesTest extends TestCase
             . '00'
             . '00';
 
-        $response = UpdateFeaturesResponse::unpack(new StringStream((string) hex2bin($hex)));
+        $response = UpdateFeaturesResponseV1::unpack(new StringStream((string) hex2bin($hex)));
 
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
         self::assertSame('', $response->errorMessage, 'the empty string of the KRaft node, not the null of 2.8.2');
@@ -223,7 +272,7 @@ final class UpdateFeaturesTest extends TestCase
         self::assertNull($response->results['metadata.version']->errorMessage);
         self::assertSame($hex, bin2hex((string) $response));
         self::assertSame(
-            UpdateFeaturesResponse::getScheme(),
+            UpdateFeaturesResponseV1::getScheme(),
             UpdateFeaturesResponseV0::getScheme(),
             'the two versions read the very same bytes'
         );

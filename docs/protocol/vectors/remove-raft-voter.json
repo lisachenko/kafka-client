@@ -1,0 +1,125 @@
+{
+    "api": "remove-raft-voter",
+    "apiKey": 81,
+    "section": "RemoveRaftVoter API (key 81, v0)",
+    "description": "Wire vectors of the RemoveRaftVoter API (key 81, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "removeraftvoter.request.v0.voter-not-found",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RemoveRaftVoterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "RemoveRaftVoter **v0** (key 81) of the voter key `(4242, RFZofEWhQXF9JVjHbJjVuQ)`, which no quorum has - this repository never sends the key of the voter 1.",
+            "hex": "0000003300510000000010d200126b61666b612d636c69656e742d74312d34300000000010924456687c45a141717d2558c76c98d5b900",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 81,
+                "apiVersion": 0,
+                "correlationId": 4306,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "clusterId": null,
+                "voterId": 4242,
+                "voterDirectoryId": {
+                    "$bytes": "4456687c45a141717d2558c76c98d5b9"
+                }
+            }
+        },
+        {
+            "id": "removeraftvoter.response.v0.voter-not-found",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RemoveRaftVoterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **127** (`VoterNotFound`) of `RemoveVoterHandler` @ 4.0.0, whose message lists the keys the voter set does hold.",
+            "hex": "000000a7000010d20000000000007f9a0143616e6e6f742072656d6f766520766f746572205265706c6963614b65792869643d343234322c206469726563746f727949643d52465a6f66455768515846394a566a48624a6a567551292066726f6d2074686520736574206f6620766f74657273205b5265706c6963614b65792869643d312c206469726563746f727949643d375178705847564251545761486d6947374944724551295d00",
+            "fields": {
+                "messageSize": 167,
+                "correlationId": 4306,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 127,
+                "errorMessage": "Cannot remove voter ReplicaKey(id=4242, directoryId=RFZofEWhQXF9JVjHbJjVuQ) from the set of voters [ReplicaKey(id=1, directoryId=7QxpXGVBQTWaHmiG7IDrEQ)]"
+            }
+        },
+        {
+            "id": "removeraftvoter.request.v0.foreign-cluster",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RemoveRaftVoterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same key with the cluster id `not-this-cluster`.",
+            "hex": "0000004300510000000010d300126b61666b612d636c69656e742d74312d343000116e6f742d746869732d636c7573746572000010924456687c45a141717d2558c76c98d5b900",
+            "fields": {
+                "messageSize": 67,
+                "apiKey": 81,
+                "apiVersion": 0,
+                "correlationId": 4307,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "clusterId": "not-this-cluster",
+                "voterId": 4242,
+                "voterDirectoryId": {
+                    "$bytes": "4456687c45a141717d2558c76c98d5b9"
+                }
+            }
+        },
+        {
+            "id": "removeraftvoter.response.v0.foreign-cluster",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RemoveRaftVoterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **104**, word for word the refusal of AddRaftVoter.",
+            "hex": "00000062000010d3000000000000685654686520676976656e20696420226e6f742d746869732d636c75737465722220646f65736e2774206d617463682074686520636c757374657220696420226657302d6e6e3638527879546432354b7033364f48672200",
+            "fields": {
+                "messageSize": 98,
+                "correlationId": 4307,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 104,
+                "errorMessage": "The given id \"not-this-cluster\" doesn't match the cluster id \"fW0-nn68RxyTd25Kp36OHg\""
+            }
+        },
+        {
+            "id": "removeraftvoter.request.v0.zero-directory-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RemoveRaftVoterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A remove of the voter 4242 with the zero directory id.",
+            "hex": "0000003300510000000010d400126b61666b612d636c69656e742d74312d34300000000010920000000000000000000000000000000000",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 81,
+                "apiVersion": 0,
+                "correlationId": 4308,
+                "clientId": "kafka-client-t1-40",
+                "headerTaggedFields": [],
+                "clusterId": null,
+                "voterId": 4242,
+                "voterDirectoryId": {
+                    "$bytes": "00000000000000000000000000000000"
+                }
+            }
+        },
+        {
+            "id": "removeraftvoter.response.v0.zero-directory-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RemoveRaftVoterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **42** of a voter key without a directory id.",
+            "hex": "0000003e000010d40000000000002a3252656d6f766520766f7465722072657175657374206469646e277420696e636c75646520612076616c696420766f74657200",
+            "fields": {
+                "messageSize": 62,
+                "correlationId": 4308,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": "Remove voter request didn't include a valid voter"
+            }
+        }
+    ]
+}

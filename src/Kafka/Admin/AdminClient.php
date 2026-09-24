@@ -40,6 +40,7 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
+use Protocol\Kafka\Protocol\Data\AddRaftVoterRequestListener;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
@@ -56,6 +57,8 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProducerState as ProducerStateData;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\AddRaftVoterRequest;
+use Protocol\Kafka\Protocol\Request\AddRaftVoterResponse;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequest;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
@@ -119,10 +122,13 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
+use Protocol\Kafka\Protocol\Request\RemoveRaftVoterRequest;
+use Protocol\Kafka\Protocol\Request\RemoveRaftVoterResponse;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequest;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
+use UnexpectedValueException;
 
 /**
  * Kafka low-level administrative client
@@ -2225,19 +2231,31 @@ class AdminClient
      * **On a ZooKeeper-backed 2.8.2 cluster there is nothing to update**: the controller finalizes no feature, so
      * every update is answered with the per-feature code 96 (`FeatureUpdateFailed`).
      *
-     * **Kafka 3.3 (KIP-778) gave the api the version 1**, which this client sends: the `allow_downgrade` boolean
-     * of an update became the {@see UpgradeType} of {@see FeatureUpdate} - an upgrade, a safe downgrade or an
-     * unsafe one - and `$validateOnly` is the `validate_only` of `UpdateFeaturesOptions.validateOnly()`, with
-     * which the controller answers what it *would* do and writes nothing at all.
+     * **Kafka 3.3 (KIP-778) gave the api the version 1**: the `allow_downgrade` boolean of an update became the
+     * {@see UpgradeType} of {@see FeatureUpdate} - an upgrade, a safe downgrade or an unsafe one - and
+     * `$validateOnly` is the `validate_only` of `UpdateFeaturesOptions.validateOnly()`, with which the controller
+     * answers what it *would* do and writes nothing at all.
      *
-     * @param list<FeatureUpdate> $updates      Changes to ask the controller for; the list may not be empty
+     * **Kafka 4.0 gave it the version 2**, which this client sends: the answer carries no per-feature result any
+     * more, because a 4.x controller applies the updates **atomically** - the first feature it refuses refuses the
+     * whole request, with the top-level error `The update failed for all features since the following feature had
+     * an error: …` at every version of the api. A 4.x node therefore either changes every feature of the call, and
+     * this method answers null for each of them, or none, and this method throws the one error that names the
+     * feature it stopped at. Against a controller below Kafka 4.0 a refusal was per feature, and the entries of the
+     * version 1 answer are still read when a peer sends them.
+     *
+     * @param list<FeatureUpdate> $updates      Changes to ask the controller for
      * @param int                 $timeoutMs    How long the controller may take over the request
      * @param bool                $validateOnly Whether the controller validates the updates without writing them
      *
-     * @throws KafkaException If the request as a whole was refused, e.g. with 41 (NotController) or 42 for an
-     *         empty or duplicated update list
+     * @throws KafkaException If the request as a whole was refused: 41 (NotController) twice, 31
+     *         (ClusterAuthorizationFailed), and on a 4.x controller every refusal of a feature, e.g. the 95
+     *         (InvalidUpdateVersion) of a level it does not support
      *
-     * @return array<string, KafkaException|null> Error of every feature of the call, null when it was changed
+     * @return array<string, KafkaException|null> Error of every feature of the call, null when it was changed (or,
+     *         with `$validateOnly`, would be)
+     *
+     * @see docs/protocol/4.3.md, section "The answer without results (v2, Kafka 4.0)"
      */
     public function updateFeatures(
         array $updates,
@@ -2276,7 +2294,8 @@ class AdminClient
             );
         }
 
-        $result = [];
+        // The version 2 answer (Kafka 4.0) carries no result: a top-level 0 is the 0 of every feature of the call
+        $result = array_fill_keys(array_keys($featureUpdates), null);
         foreach ($response->results as $feature => $featureResult) {
             $result[(string) $feature] = $featureResult->errorCode === KafkaException::NO_ERROR
                 ? null
@@ -2301,9 +2320,9 @@ class AdminClient
      * `$includeAuthorizedOperations` asks for the acl bit field of KIP-430. Without it the answer carries
      * `Integer.MIN_VALUE`, which {@see ClusterDescription::hasAuthorizedOperations()} reports as "not asked".
      *
-     * **`$endpointType` is the version 1 of KIP-919** (Kafka 3.7), which this client sends: a cluster without
-     * ZooKeeper has brokers *and* controllers, and the byte says which of the two sets the answer describes.
-     * {@see EndpointType::Broker} is the default and the only thing a version 0 frame could ask for;
+     * **`$endpointType` is the version 1 of KIP-919** (Kafka 3.7): a cluster without ZooKeeper has brokers *and*
+     * controllers, and the byte says which of the two sets the answer describes. {@see EndpointType::Broker} is
+     * the default and the only thing a version 0 frame could ask for;
      * {@see EndpointType::Controller} asks for the controllers, which a **broker** listener refuses with the
      * **114** (`MismatchedEndpointType`) that Kafka 3.7 added for it - the request belongs on a controller
      * listener, which this client is not configured with.
@@ -2312,14 +2331,21 @@ class AdminClient
      * broker below Kafka 2.8 - a 2.8.2 broker answers the api key 60 with the error code 35 on every line below
      * this one, so the choice is the caller's and not this client's.
      *
+     * **`$includeFencedBrokers` is the version 2 of KIP-1073** (Kafka 4.0), which this client sends: the broker
+     * list then names the brokers the controller has registered but fenced as well, and
+     * {@see ClusterDescription::isFenced()} tells them apart - the `DescribeClusterOptions.includeFencedBrokers()`
+     * of the Java client.
+     *
      * @param bool         $includeAuthorizedOperations Whether to ask for the acl bit field of the cluster
      * @param EndpointType $endpointType                Which half of the cluster to describe (KIP-919, version 1)
+     * @param bool         $includeFencedBrokers        Whether to list the fenced brokers too (KIP-1073, version 2)
      *
      * @throws KafkaException If the broker refused the request
      */
     public function describeCluster(
         bool $includeAuthorizedOperations = false,
-        EndpointType $endpointType = EndpointType::Broker
+        EndpointType $endpointType = EndpointType::Broker,
+        bool $includeFencedBrokers = false
     ): ClusterDescription {
         /** @var DescribeClusterResponse $response */
         $response = $this->sendAnyNode(
@@ -2327,7 +2353,8 @@ class AdminClient
                 $includeAuthorizedOperations,
                 $this->clientId(),
                 $correlationId,
-                $endpointType
+                $endpointType,
+                $includeFencedBrokers
             ),
             DescribeClusterResponse::class
         );
@@ -2339,7 +2366,8 @@ class AdminClient
             );
         }
 
-        $nodes = [];
+        $nodes  = [];
+        $fenced = [];
         foreach ($response->brokers as $broker) {
             $node         = new Node();
             $node->nodeId = $broker->brokerId;
@@ -2348,6 +2376,9 @@ class AdminClient
             $node->rack   = $broker->rack;
 
             $nodes[$broker->brokerId] = $node;
+            if ($broker->isFenced) {
+                $fenced[] = $broker->brokerId;
+            }
         }
 
         return new ClusterDescription(
@@ -2355,7 +2386,8 @@ class AdminClient
             $response->controllerId,
             $nodes,
             $response->clusterAuthorizedOperations,
-            $response->getEndpointType()
+            $response->getEndpointType(),
+            $fenced
         );
     }
 
@@ -3708,5 +3740,121 @@ class AdminClient
             ?? throw new InvalidGroupIdException(
                 ['groupId' => $groupId, 'error' => "The coordinator answered with no description of {$groupId}"]
             );
+    }
+
+    /**
+     * Adds a controller to the voters of the metadata quorum (ApiKey 80, Kafka 3.9, KIP-853; the admin api of 4.0)
+     *
+     * `Admin.addRaftVoter(voterId, voterDirectoryId, endpoints, options)` of the Java client @ 4.0.0, the release in
+     * which KIP-853 became generally available: a cluster whose storage was formatted with `--standalone` or
+     * `--initial-controllers` finalizes `kraft.version` 1, and its quorum takes a new voter while it runs. A voter is
+     * a **key**, the replica id and the directory id of the disk its metadata log lives on (the
+     * {@see ReplicaState::$replicaDirectoryId} that {@see self::describeMetadataQuorum()} reads), and the endpoints
+     * are where the quorum reaches it - one of them has to be on the listener the controllers talk to each other on
+     * (`controller.listener.names`, `CONTROLLER` on the node of this repository).
+     *
+     * Any broker takes the request and forwards it to the active controller, whose raft client checks the cluster id
+     * (104 `InconsistentClusterId`), the voter key and that listener (42 `InvalidRequest`), a voter change in flight
+     * (7 `RequestTimedOut`), the feature (35 `UnsupportedVersion` below `kraft.version` 1) and the voter id (126
+     * `DuplicateVoter` for an id the quorum already has), then **asks the new voter** for its ApiVersions: a voter
+     * that cannot be reached, that does not support the finalized `kraft.version` or whose log has not caught up is
+     * never appended (7, or 42 for the feature range), and the method returns only once the new voter set is
+     * committed.
+     *
+     * @param int                     $voterId          Replica id (`node.id`) of the new voter
+     * @param string                  $voterDirectoryId The 16 raw bytes of its metadata log directory id,
+     *        {@see Uuid::fromString()} turns the text form of `meta.properties` into them
+     * @param list<RaftVoterEndpoint> $endpoints        Endpoints of the new voter, one per listener
+     * @param string|null             $clusterId        Id of the cluster, null to leave the check to nobody (the
+     *        `AddRaftVoterOptions.clusterId()` of the Java client)
+     * @param int                     $timeoutMs        How long the controller may take over the request
+     *
+     * @throws KafkaException            If the controller refused or aborted the change
+     * @throws UnexpectedValueException If the directory id is not 16 bytes
+     *
+     * @see docs/protocol/4.3.md, section "AddRaftVoter API (key 80, v0)"
+     */
+    public function addRaftVoter(
+        int $voterId,
+        string $voterDirectoryId,
+        array $endpoints,
+        ?string $clusterId = null,
+        int $timeoutMs = 30000
+    ): void {
+        // The text form of the key, for the exception; a directory id that is not 16 bytes is refused here
+        $directoryId = Uuid::toString($voterDirectoryId);
+        $listeners   = [];
+        foreach ($endpoints as $endpoint) {
+            $listeners[] = new AddRaftVoterRequestListener($endpoint->name, $endpoint->host, $endpoint->port);
+        }
+
+        /** @var AddRaftVoterResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): AddRaftVoterRequest => new AddRaftVoterRequest(
+                $clusterId,
+                $timeoutMs,
+                $voterId,
+                $voterDirectoryId,
+                $listeners,
+                $this->clientId(),
+                $correlationId
+            ),
+            AddRaftVoterResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['voterId' => $voterId, 'voterDirectoryId' => $directoryId]
+                    + ($response->errorMessage !== null && $response->errorMessage !== ''
+                        ? ['error' => $response->errorMessage]
+                        : [])
+            );
+        }
+    }
+
+    /**
+     * Removes a voter from the metadata quorum (ApiKey 81, Kafka 3.9, KIP-853; the admin api of 4.0)
+     *
+     * `Admin.removeRaftVoter(voterId, voterDirectoryId, options)` of the Java client @ 4.0.0. The voter is named by
+     * its whole key, so the directory id has to be the one the quorum knows - {@see self::describeMetadataQuorum()}
+     * lists it - and a key the voter set does not hold is the **127** `VoterNotFound`, whose message names the keys
+     * it does hold. A controller that removes **itself** resigns its leadership once the smaller voter set is
+     * committed; removing the last voter of a quorum leaves the cluster without one.
+     *
+     * @param int         $voterId          Replica id of the voter to remove
+     * @param string      $voterDirectoryId The 16 raw bytes of its directory id
+     * @param string|null $clusterId        Id of the cluster, null to leave the check to nobody
+     *
+     * @throws KafkaException            If the controller refused the change
+     * @throws UnexpectedValueException If the directory id is not 16 bytes
+     *
+     * @see docs/protocol/4.3.md, section "RemoveRaftVoter API (key 81, v0)"
+     */
+    public function removeRaftVoter(int $voterId, string $voterDirectoryId, ?string $clusterId = null): void
+    {
+        $directoryId = Uuid::toString($voterDirectoryId);
+
+        /** @var RemoveRaftVoterResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): RemoveRaftVoterRequest => new RemoveRaftVoterRequest(
+                $clusterId,
+                $voterId,
+                $voterDirectoryId,
+                $this->clientId(),
+                $correlationId
+            ),
+            RemoveRaftVoterResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['voterId' => $voterId, 'voterDirectoryId' => $directoryId]
+                    + ($response->errorMessage !== null && $response->errorMessage !== ''
+                        ? ['error' => $response->errorMessage]
+                        : [])
+            );
+        }
     }
 }
