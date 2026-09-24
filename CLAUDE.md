@@ -4,19 +4,20 @@ Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch a
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
 (Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
 (Kafka 0.11.0.3, **complete**) → `1.x` (Kafka **1.1.1**, **complete**) → `2.x` (Kafka **2.8.2**, **complete**,
-**protected**) → `3.x` (Kafka **3.9.2**, **complete**, **protected**) → `main` (the **4.x line**, **in development**).
+**protected**) → `3.x` (Kafka **3.9.2**, **complete**, **protected**) → `main` (the **4.x line**, Kafka **4.3.1**, **complete**).
+`main` stays the 4.x line until a Kafka 5.x line starts: no `4.x` branch is cut before then (the owner's decision).
 From the 1.x line on the lines are **major** lines: one branch per Kafka major version, covering every minor release
 inside it (`1.x` speaks 1.1.1 and with it everything 1.0 and 1.1 added; `2.x` speaks 2.8.2 and with it everything
 2.0 to 2.8 added; `3.x` speaks 3.9.2 and with it everything 3.0 to 3.9 added plus the **KIP-848 consumer protocol**,
 one gated milestone commit per minor). See `docs/CASCADE.md` and, for each line, `docs/handoff/<branch>.md`: every
 one of those files carries the release notes of its line with the plan it was built from below them —
 `docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/2.x.md` the record of the 2.x line,
-`docs/handoff/3.x.md` the record of the 3.x line, and **`docs/handoff/main.md` is the plan of the 4.x line** (its
-release notes are written above the plan when the line is complete). `main` and `3.x` were identical at the start
-of the 4.x line, so the line started on `main` without branching anything off; its foundation brought the node of
-the line (**Kafka 4.3.1**, `docker/kafka-4.3.1`), renamed the grammar to `docs/protocol/4.3.md` and declared what
-Kafka 4.x adds (the api keys 88–92, the error codes 128–133) — the client sends what the 3.x line delivered until
-the milestones 4.0 to 4.3 raise it.
+`docs/handoff/3.x.md` the record of the 3.x line, and **`docs/handoff/main.md` is the record of the 4.x line** (its
+release notes above the plan it was built from). `main` and `3.x` were identical at the start of the 4.x line, so
+the line started on `main` without branching anything off; its foundation brought the node of the line (**Kafka
+4.3.1**, `docker/kafka-4.3.1`), renamed the grammar to `docs/protocol/4.3.md` and declared what Kafka 4.x adds (the
+api keys 88–92, the error codes 128–133), and the milestones 4.0 to 4.3 and the KIP-932 share consumer completed it
+(epic #213, PR #219).
 
 **The 3.x line started from `main` as it stood at the end of 2.x** and speaks Kafka 3.9.2 on a **KRaft** node
 (`docs/handoff/3.x.md`). What it added over 2.8.2: the api keys 65–87 declared and six of them spoken
@@ -28,7 +29,7 @@ versions** of KIP-482 (compact strings, bytes and arrays, tagged fields, request
 Kafka 2.4), the **leader epochs** of KIP-320 (2.1), the **zstd** codec of KIP-110 (2.1), the api keys 43 to 64 and
 the error codes 72-104.
 
-**The 4.x line starts from `main` as it stood at the end of 3.x** and speaks towards **Kafka 4.3.1**, the last 4.x
+**The 4.x line started from `main` as it stood at the end of 3.x** and speaks **Kafka 4.3.1**, the last 4.x
 release available when the line started (epic #213) — Kafka 4.x is **KRaft only**, and 4.0 is the first release that
 stops serving protocol versions a 3.9.2 node still answers (KIP-896), so the lower-line frames the compliance suite
 replays are no longer frames a 4.x node accepts. What Kafka 4.x adds over 3.9.2 api by api is derived from the message specs at the release tags by
@@ -160,7 +161,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   `share.version` 1, `streams.version` 1, `eligible.leader.replicas.version` 1 (`kafka-features.sh
   --bootstrap-server localhost:9092 describe`). The node lists **75 keys** on its client listeners (0–3, 8–51, 55,
   57, 60, 61, 64–66, 68, 69, 74–81, 83–92): 4–7 have no version at all, the controller-only apis live on 9096,
-  71/72 are hidden without a client-telemetry plugin. **KIP-896**: fifteen rows start above 0 and every frame of a
+  71/72 are hidden without a client-telemetry plugin. **KIP-896**: eighteen rows start above 0 (nineteen apis of the client listener lost versions) and every frame of a
   removed version closes the connection — Produce v0–v2 too, although the answer still lists them (KAFKA-18659);
   the message formats v0/v1 cannot be produced any more, and the topic config `message.downconversion.enable` is
   gone. The group coordinator serves `classic,consumer,streams` by default and share groups through
@@ -170,7 +171,8 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 - Useful in-container tools (the `--zookeeper` forms are the lines up to 2.x): `docker exec <container>
   /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list` (`--zookeeper localhost:2181` on a
   ZooKeeper broker),
-  `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-run-class.sh kafka.tools.DumpLogSegments`,
+  `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-run-class.sh kafka.tools.DumpLogSegments` (from 4.x
+  `kafka-dump-log.sh`: the class is gone from 4.3.1),
   `kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list|--describe --group G`, `kafka-configs.sh` (both
   `--zookeeper` for quotas and, from 1.1, `--bootstrap-server … --entity-type brokers` for the dynamic broker
   configuration of KIP-226) and, from 1.1, `kafka-delegation-tokens.sh`.
@@ -186,7 +188,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 - Conventional commits. No force-pushes on shared branches.
 - Cascade: after a line is complete, merge it upwards on a `cascade/<from>-into-<to>` branch (rules in
   `docs/CASCADE.md`); `.github/workflows/cascade.yml` opens the PR automatically on pushes to `0.8.x`,
-  `0.9.x`, `0.10.x`, `0.11.x`, `1.x`, `2.x` and `3.x`. `main` is the top of the cascade and the line in development.
+  `0.9.x`, `0.10.x`, `0.11.x`, `1.x`, `2.x` and `3.x`. `main` is the top of the cascade: the finished 4.x line, until a 5.x line starts on it.
 
 ## How the work is organised (multi-agent)
 

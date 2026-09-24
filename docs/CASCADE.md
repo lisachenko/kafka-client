@@ -3,13 +3,15 @@
 The client is developed one Kafka protocol version at a time, lowest first, and each finished line
 is merged upwards into the next one:
 
-    0.8.x (Kafka 0.8.2.2) → 0.9.x (Kafka 0.9.0.1) → 0.10.x (Kafka 0.10.2.2) → 0.11.x (Kafka 0.11.0.3) → 1.x (Kafka 1.1.1) → 2.x (Kafka 2.8.2) → 3.x (Kafka 3.9.2) → main (the 4.x line, next)
+    0.8.x (Kafka 0.8.2.2) → 0.9.x (Kafka 0.9.0.1) → 0.10.x (Kafka 0.10.2.2) → 0.11.x (Kafka 0.11.0.3) → 1.x (Kafka 1.1.1) → 2.x (Kafka 2.8.2) → 3.x (Kafka 3.9.2) → main (the 4.x line, Kafka 4.3.1)
 
 From the 1.x line on, a line is a Kafka **major** version and covers every minor release inside it: `1.x` speaks
 1.1.1 (everything 1.0 and 1.1 added), `2.x` speaks 2.8.2 (everything 2.0 to 2.8 added, one gated milestone commit
 per minor; its record is [`docs/handoff/2.x.md`](handoff/2.x.md)), `3.x` speaks 3.9.2 (everything 3.0 to 3.9 added
 and the KIP-848 consumer protocol; its record is [`docs/handoff/3.x.md`](handoff/3.x.md)), and `main` is the
-**4.x line**, built from the plan in [`docs/handoff/main.md`](handoff/main.md) towards Kafka 4.x. `2.x` and `3.x`
+**4.x line**: it speaks 4.3.1 (everything 4.0 to 4.3 added and the KIP-932 share consumer; its record is
+[`docs/handoff/main.md`](handoff/main.md)) and stays on `main` until a Kafka 5.x line starts — only then is it
+branched off as `4.x` and wired into the cascade like the lines below. `2.x` and `3.x`
 are **protected** branches: no direct pushes, changes arrive by PR and leave by the cascade.
 
 ## Rules
