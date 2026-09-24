@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `offsets.request.v8.latest-tiered` and `offsets.response.v8.latest-tiered-unsupported` are that refusal on the
  * node of this line.
  *
- * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
+ * @see docs/protocol/4.3.md, section "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  */
 final class OffsetsRequestV8 extends OffsetsRequest
 {

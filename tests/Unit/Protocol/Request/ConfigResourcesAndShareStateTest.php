@@ -32,8 +32,11 @@ use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponseV0;
 use Protocol\Kafka\Protocol\Request\ReadShareGroupStateRequest;
 use Protocol\Kafka\Protocol\Request\ReadShareGroupStateResponse;
 use Protocol\Kafka\Protocol\Request\ReadShareGroupStateSummaryRequest;
+use Protocol\Kafka\Protocol\Request\ReadShareGroupStateSummaryRequestV0;
 use Protocol\Kafka\Protocol\Request\ReadShareGroupStateSummaryResponse;
+use Protocol\Kafka\Protocol\Request\ReadShareGroupStateSummaryResponseV0;
 use Protocol\Kafka\Protocol\Request\WriteShareGroupStateRequest;
+use Protocol\Kafka\Protocol\Request\WriteShareGroupStateRequestV0;
 
 /**
  * Byte-exact tests for what Kafka 4.1 added to T1's surface: the key 74 at version 1 (ListConfigResources,
@@ -55,7 +58,10 @@ use Protocol\Kafka\Protocol\Request\WriteShareGroupStateRequest;
 #[CoversClass(ReadShareGroupStateResponse::class)]
 #[CoversClass(ReadShareGroupStateSummaryRequest::class)]
 #[CoversClass(ReadShareGroupStateSummaryResponse::class)]
+#[CoversClass(ReadShareGroupStateSummaryRequestV0::class)]
+#[CoversClass(ReadShareGroupStateSummaryResponseV0::class)]
 #[CoversClass(WriteShareGroupStateRequest::class)]
+#[CoversClass(WriteShareGroupStateRequestV0::class)]
 final class ConfigResourcesAndShareStateTest extends TestCase
 {
     private const string CLIENT = '0012' . '6b61666b612d636c69656e742d74312d3431';
@@ -147,7 +153,7 @@ final class ConfigResourcesAndShareStateTest extends TestCase
             bin2hex((string) $request)
         );
 
-        $summary = new ReadShareGroupStateSummaryRequest(
+        $summary = new ReadShareGroupStateSummaryRequestV0(
             $request->getGroupId(),
             $request->getTopics(),
             'kafka-client-t1-41',
@@ -180,7 +186,7 @@ final class ConfigResourcesAndShareStateTest extends TestCase
         self::assertSame([], $partition->stateBatches);
         self::assertSame($hex, bin2hex((string) $response));
 
-        $summary = ReadShareGroupStateSummaryResponse::unpack(new StringStream((string) hex2bin(
+        $summary = ReadShareGroupStateSummaryResponseV0::unpack(new StringStream((string) hex2bin(
             '00000031' . '00001262' . '00' . '02' . self::TOPIC_ID_HEX . '02' . '00000000' . '0000' . '00'
             . '00000000' . '00000000' . 'ffffffffffffffff' . '00' . '00' . '00'
         )));
@@ -193,7 +199,7 @@ final class ConfigResourcesAndShareStateTest extends TestCase
      */
     public function testAWriteCarriesTheStateBatches(): void
     {
-        $request = new WriteShareGroupStateRequest(
+        $request = new WriteShareGroupStateRequestV0(
             'g',
             [
                 new WriteShareGroupStateRequestTopic(

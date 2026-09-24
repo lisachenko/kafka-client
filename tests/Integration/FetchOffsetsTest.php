@@ -38,6 +38,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV1;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV10;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
@@ -63,7 +64,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Produce v3 and fetched with a Fetch v4 - the lowest versions the node serves - and the removed ListOffsets v0 is
  * measured as the refusal it is now.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Offsets API (key 2, v0 to v10),
+ * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Offsets API (key 2, v0 to v11),
  *      a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequestV4::class)]
@@ -375,7 +376,8 @@ final class FetchOffsetsTest extends IntegrationTestCase
         self::assertSame(7, OffsetsRequestV7::VERSION, 'the version Kafka 3.0 added');
         self::assertSame(8, OffsetsRequestV8::VERSION, 'the version Kafka 3.5 added');
         self::assertSame(9, OffsetsRequestV9::VERSION, 'the version Kafka 3.9 added');
-        self::assertSame(10, OffsetsRequest::VERSION, 'and the version Kafka 4.0 added (KIP-1075)');
+        self::assertSame(10, OffsetsRequestV10::VERSION, 'the version Kafka 4.0 added (KIP-1075)');
+        self::assertSame(11, OffsetsRequest::VERSION, 'and the version Kafka 4.2 added (KIP-1023)');
         self::assertSame($versionTwo->getMessageSize(), $versionThree->getMessageSize());
         self::assertSame(0, $versionThree->throttleTimeMs, 'no quota is set for this client id');
 

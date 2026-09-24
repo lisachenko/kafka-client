@@ -1418,6 +1418,81 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
+     * The two streams apis of KIP-1071 answer an unknown group in the schema of Kafka 4.2, where they became stable
+     *
+     * StreamsGroupHeartbeat (88) and StreamsGroupDescribe (89) are out of this line by decision and have no message
+     * class; the probe sends their v0 - still the only version @ 4.3.1 - with the body of {@see self::body()}.
+     * Kafka **4.2** dropped the `"latestVersionUnstable": true` of both requests (the diff of
+     * `StreamsGroup{Heartbeat,Describe}{Request,Response}.json` between 4.1.2 and 4.2.0) and changed no field a
+     * request carries, so the probe body of 4.1 is the body of 4.2. Two answers changed without changing the
+     * schema: the `Status` array of a heartbeat answer lost its `"default": "null"`, so an answer the coordinator
+     * does not fill carries an **empty** array (`01`) where a 4.1 node wrote the null `00`; and StreamsGroupDescribe
+     * dropped its `TopicPartitions` common structure, which no field referenced. The leave (member epoch -1) of a
+     * member of a group that does not exist is the **69** (`GroupIdNotFound`), and so is the description of that
+     * group; nothing is created.
+     */
+    public function testTheStreamsApisAnswerAnUnknownGroupInTheSchemaOfKafka42(): void
+    {
+        $message = RawApiProbe::compactString("Group {$this->groupId} not found.");
+
+        $result = $this->probe(ApiKeys::STREAMS_GROUP_HEARTBEAT, 0, 9290);
+        self::assertSame(RawApiProbe::ANSWERED, $result['status']);
+        $body = $this->responseBody($result['body'], ApiKeys::STREAMS_GROUP_HEARTBEAT, 0);
+
+        self::assertSame(0, self::throttleTimeOf($body));
+        self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, self::errorCodeBehindTheThrottleTimeOf($body));
+        self::assertSame(
+            bin2hex(
+                $message
+                . RawApiProbe::compactString('')     // member_id, a string without null
+                . RawApiProbe::int32(0)              // member_epoch
+                . RawApiProbe::int32(0)              // heartbeat_interval_ms
+                . RawApiProbe::int32(0)              // acceptable_recovery_lag
+                . RawApiProbe::int32(0)              // task_offset_interval_ms
+                . RawApiProbe::compactArray(0)       // status: empty, no longer null (4.2)
+                . RawApiProbe::compactArray(null)    // active_tasks
+                . RawApiProbe::compactArray(null)    // standby_tasks
+                . RawApiProbe::compactArray(null)    // warmup_tasks
+                . RawApiProbe::int32(0)              // endpoint_information_epoch
+                . RawApiProbe::compactArray(null)    // partitions_by_user_endpoint
+                . RawApiProbe::tagBuffer()
+            ),
+            bin2hex(substr($body, 6))
+        );
+
+        $probe    = new RawApiProbe(self::firstBootstrapServer());
+        $describe = $probe->send(
+            ApiKeys::STREAMS_GROUP_DESCRIBE,
+            0,
+            RawApiProbe::compactArray(1) . RawApiProbe::compactString($this->groupId) . RawApiProbe::boolean(false)
+                . RawApiProbe::tagBuffer(),
+            9291,
+            RawApiProbe::HEADER_V2
+        );
+        $probe->close();
+
+        self::assertSame(RawApiProbe::ANSWERED, $describe['status']);
+        self::assertSame(
+            bin2hex(
+                RawApiProbe::int32(0)                            // throttle_time_ms
+                . RawApiProbe::compactArray(1)                   // groups
+                . RawApiProbe::int16(KafkaException::GROUP_ID_NOT_FOUND)
+                . $message
+                . RawApiProbe::compactString($this->groupId)
+                . RawApiProbe::compactString('')                 // group_state
+                . RawApiProbe::int32(0)                          // group_epoch
+                . RawApiProbe::int32(0)                          // assignment_epoch
+                . RawApiProbe::nullStruct()                      // topology: a null structure
+                . RawApiProbe::compactArray(0)                   // members
+                . RawApiProbe::int32(-2147483648)                // authorized_operations, the default
+                . RawApiProbe::tagBuffer()
+                . RawApiProbe::tagBuffer()
+            ),
+            bin2hex($this->responseBody($describe['body'], ApiKeys::STREAMS_GROUP_DESCRIBE, 0))
+        );
+    }
+
+    /**
      * DescribeTopicPartitions (75) of a topic that does not exist answers 3 for the topic and no cursor
      *
      * The api of Kafka 3.8 is a paginated Metadata: an **empty** topic array asks for *every* topic
@@ -1882,9 +1957,10 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             ApiKeys::WRITE_SHARE_GROUP_STATE,
             ApiKeys::DELETE_SHARE_GROUP_STATE,
             ApiKeys::READ_SHARE_GROUP_STATE_SUMMARY => RawApiProbe::compactString($this->groupId) . $emptyArray . $tag,
-            // The streams groups of KIP-1071 (out of this line): the leave of a member of a group that does not
-            // exist - member epoch -1, endpoint information epoch -1, every nullable field null, including the
-            // two nullable structures `topology` and `user_endpoint` - and no group to describe
+            // The streams groups of KIP-1071 (out of this line; stable since Kafka 4.2, with the request schema
+            // of 4.1): the leave of a member of a group that does not exist - member epoch -1, endpoint information
+            // epoch -1, every nullable field null, including the two nullable structures `topology` and
+            // `user_endpoint` - and no group to describe
             ApiKeys::STREAMS_GROUP_HEARTBEAT => RawApiProbe::compactString($this->groupId)
                 . RawApiProbe::compactString('probe-member') . RawApiProbe::int32(-1) . RawApiProbe::int32(-1)
                 . $nullString . $nullString . RawApiProbe::int32(-1) . RawApiProbe::nullStruct()

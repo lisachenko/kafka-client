@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `remote.list.offsets.request.timeout.ms` (30000 by default) - so a 4.x broker waits for a remote lookup of a
  * version 9 request as long as its configuration says.
  *
- * @see docs/protocol/4.3.md, sections "Offsets API (key 2, v0 to v10), a.k.a. ListOffset" and "The timeout of
+ * @see docs/protocol/4.3.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset" and "The timeout of
  *      KIP-1075 (v10)"
  */
 final class OffsetsRequestV9 extends OffsetsRequest

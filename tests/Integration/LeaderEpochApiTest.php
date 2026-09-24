@@ -73,7 +73,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * version of each api does not have.
  *
  * @see docs/protocol/4.3.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v13)" and
- *      "Offsets API (key 2, v0 to v10), a.k.a. ListOffset"
+ *      "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
@@ -267,7 +267,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         self::assertSame(4, OffsetsRequestV4::VERSION, 'the version Kafka 2.1 added');
         self::assertSame(5, OffsetsRequestV5::VERSION, 'the version Kafka 2.2 added');
         self::assertSame(6, OffsetsRequestV6::VERSION, 'the flexible version Kafka 2.8 added');
-        self::assertSame(10, OffsetsRequest::VERSION, 'and the version Kafka 4.0 added (KIP-1075)');
+        self::assertSame(11, OffsetsRequest::VERSION, 'and the version Kafka 4.2 added (KIP-1023)');
 
         $partitionFour = $four->topics[$this->topic]->partitions[0];
         $partitionFive = $five->topics[$this->topic]->partitions[0];
