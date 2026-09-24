@@ -20,9 +20,10 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Description of a single group, as reported by the DescribeGroups API
  *
  * <pre>
- *   DescribeGroupResponseMetadata => ErrorCode GroupId State ProtocolType Protocol [Members]
+ *   DescribeGroupResponseMetadata => ErrorCode ErrorMessage GroupId State ProtocolType Protocol [Members]
  *                                      AuthorizedOperations
  *     ErrorCode            => int16
+ *     ErrorMessage         => nullable string   -- since version 6
  *     GroupId              => string
  *     State                => string
  *     ProtocolType         => string
@@ -33,7 +34,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The state is one of the constants below; `kafka/coordinator/group/GroupMetadata.scala` @ 1.1.1 defines exactly
  * the five states, and the coordinator answers a group it does not know with {@see self::STATE_DEAD} and the error
- * code 0, not with an error.
+ * code 0, not with an error - up to version 5. **Version 6 (KIP-1043, Kafka 4.0) answers the same group with the
+ * 69 `GroupIdNotFound`**, still in the state `Dead`, and with the sentence of {@see self::$errorMessage}.
  *
  * Kafka 0.10.1 split "the group is gone" in two. A group whose last member left is no longer dropped at once, it
  * moves to {@see self::STATE_EMPTY} and lingers there with its committed offsets until `offsets.retention.minutes`
@@ -44,14 +46,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * called {@see self::STATE_COMPLETING_REBALANCE} since then, where 0.9 to 0.11 called it
  * {@see self::STATE_AWAITING_SYNC}. Only the name on the wire changed, the state itself did not.
  *
- * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v5)"
+ * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {
     /**
      * Version of the DescribeGroups API that this DTO decodes an entry of
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * `authorized_operations` of an entry whose operations were not asked for, `Integer.MIN_VALUE`
@@ -110,6 +112,17 @@ class DescribeGroupResponseMetadata implements BinarySchemaInterface
     public int $errorCode;
 
     /**
+     * Error message of the group, or null if there was no error
+     *
+     * A 4.3.1 node writes the message of the `GroupIdNotFoundException` it describes an unknown group with: `Group
+     * <id> not found.` for a group it has never heard of and `Group <id> is not a classic group.` for a group of
+     * the consumer protocol of KIP-848.
+     *
+     * @since Version 6 of protocol
+     */
+    public ?string $errorMessage = null;
+
+    /**
      * Name of the group
      */
     public string $groupId;
@@ -159,8 +172,11 @@ class DescribeGroupResponseMetadata implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        $scheme = [
-            'errorCode'    => BinarySchema::TYPE_INT16,
+        $scheme = ['errorCode' => BinarySchema::TYPE_INT16];
+        if (static::VERSION >= 6) {
+            $scheme['errorMessage'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        $scheme += [
             'groupId'      => BinarySchema::TYPE_STRING,
             'state'        => BinarySchema::TYPE_STRING,
             'protocolType' => BinarySchema::TYPE_STRING,

@@ -267,6 +267,40 @@ final class SubscriptionStateTest extends TestCase
     }
 
     /**
+     * The RE2/J pattern of KIP-848 (Kafka 4.0): a subscription the coordinator resolves, so the state holds no topic
+     */
+    public function testAPatternSubscriptionIsAutoAssignedAndTakesTheTopicsOfItsAssignment(): void
+    {
+        $state = new SubscriptionState();
+        $state->subscribeByPattern('t9-.*');
+
+        self::assertSame(SubscriptionState::TYPE_AUTO_PATTERN_RE2J, $state->getSubscriptionType());
+        self::assertSame('t9-.*', $state->getSubscriptionPattern());
+        self::assertSame([], $state->getSubscription(), 'the topics are the ones the coordinator matched');
+        self::assertTrue($state->partitionsAutoAssigned());
+
+        // whatever topic the coordinator assigns is part of the subscription: it matched the regex there
+        $state->assignFromSubscribed([self::TOPIC => new PartitionsForTopic(self::TOPIC, [0, 1])]);
+
+        self::assertTrue($state->isAssigned(self::TOPIC, 1));
+
+        $state->unsubscribe();
+
+        self::assertNull($state->getSubscriptionPattern());
+        self::assertSame(SubscriptionState::TYPE_NONE, $state->getSubscriptionType());
+    }
+
+    public function testAPatternSubscriptionExcludesTheOtherTwoKinds(): void
+    {
+        $state = new SubscriptionState();
+        $state->subscribeByTopics([self::TOPIC]);
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $state->subscribeByPattern('t9-.*');
+    }
+
+    /**
      * @param list<int> $partitions
      */
     private function assignedState(array $partitions): SubscriptionState

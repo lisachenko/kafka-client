@@ -38,7 +38,7 @@ use Protocol\Kafka\Common\Node;
  * an OffsetFetch v9 of that member sends in the field a classic member fills with its generation.
  *
  * @see docs/protocol/4.3.md, section "Group membership protocol (keys 11 to 14)"
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 interface ConsumerCoordinatorInterface
 {

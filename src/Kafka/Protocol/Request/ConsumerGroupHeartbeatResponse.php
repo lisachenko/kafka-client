@@ -18,11 +18,11 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatAssignment;
 use Protocol\Kafka\Protocol\NullableStruct;
 
 /**
- * ConsumerGroupHeartbeat response object, version 0 (key 68, Kafka 3.5, KIP-848)
+ * ConsumerGroupHeartbeat response object, version 1 (key 68, Kafka 3.5, KIP-848)
  *
  * <pre>
- *   ConsumerGroupHeartbeat Response (Version: 0) => throttle_time_ms error_code error_message member_id
- *                                                   member_epoch heartbeat_interval_ms assignment
+ *   ConsumerGroupHeartbeat Response (Version: 0 and 1) => throttle_time_ms error_code error_message member_id
+ *                                                         member_epoch heartbeat_interval_ms assignment
  *     throttle_time_ms      => INT32
  *     error_code            => INT16
  *     error_message         => COMPACT_NULLABLE_STRING
@@ -46,6 +46,11 @@ use Protocol\Kafka\Protocol\NullableStruct;
  *
  * `member_id` is only filled *"when the member joins with MemberEpoch == 0"* (`ConsumerGroupHeartbeatResponse.json`
  * @ 3.9.2), which is how a member that sent no id of its own learns the one the coordinator generated for it.
+ * **Version 1 (Kafka 4.0) is the same answer**: `ConsumerGroupHeartbeatResponse.json` @ 4.0.0 raises the version
+ * for the member id the consumer generates (KIP-1082) - a version 1 member always sends one, and the answer echoes
+ * it - and lists the **128** `InvalidRegularExpression` among its errors, the refusal of a
+ * `subscribed_topic_regex` the coordinator cannot compile. {@see ConsumerGroupHeartbeatResponseV0} decodes the
+ * answer of version 0.
  *
  * The error codes of the api are the ten its specification lists, and four of them belong to KIP-848 alone: **110**
  * `FencedMemberEpoch` and **113** `StaleMemberEpoch` say "your epoch is not mine any more" - the member drops its
@@ -54,14 +59,14 @@ use Protocol\Kafka\Protocol\NullableStruct;
  * are configuration errors and no retry helps. **25** `UnknownMemberId` is the same rejoin as the 110, and the
  * three coordinator codes **14**, **15** and **16** are the retriable ones every group api has.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+ * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 class ConsumerGroupHeartbeatResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * The api is flexible from its first version: it was born after KIP-482 (Kafka 2.4)

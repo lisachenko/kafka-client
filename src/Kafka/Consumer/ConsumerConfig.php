@@ -121,7 +121,7 @@ final class ConsumerConfig extends GeneralConfig
      * `consumer` is refused, and a ConsumerGroupHeartbeat for a classic group as well.
      *
      * @see \Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public const string GROUP_PROTOCOL = 'group.protocol';
 

@@ -31,6 +31,12 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * the nullable topic array of Metadata v1 asks for ({@see \Protocol\Kafka\Common\Cluster::topics()}), so the day it
  * is implemented `exclude.internal.topics` is what decides whether a pattern may match `__consumer_offsets`.
  *
+ * The **RE2/J pattern of KIP-848** is another matter, and it is implemented ({@see subscribeByPattern()}): Kafka 4.0
+ * gave ConsumerGroupHeartbeat v1 the `subscribed_topic_regex`, which the group COORDINATOR matches against the
+ * topics of the cluster - the client sends the regex and is assigned whatever matched, so this state keeps the
+ * regex and no topic list at all (`SubscriptionState.subscribe(SubscriptionPattern, …)` @ 4.0.0, the type
+ * `AUTO_PATTERN_RE2J` of the Java client).
+ *
  * @see docs/protocol/4.3.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 final class SubscriptionState
@@ -51,6 +57,11 @@ final class SubscriptionState
     public const int TYPE_USER_ASSIGNED = 3;
 
     /**
+     * Subscription by a RE2/J regex the group coordinator matches, KafkaConsumer::subscribeByPattern() (KIP-848)
+     */
+    public const int TYPE_AUTO_PATTERN_RE2J = 4;
+
+    /**
      * Assigned partitions as [topic: string][partition: int] => ['position' => ?int, 'isPaused' => bool]
      *
      * @var array<string, array<int, array{position: int|null, isPaused: bool}>>
@@ -68,6 +79,11 @@ final class SubscriptionState
      * Type of this subscription, one of the self::TYPE_* constants
      */
     private int $subscriptionType = self::TYPE_NONE;
+
+    /**
+     * Regular expression of a {@see self::TYPE_AUTO_PATTERN_RE2J} subscription, null for every other type
+     */
+    private ?string $subscriptionPattern = null;
 
     /**
      * Return type of this subscription
@@ -106,11 +122,32 @@ final class SubscriptionState
     }
 
     /**
+     * Subscribes by a regular expression the group coordinator matches against the topics of the cluster (KIP-848)
+     *
+     * The regex is in the RE2/J syntax of the Java client's `SubscriptionPattern` and it is only ever evaluated by
+     * the coordinator, so the state holds no topic list: the topics are the ones the assignment names.
+     */
+    public function subscribeByPattern(string $pattern): void
+    {
+        $this->setSubscriptionType(self::TYPE_AUTO_PATTERN_RE2J);
+        $this->subscriptionPattern = $pattern;
+    }
+
+    /**
+     * Returns the regular expression of a pattern subscription, null for every other kind of subscription
+     */
+    public function getSubscriptionPattern(): ?string
+    {
+        return $this->subscriptionPattern;
+    }
+
+    /**
      * Stores the partitions that the leader of the group assigned to this member
      *
      * The assignment is refused when it names a topic this member did not subscribe to: a group whose members do
      * not agree on the assignor - or a leader with a bug - would otherwise silently make a consumer read a topic
-     * its application knows nothing about.
+     * its application knows nothing about. A subscription by a regex has no topic list to compare with: the
+     * coordinator matched the regex, and the topics of its assignment are the subscription.
      *
      * @param array<string, PartitionsForTopic> $assignments Topic name => DTO with the partitions of that topic
      */
@@ -122,7 +159,9 @@ final class SubscriptionState
             );
         }
 
-        $unknownTopics = array_diff_key($assignments, $this->subscription);
+        $unknownTopics = $this->subscriptionType === self::TYPE_AUTO_PATTERN_RE2J
+            ? []
+            : array_diff_key($assignments, $this->subscription);
         if ($unknownTopics !== []) {
             throw new InvalidArgumentException(
                 sprintf(
@@ -151,7 +190,8 @@ final class SubscriptionState
      */
     public function partitionsAutoAssigned(): bool
     {
-        return $this->subscriptionType === self::TYPE_AUTO_TOPICS;
+        return $this->subscriptionType === self::TYPE_AUTO_TOPICS
+            || $this->subscriptionType === self::TYPE_AUTO_PATTERN_RE2J;
     }
 
     /**
@@ -169,9 +209,10 @@ final class SubscriptionState
      */
     public function unsubscribe(): void
     {
-        $this->subscriptionType = self::TYPE_NONE;
-        $this->assignment       = [];
-        $this->subscription     = [];
+        $this->subscriptionType    = self::TYPE_NONE;
+        $this->assignment          = [];
+        $this->subscription        = [];
+        $this->subscriptionPattern = null;
     }
 
     /**
