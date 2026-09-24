@@ -1,6 +1,6 @@
 # The 4.x line: Kafka 4.0 to 4.3 on a 4.3.1 KRaft node — the plan
 
-**State: the foundation is in; current milestone: none yet.** The line is built on the integration branch
+**State: the foundation and the Kafka 4.0 milestone are in; current milestone: Kafka 4.0.** The line is built on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213), tickets
 #214 T1, #215 T2, #216 T3, #217 T4 and #218 T10) towards **Kafka 4.3.1**, and merged into `main` as one pull request
 when it is complete; its release notes are then written above this plan, so that the file becomes the record of the

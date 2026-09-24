@@ -5,8 +5,8 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
 own: `main` is the **4.x line**, built towards the **Kafka 4.x wire protocol** one Kafka minor at a time on top
-of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client sends what the 3.x line
-delivered, **Kafka 3.9.2** and the KIP-848 consumer protocol, until the milestones of the line raise it. The lines
+of the finished 3.x line, verified against a Kafka **4.3.1** KRaft node; today the client speaks **Kafka 4.0**
+(the milestone of the line reached so far) and the KIP-848 consumer protocol. The lines
 below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
 into the next one, so the sections below accumulate: what a line added stays true of every line above it.
@@ -16,8 +16,8 @@ Unreleased — the 4.x line (towards Kafka 4.3.1)
 
 The 4.x line, built on `main` on top of the finished 3.x line (branched off as `3.x`), on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213)). The plan
-of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **none yet — the foundation**. Four
-milestones follow, one per Kafka minor (4.0, 4.1, 4.2, 4.3), and the KIP-932 share consumer as the last wave.
+of the line is [docs/handoff/main.md](docs/handoff/main.md). Current milestone: **Kafka 4.0**. Three milestones
+follow, one per Kafka minor (4.1, 4.2, 4.3), and the KIP-932 share consumer as the last wave.
 
 ### Added
 
@@ -56,16 +56,79 @@ milestones follow, one per Kafka minor (4.0, 4.1, 4.2, 4.3), and the KIP-932 sha
 
 ### Known failures of the inherited suite
 
-The baseline of the 3.x suite on the 4.3.1 node — the frames of removed versions, the message formats v0 and v1,
-the topic config `message.downconversion.enable` Kafka 4.0 removed, the features a default-formatted 4.x node
-finalizes — is listed with an owner in the epic
-([#213](https://github.com/lisachenko/kafka-client/issues/213)); each ticket fixes its surface in its 4.0 wave.
+The foundation measured the 3.x suite on the 4.3.1 node — 140 failing tests in 31 classes, listed with an owner in
+the epic ([#213](https://github.com/lisachenko/kafka-client/issues/213)) — and the four tickets of the 4.0 wave
+brought every one of them to what the node answers (see "Kafka 4.0 — Changed" below). **None is left.**
 
 - **`main` is the 4.x line**: the finished 3.x tree was branched off as `3.x` (protected, tagged `3.0.2` … `3.9.2`
   by the owner) and wired into the cascade (`3.x → main`); the record of the 3.x line moved to
   [docs/handoff/3.x.md](docs/handoff/3.x.md) and the plan of the 4.x line took its place as
   `docs/handoff/main.md`; the tables of tag points and milestone commits left the handoff records — the tags of
   the repository are the record.
+
+### Kafka 4.0 — Added
+
+Milestone `chore(4.x): Kafka 4.0 complete`, PRs #220 (T1), #221 (T4), #222 (T3) and #223 (T2).
+
+- **Produce v12** (KIP-890 part 2, the v11 frame): sent outside transactions and inside a transaction of the
+  protocol v2, and **capped at v11** inside a transaction of the protocol v1. One choice point,
+  `Client::produceVersion()`, reads `TransactionManager::isTransactionV2Enabled()`. `ProduceRequestV11`/`ProduceResponseV11`
+  keep the version below.
+- **Metadata v13** (KIP-1102): the top-level `MetadataResponse::$errorCode`. `Cluster::reload()` asks the next
+  bootstrap server on a non-zero code and throws the last one (`RebootstrapRequiredException` for the 129) when none
+  answers without one; the node always answers 0. `MetadataRequestV12`/`ResponseV12` keep the version below.
+- **ListOffsets v10** (KIP-1075): `timeout_ms`, filled with `request.timeout.ms`
+  (`OffsetsRequest::DEFAULT_TIMEOUT_MS`, `getTimeoutMs()`); `OffsetsRequestV9`/`ResponseV9` keep the version below.
+- **The transaction protocol v2 of KIP-890 part 2** in `Producer\Internals\TransactionManager`: it reads the finalized
+  `transaction.version` from the ApiVersions answer of the transaction coordinator and, from level 2, sends no
+  AddPartitionsToTxn and no AddOffsetsToTxn, commits offsets with **TxnOffsetCommit v5**, and ends every transaction
+  with **EndTxn v5**, taking the producer id and epoch of the next transaction from its answer
+  (`Client::endTxnBumpingEpoch()`, `Client::txnOffsetCommit(…, $transactionV2)`, `EndTxnResponse::$producerId`,
+  `$producerEpoch`). The **v1 path is kept** for a 3.x node and a cluster below level 2; `EndTxnRequestV4`/`ResponseV4`
+  and `TxnOffsetCommitRequestV4`/`ResponseV4` are its classes.
+- **DescribeGroups v6** (KIP-1043): the `error_message` of a group entry and the **69** of a group the coordinator
+  does not hold or that is a KIP-848 group. `DescribeGroupsRequestV5`/`ResponseV5` and
+  `DescribeGroupResponseMetadataV4` keep the version below.
+- **ConsumerGroupHeartbeat v1** (KIP-848, KIP-1082): **`KafkaConsumer::subscribeByPattern(SubscriptionPattern)`**, a
+  RE2/J subscription the coordinator resolves (`group.protocol=consumer` only; the classic protocol throws
+  `InvalidConfigurationException`), and a member id the consumer generates for itself in the base64 format of the Java
+  client and keeps for its whole life; the **128** `InvalidRegularExpressionException` observed.
+  `ConsumerGroupHeartbeatRequestV0`/`ResponseV0` keep the version below.
+- **ConsumerGroupDescribe v1** (KIP-1099): the `member_type` of every member, `ConsumerGroupMemberDescription::$memberType`
+  and `upgraded()`. V0 keep-behinds for the request, the response, the group and the member.
+- **UpdateFeatures v2**: no per-feature results; `updateFeatures()` returns null for every feature of an accepted
+  request and throws the one top-level refusal (95) of a 4.x controller. `UpdateFeaturesRequestV1`/`ResponseV1`.
+- **DescribeCluster v2** (KIP-1073): `describeCluster(…, bool $includeFencedBrokers = false)`,
+  `ClusterDescription::$fencedNodeIds` and `isFenced()`. `DescribeClusterRequestV1`/`ResponseV1`.
+- **`AdminClient::addRaftVoter()` and `removeRaftVoter()`** over AddRaftVoter (80) and RemoveRaftVoter (81) v0
+  (KIP-853) on the `kraft.version` 1 quorum; the **126** `DuplicateVoter` and the **127** `VoterNotFound` observed,
+  and the 7 of an unreachable voter, which is never added.
+- **100 wire vectors** captured on the `kafka-4-3-1` node (**1235** in **62** files, the new ones
+  `add-raft-voter.json` and `remove-raft-voter.json`).
+
+### Kafka 4.0 — Changed
+
+- **`AdminClient::describeGroup()` / `describeGroups()` throw `GroupIdNotFoundException`** for a group the
+  coordinator does not hold (DescribeGroups v6, KIP-1043), as the Java admin client of 4.0 does, where the 3.x line
+  returned the state `Dead` with the code 0; the signatures are unchanged.
+- **A `message.format.version` below 0.11.0 is refused client-side** (`InvalidConfigurationException`) when the
+  leader's Produce row reaches v12: a 4.x node closes the connection on Produce v0 to v2 (KIP-896), although its
+  ApiVersions answer still lists them (KAFKA-18659). A 3.x node still gets its Produce v2.
+- **An empty transaction is no longer ended at the coordinator** (Java's `transactionStarted`): a 4.x node answers
+  such an EndTxn with 48.
+- **The inherited suite measures the 4.3.1 node.** Every version KIP-896 removed (Produce v0–v2, Fetch v0–v3,
+  ListOffsets v0, OffsetCommit v0/v1, OffsetFetch v0, OffsetForLeaderEpoch v0/v1, CreateTopics v0/v1, DeleteTopics
+  v0, DescribeConfigs v0, the ACL and token apis v0) is measured as a closed connection (`tests/Fixture/RemovedVersionProbe`),
+  its classes and vectors stay; test data is written as record batches v2; the topic configs
+  `message.format.version` and `message.downconversion.enable` are refused with the 40; a zstd topic is served to
+  a Fetch below v10 (no 76 since 4.0); a follower Fetch v16 answer names the leader without its endpoint; the
+  bidirectional online upgrade of a classic group to KIP-848 (`group.consumer.migration.policy`, 4.0); the
+  asynchronous target assignment of 4.3; the 3400 operations of a group; the offset value schema v4 of 4.1; the share
+  coordinator and its `group:topicId:partition` keys; the cluster-level `min.insync.replicas` of KIP-966 on the
+  `broker:` resource and the 4.x broker messages; the connection-scoped client instance of KIP-714 (4.0); the 4.x
+  answers of UpdateFeatures (an unknown feature is refused, the whole request refused at once).
+- `DocumentationSyncTest` checks the `@see` references of the renamed document (it matched `3.9.md` and checked
+  nothing after the rename) and refuses a reference to any other protocol document.
 
 The 3.x line (Kafka 3.0 to 3.9 and the KIP-848 consumer, 3.9.2)
 ----------------------------------------------------------------
