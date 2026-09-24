@@ -1700,20 +1700,36 @@ class AdminClient
      *        every partition, as `topic => [partition => [broker ids]]`; `null` cancels that partition
      * @param int                                                               $timeoutMs     How long the
      *        controller waits for the reassignment to be registered
+     * @param bool $allowReplicationFactorChange Whether a target replica set may have another size than the current
+     *        one - `AlterPartitionReassignmentsOptions.allowReplicationFactorChange()` of the Java client, Kafka
+     *        4.1; with `false` the controller refuses such a partition with the 38 `InvalidReplicationFactor`
      *
      * @throws KafkaException If the request as a whole was refused by the broker it reached
      *
      * @return array<string, array<int, KafkaException|null>> Error of every requested partition, null when accepted
      */
-    public function alterPartitionReassignments(array $reassignments, int $timeoutMs = 30000): array
-    {
+    public function alterPartitionReassignments(
+        array $reassignments,
+        int $timeoutMs = 30000,
+        bool $allowReplicationFactorChange = true
+    ): array {
         try {
-            return $this->client()->alterPartitionReassignments($this->findController(), $reassignments, $timeoutMs);
+            return $this->client()->alterPartitionReassignments(
+                $this->findController(),
+                $reassignments,
+                $timeoutMs,
+                $allowReplicationFactorChange
+            );
         } catch (NotControllerException) {
             // The controller moved while we were asking: look it up again and send the request once more
             $this->cluster->reload();
 
-            return $this->client()->alterPartitionReassignments($this->findController(), $reassignments, $timeoutMs);
+            return $this->client()->alterPartitionReassignments(
+                $this->findController(),
+                $reassignments,
+                $timeoutMs,
+                $allowReplicationFactorChange
+            );
         }
     }
 

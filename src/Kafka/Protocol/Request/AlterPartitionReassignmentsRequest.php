@@ -23,9 +23,10 @@ use Protocol\Kafka\Protocol\Data\ReassignableTopic;
  * Moves the replicas of partitions to other brokers, or cancels a move (ApiKey 45, Kafka 2.4, KIP-455)
  *
  * <pre>
- *   AlterPartitionReassignments Request (Version: 0) => TimeoutMs Topics TAG_BUFFER
- *     TimeoutMs => INT32
- *     Topics    => COMPACT_ARRAY of {@see ReassignableTopic}
+ *   AlterPartitionReassignments Request (Version: 1) => TimeoutMs AllowReplicationFactorChange Topics TAG_BUFFER
+ *     TimeoutMs                    => INT32
+ *     AllowReplicationFactorChange => BOOLEAN            -- since version 1, default true
+ *     Topics                       => COMPACT_ARRAY of {@see ReassignableTopic}
  * </pre>
  *
  * KIP-455 is the api that took the last piece of `kafka-reassign-partitions.sh` away from ZooKeeper. Before Kafka
@@ -47,7 +48,19 @@ use Protocol\Kafka\Protocol\Data\ReassignableTopic;
  * the replica fetchers. The work is watched with key 46, and it is throttled by the broker options
  * `leader.replication.throttled.rate`/`follower.replication.throttled.rate`, which this api does not touch.
  *
- * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0)"
+ * **Kafka 4.1 added the version 1**: *"Version 1 adds the ability to allow/disallow changing the
+ * replication factor as part of the request"* (`AlterPartitionReassignmentsRequest.json` @ 4.1.0). The one field
+ * `allow_replication_factor_change` sits between the timeout and the topics, and its default **true** is what
+ * every version 0 request meant. With `false` the controller refuses every partition whose target replica set has
+ * another size than the one it has - or than the one a reassignment in flight is moving it to - with the **38**
+ * `InvalidReplicationFactor` and `The replication factor is changed from <n> to <m>`
+ * (`ReplicationControlManager.validatePartitionReplicationFactorUnchanged()` @ 4.3.1; the javadoc of
+ * `changePartitionReassignment()` names KIP-860). That check runs **after** the validation of the replica list
+ * itself, so on a one-node cluster, where the only other size is a list that names a broker the cluster does not
+ * have, the 39 of that validation answers first.
+ * {@see AlterPartitionReassignmentsRequestV0} is the frame of Kafka 2.4.
+ *
+ * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
  */
 class AlterPartitionReassignmentsRequest extends AbstractRequest
 {
@@ -59,7 +72,7 @@ class AlterPartitionReassignmentsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc
@@ -85,12 +98,20 @@ class AlterPartitionReassignmentsRequest extends AbstractRequest
      * @param int    $timeoutMs     How long the controller waits before it answers
      * @param string $clientId      A user specified identifier for the client making the request
      * @param int    $correlationId A user-supplied value that the broker passes back unmodified
+     * @param bool   $allowReplicationFactorChange Whether a target replica set may have another size than the
+     *        current one (version 1); ignored by the version 0, which always allowed it
      */
     public function __construct(
         array $reassignments,
         protected int $timeoutMs = self::DEFAULT_TIMEOUT_MS,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Whether a partition may change its replication factor with this reassignment
+         *
+         * @since Version 1 of protocol
+         */
+        protected bool $allowReplicationFactorChange = true
     ) {
         $topics = [];
         foreach ($reassignments as $topic => $partitions) {
@@ -115,10 +136,13 @@ class AlterPartitionReassignmentsRequest extends AbstractRequest
     {
         $header = parent::getScheme();
 
-        return $header + [
-            'timeoutMs' => BinarySchema::TYPE_INT32,
-            'topics'    => ['name' => ReassignableTopic::class],
-        ];
+        $body = ['timeoutMs' => BinarySchema::TYPE_INT32];
+        if (static::VERSION >= 1) {
+            $body['allowReplicationFactorChange'] = BinarySchema::TYPE_BOOLEAN;
+        }
+        $body['topics'] = ['name' => ReassignableTopic::class];
+
+        return $header + $body;
     }
 
     /**
@@ -127,5 +151,13 @@ class AlterPartitionReassignmentsRequest extends AbstractRequest
     public function getTimeoutMs(): int
     {
         return $this->timeoutMs;
+    }
+
+    /**
+     * Tells whether the request allows a partition to change its replication factor (version 1)
+     */
+    public function isReplicationFactorChangeAllowed(): bool
+    {
+        return $this->allowReplicationFactorChange;
     }
 }

@@ -35,7 +35,7 @@ use InvalidArgumentException;
  * preferred leader - and not the brokers to add; the controller works out what to add and what to remove. An empty
  * list is refused by the broker with the error code 39, so it is refused here.
  *
- * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0)"
+ * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
  */
 final class NewPartitionReassignment
 {
