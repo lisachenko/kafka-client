@@ -110,7 +110,9 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1413** of them in **74** files: **40** are the offset and share-group apis of Kafka 4.2 (OffsetCommit
+hex dumps. There are **1421** of them in **74** files: **8** are DescribeLogDirs v5 of Kafka 4.3 (the cordon flag of
+KIP-1066) in `describe-log-dirs.json`, captured on the `kafka-4-3-1` node with `/tmp/kafka-logs-2` cordoned and not -
+**40** are the offset and share-group apis of Kafka 4.2 (OffsetCommit
 and OffsetFetch v10, ShareFetch and ShareAcknowledge v2), captured on the `kafka-4-3-1` node - **8** are ListOffsets v11 of Kafka 4.2 (KIP-1023), captured on
 the `kafka-4-3-1` node - **18** are the raft-voter and share-state apis of Kafka 4.2,
 captured on the `kafka-4-3-1` node - **10** are the two versions Kafka 4.2 added to the admin and transaction apis,
