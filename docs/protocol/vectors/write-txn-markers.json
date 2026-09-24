@@ -1,8 +1,8 @@
 {
     "api": "write-txn-markers",
     "apiKey": 27,
-    "section": "WriteTxnMarkers API (key 27, v0 and v1)",
-    "description": "Wire vectors of the WriteTxnMarkers API (key 27, v0 and v1), replayed by tests/Compliance.",
+    "section": "WriteTxnMarkers API (key 27, v0 to v2)",
+    "description": "Wire vectors of the WriteTxnMarkers API (key 27, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "writetxnmarkers.request.v0",
@@ -68,7 +68,7 @@
         {
             "id": "writetxnmarkers.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequestV1",
             "version": 1,
             "source": "broker",
             "description": "WriteTxnMarkers request v1 (Kafka 2.8, KIP-482): the broker-to-broker frame of the version 0 in the **flexible** encoding, which this version is the first of. No client sends it; the container of this line runs without an authorizer, so it serves the `ClusterAction` for anybody and a real frame can be captured.",
@@ -101,7 +101,7 @@
         {
             "id": "writetxnmarkers.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponseV1",
             "version": 1,
             "source": "broker",
             "description": "WriteTxnMarkers answer v1: one entry per producer id of the request, one error code per partition the control batch was appended to - still the only answer of this protocol without a `throttle_time_ms`, now with the tagged-field sections of the flexible encoding.",
@@ -116,6 +116,198 @@
                         "topics": {
                             "t4-28-vectors": {
                                 "topic": "t4-28-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "WriteTxnMarkers request v2 (Kafka 4.2, KIP-1228): the ABORT marker of the producer 89 for `t4-42-vectors-marker`-0, where that producer holds a transaction open at its epoch 0, with the `transaction_version` **2** that the version 2 appended to every marker - one byte behind the coordinator epoch, before the tag buffer of the marker. The producer is a transactional `KafkaProducer` of the protocol v2, so the marker names the epoch its records were written with.",
+            "hex": "0000004c001b00020000106800126b61666b612d636c69656e742d74342d343200020000000000000059000000021574342d34322d766563746f72732d6d61726b657202000000000000000000020000",
+            "fields": {
+                "messageSize": 76,
+                "apiKey": 27,
+                "apiVersion": 2,
+                "correlationId": 4200,
+                "clientId": "kafka-client-t4-42",
+                "headerTaggedFields": [],
+                "transactionMarkers": {
+                    "89": {
+                        "producerId": 89,
+                        "producerEpoch": 0,
+                        "transactionResult": false,
+                        "topics": {
+                            "t4-42-vectors-marker": {
+                                "topic": "t4-42-vectors-marker",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        },
+                        "coordinatorEpoch": 0,
+                        "transactionVersion": 2
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "Refused with **47** (`INVALID_PRODUCER_EPOCH` in `Errors.java`, `ProducerFencedException` in this client): a marker of the transaction version 2 has to carry an epoch **above** the one of the open transaction, because a coordinator of the protocol v2 bumps the epoch with every EndTxn - `ProducerAppendInfo.checkProducerEpoch()` @ 4.3.1 logs `Epoch of producer 89 at offset 1 in t4-42-vectors-marker-0 is 0, which is <= the last seen epoch 0 (TV2)`. The transaction stays open. The answer is the frame of the version 1.",
+            "hex": "0000002f0000106800020000000000000059021574342d34322d766563746f72732d6d61726b65720200000000002f00000000",
+            "fields": {
+                "messageSize": 47,
+                "correlationId": 4200,
+                "headerTaggedFields": [],
+                "transactionMarkers": {
+                    "89": {
+                        "producerId": 89,
+                        "topics": {
+                            "t4-42-vectors-marker": {
+                                "topic": "t4-42-vectors-marker",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "errorCode": 47
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.request.v2.tv0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The same marker with the `transaction_version` **0**, the legacy protocol - and the default of the field, which is also what every version 1 frame means.",
+            "hex": "0000004c001b00020000106900126b61666b612d636c69656e742d74342d343200020000000000000059000000021574342d34322d766563746f72732d6d61726b657202000000000000000000000000",
+            "fields": {
+                "messageSize": 76,
+                "apiKey": 27,
+                "apiVersion": 2,
+                "correlationId": 4201,
+                "clientId": "kafka-client-t4-42",
+                "headerTaggedFields": [],
+                "transactionMarkers": {
+                    "89": {
+                        "producerId": 89,
+                        "producerEpoch": 0,
+                        "transactionResult": false,
+                        "topics": {
+                            "t4-42-vectors-marker": {
+                                "topic": "t4-42-vectors-marker",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        },
+                        "coordinatorEpoch": 0,
+                        "transactionVersion": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.response.v2.tv0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "Written, 0: the legacy check only refuses an epoch **below** the last one seen (`<`), so the marker at the epoch of the transaction ends it - DescribeProducers reports no open transaction afterwards.",
+            "hex": "0000002f0000106900020000000000000059021574342d34322d766563746f72732d6d61726b65720200000000000000000000",
+            "fields": {
+                "messageSize": 47,
+                "correlationId": 4201,
+                "headerTaggedFields": [],
+                "transactionMarkers": {
+                    "89": {
+                        "producerId": 89,
+                        "topics": {
+                            "t4-42-vectors-marker": {
+                                "topic": "t4-42-vectors-marker",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.request.v2.retry",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The marker of the transaction version 2 once more, at the same epoch 0, now that no transaction of the producer is open in the partition.",
+            "hex": "0000004c001b00020000106a00126b61666b612d636c69656e742d74342d343200020000000000000059000000021574342d34322d766563746f72732d6d61726b657202000000000000000000020000",
+            "fields": {
+                "messageSize": 76,
+                "apiKey": 27,
+                "apiVersion": 2,
+                "correlationId": 4202,
+                "clientId": "kafka-client-t4-42",
+                "headerTaggedFields": [],
+                "transactionMarkers": {
+                    "89": {
+                        "producerId": 89,
+                        "producerEpoch": 0,
+                        "transactionResult": false,
+                        "topics": {
+                            "t4-42-vectors-marker": {
+                                "topic": "t4-42-vectors-marker",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        },
+                        "coordinatorEpoch": 0,
+                        "transactionVersion": 2
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.response.v2.retry",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "Written, 0: the idempotent retry of KAFKA-19999 - a marker of the version 2 at the epoch of the producer is let through when the transaction it ends is already complete (`Idempotent transaction marker retry detected for producer 89 epoch 0` in the log of the node), which is how a coordinator that reloads a PREPARE state rewrites its markers.",
+            "hex": "0000002f0000106a00020000000000000059021574342d34322d766563746f72732d6d61726b65720200000000000000000000",
+            "fields": {
+                "messageSize": 47,
+                "correlationId": 4202,
+                "headerTaggedFields": [],
+                "transactionMarkers": {
+                    "89": {
+                        "producerId": 89,
+                        "topics": {
+                            "t4-42-vectors-marker": {
+                                "topic": "t4-42-vectors-marker",
                                 "partitions": [
                                     {
                                         "partition": 0,
