@@ -7,8 +7,7 @@ this repository follows the Apache Kafka release it speaks rather than semantic 
 own: `main` is the **3.x line** and speaks the **Kafka 3.9.2 wire protocol** — the last release of the 3.x
 major, so everything Kafka 3.0 to 3.9 added, and the KIP-848 consumer protocol — built one Kafka minor at a
 time and complete. The lines
-below it are `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
-(Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
+below it are `2.x` (Kafka 2.8.2) and the archived lines below 2.0; every line is merged upwards
 into the next one, so the sections below accumulate: what a line added stays true of every line above it.
 
 Unreleased — the 3.x line (Kafka 3.0 to 3.9 and the KIP-848 consumer, complete at 3.9.2)
@@ -45,6 +44,15 @@ complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x
 
 ### Changed
 
+- **CI and maintenance** — one CI workflow for `2.x`, `3.x` and `main`: the lint, unit, compliance and integration
+  jobs run on **PHP 8.4 and 8.5**, and on `main` (pushes and pull requests into it) an experimental **PHP 8.6** row
+  may fail without failing the build. Coverage is collected with **pcov** on the PHP 8.4 jobs of the pushes to `main`
+  only and uploaded to **Codecov** (flags `unit` — unit and compliance — and `integration`); every other run has no
+  coverage driver. Pushes to `3.x` run CI and open the cascade pull request into `main` (the trigger lists of this
+  line's workflows did not name it). The README states the maintenance policy: **the two latest major lines are
+  maintained** (`main`, the 4.x line, and `3.x`), `2.x` is frozen, and the lines below 2.0 are archived — their
+  records (`docs/handoff/0.9.x.md`, `0.10.x.md`, `0.11.x.md`, `1.x.md`) and their specifics are gone from this
+  branch and live on their own branches.
 - **The protocol document is `docs/protocol/3.9.md`**, renamed from `docs/protocol/2.8.md` with every
   `@see` reference, and its api-key table is the answer of the KRaft node on its client listeners:
   **61 keys** (0–3, 8–51, 55, 57, 60, 61, 64–66, 68, 69, 74, 75, 80, 81), pinned by
@@ -1519,7 +1527,7 @@ documented in [docs/protocol/3.9.md](docs/protocol/3.9.md), whose **314** wire v
 [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 85 frames this
 line captured and the 229 of the four lines below, which a 1.1.1 broker still speaks. What the line
 delivered, how it was verified and what the line above it starts from is in
-[docs/handoff/1.x.md](docs/handoff/1.x.md).
+[docs/handoff/main.md on `1.x`](https://github.com/lisachenko/kafka-client/blob/1.x/docs/handoff/main.md).
 
 ### Added
 
@@ -1755,7 +1763,7 @@ delivered, how it was verified and what the line above it starts from is in
   container: created with a renewer and a maximum lifetime, described, renewed (which lands on the
   maximum lifetime rather than on the period that was asked for) and removed, with the **62** of
   expiring it a second time.
-- **The release record of the line** — [docs/handoff/1.x.md](docs/handoff/1.x.md) is the release
+- **The release record of the line** — [docs/handoff/main.md on `1.x`](https://github.com/lisachenko/kafka-client/blob/1.x/docs/handoff/main.md) is the release
   notes of the 1.x line (what was built, how it was verified, the deviations the broker forced, the
   known limitations) with the plan it was built from kept below them, and
   [docs/handoff/main.md](docs/handoff/main.md) is the handoff of the next line: what Kafka 2.0.1
