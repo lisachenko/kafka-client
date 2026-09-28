@@ -81,6 +81,11 @@ never renamed for a rename in the Java client (code 47 stays `ProducerFencedExce
   `KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration` (whole suite).
   `composer check` runs the first three. `find src tests examples -name '*.php' -print0 | xargs -0 -n1 php -l`.
 - phpstan runs as a phar at `vendor/bin/phpstan`; call it with `php vendor/bin/phpstan ...`.
+- **Dependabot** (`.github/dependabot.yml`) opens weekly pull requests against `3.x`: one for the minor and patch
+  releases of the Composer dependencies (a new major gets a pull request of its own and raises the range in
+  `composer.json`) and one for the GitHub Actions of the workflows. They go through the usual gate and reach `main`
+  through the cascade; a range raised in `composer.json` changes the `content-hash` of `composer.lock`, which the
+  cascade into `main` resolves with `composer update --lock`.
 - **In the sandbox, run phpunit as `php -d opcache.jit=0 vendor/bin/phpunit`.** Its PHP 8.5 CLI enables the tracing
   JIT by default and the JIT miscompiles the pure-PHP LZ4 decoder once its functions get hot, which shows up as an
   order-dependent `CorruptMessageException` in `Lz4Test` and in the lz4 message-format vectors (0 of 200 round trips
