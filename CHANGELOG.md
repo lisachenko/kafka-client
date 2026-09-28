@@ -7,8 +7,7 @@ this repository follows the Apache Kafka release it speaks rather than semantic 
 own: `main` is the **4.x line** and speaks the **Kafka 4.3.1 wire protocol** — everything Kafka 4.0 to 4.3 added,
 the KIP-848 consumer protocol and the KIP-932 share consumer — built one Kafka minor at a time on top of the finished
 3.x line, verified against a Kafka **4.3.1** KRaft node, and complete. The lines
-below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
-(Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
+below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2) and the archived lines below 2.0; every line is merged upwards
 into the next one, so the sections below accumulate: what a line added stays true of every line above it.
 
 Unreleased — the 4.x line (Kafka 4.0 to 4.3 and the KIP-932 share consumer, complete at 4.3.1)
@@ -40,6 +39,13 @@ methods; the record of the line is the release notes above the plan in [docs/han
 
 ### Changed
 
+- **CI and maintenance** — the lint, unit, compliance and integration jobs run on **PHP 8.4 and 8.5**, and `main` adds
+  **PHP 8.6** as an experimental row that may fail without failing the build. Coverage is collected with **pcov** on
+  the PHP 8.4 jobs of the pushes to `main` only and uploaded to **Codecov** (flags `unit` — unit and compliance — and
+  `integration`); pull requests run without a coverage driver. The README states the maintenance policy: **the two
+  latest major lines are maintained** (`main`, the 4.x line, and `3.x`), `2.x` is frozen, and the lines below 2.0
+  are archived — their records (`docs/handoff/0.9.x.md`, `0.10.x.md`, `0.11.x.md`, `1.x.md`) and their
+  specifics are gone from this branch and live on their own branches.
 - **The protocol document is `docs/protocol/4.3.md`**, renamed from `docs/protocol/3.9.md` with every `@see`
   reference: a new head, the 4.3.1 node and its features among the sources, "What 4.3.1 adds to the 3.9.2 protocol"
   (the four minors, the versions KIP-896 removed, the keys 88–92 and the codes 128–133, the owner's decisions), and
@@ -1776,7 +1782,7 @@ documented in [docs/protocol/4.3.md](docs/protocol/4.3.md), whose **314** wire v
 [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 85 frames this
 line captured and the 229 of the four lines below, which a 1.1.1 broker still speaks. What the line
 delivered, how it was verified and what the line above it starts from is in
-[docs/handoff/1.x.md](docs/handoff/1.x.md).
+[docs/handoff/main.md on `1.x`](https://github.com/lisachenko/kafka-client/blob/1.x/docs/handoff/main.md).
 
 ### Added
 
@@ -2012,7 +2018,7 @@ delivered, how it was verified and what the line above it starts from is in
   container: created with a renewer and a maximum lifetime, described, renewed (which lands on the
   maximum lifetime rather than on the period that was asked for) and removed, with the **62** of
   expiring it a second time.
-- **The release record of the line** — [docs/handoff/1.x.md](docs/handoff/1.x.md) is the release
+- **The release record of the line** — [docs/handoff/main.md on `1.x`](https://github.com/lisachenko/kafka-client/blob/1.x/docs/handoff/main.md) is the release
   notes of the 1.x line (what was built, how it was verified, the deviations the broker forced, the
   known limitations) with the plan it was built from kept below them, and
   [docs/handoff/main.md](docs/handoff/main.md) is the handoff of the next line: what Kafka 2.0.1

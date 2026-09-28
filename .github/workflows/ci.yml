@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ['0.*.x', '1.x', '2.x', main]
+    branches: ['0.*.x', '1.x', '2.x', '3.x', main]
   pull_request:
 
 permissions:
@@ -11,11 +11,22 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+        experimental: [false]
+        include:
+          # The next PHP release, run on the 4.x line only and allowed to fail
+          - php: '8.6'
+            experimental: true
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: ${{ matrix.php }}
+          coverage: none
       - run: composer validate --strict
       - run: find src tests examples -name '*.php' -print0 | xargs -0 -n1 php -l
 
@@ -26,6 +37,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+          coverage: none
       - run: composer install --prefer-dist --no-progress
       - run: composer cs
 
@@ -36,37 +48,63 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+          coverage: none
       - run: composer install --prefer-dist --no-progress
       - run: composer analyze
 
   phpunit:
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
+      fail-fast: false
       matrix:
-        php: ['8.4']
+        php: ['8.4', '8.5']
+        experimental: [false]
+        include:
+          # The next PHP release, run on the 4.x line only and allowed to fail
+          - php: '8.6'
+            experimental: true
+    env:
+      # Coverage is collected once, on PHP 8.4, for the pushes to main only (the Codecov badge of the README)
+      COVERAGE: ${{ matrix.php == '8.4' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          coverage: xdebug
-      - run: composer install --prefer-dist --no-progress
-      - run: vendor/bin/phpunit --testsuite unit --coverage-clover=coverage.xml
+          coverage: ${{ env.COVERAGE == 'true' && 'pcov' || 'none' }}
+      - run: composer install --prefer-dist --no-progress ${{ matrix.experimental && '--ignore-platform-req=php+' || '' }}
+      - name: Run the unit suite
+        if: env.COVERAGE != 'true'
+        run: vendor/bin/phpunit --testsuite unit
       - name: Replay the documented wire vectors
         # The compliance suite needs no broker: it replays docs/protocol/vectors through the protocol classes
+        if: env.COVERAGE != 'true'
         run: vendor/bin/phpunit --testsuite compliance
-      - uses: codecov/codecov-action@v4
+      - name: Run the unit and compliance suites with coverage
+        if: env.COVERAGE == 'true'
+        run: vendor/bin/phpunit --testsuite unit,compliance --coverage-clover=coverage.xml
+      - uses: codecov/codecov-action@v5
+        if: env.COVERAGE == 'true'
         with:
           files: coverage.xml
+          flags: unit
           token: ${{ secrets.CODECOV_TOKEN }}
 
   integration:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+    env:
+      COVERAGE: ${{ matrix.php == '8.4' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: ${{ matrix.php }}
+          coverage: ${{ env.COVERAGE == 'true' && 'pcov' || 'none' }}
       - run: composer install --prefer-dist --no-progress
       - name: Start Kafka 4.3.1 (KRaft)
         run: docker compose up -d --wait
@@ -76,7 +114,13 @@ jobs:
           KAFKA_SSL_BOOTSTRAP_SERVERS: 127.0.0.1:9093
           KAFKA_SASL_BOOTSTRAP_SERVERS: 127.0.0.1:9094
           KAFKA_SASL_SSL_BOOTSTRAP_SERVERS: 127.0.0.1:9095
-        run: vendor/bin/phpunit --testsuite integration
+        run: vendor/bin/phpunit --testsuite integration ${{ env.COVERAGE == 'true' && '--coverage-clover=coverage.xml' || '' }}
+      - uses: codecov/codecov-action@v5
+        if: env.COVERAGE == 'true'
+        with:
+          files: coverage.xml
+          flags: integration
+          token: ${{ secrets.CODECOV_TOKEN }}
       - name: Broker logs
         if: failure()
         run: docker compose logs --no-color
