@@ -16,13 +16,13 @@ major, so everything Kafka 3.0 to 3.9 added, and the **KIP-848 consumer protocol
 time on top of the finished 2.x line and verified against a 3.9.2 **KRaft** node; the version of every api the
 client sends is listed under
 [Supported Kafka protocol versions](#supported-kafka-protocol-versions). `main` is the top of the cascade:
-the frozen protocol snapshots below it live on `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x`
-(Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every
-wire vector those lines captured is replayed against the classes of this branch. The grammar this branch
+the protocol snapshot below this line lives on `2.x` (Kafka 2.8.2) — see [Maintained lines](#maintained-lines) —
+and on the archived branches of the lines below 2.0, and every wire vector those lines captured is replayed against
+the classes of this branch. The grammar this branch
 implements is written down, byte for byte, in [docs/protocol/3.9.md](docs/protocol/3.9.md), verified against
 a real Kafka 3.9.2 node running in KRaft mode; the plan of the line (and, once it is complete, its release
 record) is [docs/handoff/main.md](docs/handoff/main.md), the 2.x line's record is
-[docs/handoff/2.x.md](docs/handoff/2.x.md) and the 1.x line's [docs/handoff/1.x.md](docs/handoff/1.x.md).
+[docs/handoff/2.x.md](docs/handoff/2.x.md).
 
 Installation
 ------------
@@ -34,11 +34,26 @@ composer require lisachenko/kafka-client:dev-main
 **PHP 8.4 or newer, and nothing else** — `ext-openssl` is needed only for `SSL`/`SASL_SSL` and
 `ext-zlib` (bundled with PHP) for `gzip` and `ext-zstd` for the `zstd` codec of Kafka 2.1; the
 `snappy` and `lz4` codecs are implemented in PHP and use `ext-snappy` only when it happens to be
-installed. `main` is the branch the top of the cascade lives on, so it is installed by branch name;
-the frozen lines below it carry a numeric branch and are installed by constraint (`^2.8@dev` for
-`2.x`, `^1.1@dev` for `1.x`, `^0.11@dev` for `0.11.x`, `^0.10@dev` for `0.10.x`, and so on). A line is
-frozen as a numeric branch when the line above it starts, so code that must keep speaking Kafka 2.8.2
-pins the branch rather than `dev-main`.
+installed. `main` is the branch the top of the cascade lives on, so it is installed by branch name
+(`dev-main`, aliased as `4.x-dev`); the lines below it carry a numeric branch and are installed by constraint
+(`^3.9@dev` for `3.x`, `^2.8@dev` for `2.x`). A line is frozen as a numeric branch when the line above it starts,
+so code that must keep speaking Kafka 3.9.2 pins this branch rather than `dev-main`.
+
+Maintained lines
+----------------
+
+**The two latest major lines are maintained**; the lines below them are frozen:
+
+| Line | Kafka | Status | PHP in CI |
+|---|---|---|---|
+| `main` (4.x) | 4.3.1 | **maintained** — the current line | 8.4, 8.5; 8.6 experimental |
+| `3.x` | 3.9.2 | **maintained** — fixes land here and cascade to `main` | 8.4, 8.5 |
+| `2.x` | 2.8.2 | frozen — kept building on current PHP, no further work planned | 8.4, 8.5 |
+| `0.8.x` … `1.x` | 0.8.2.2 … 1.1.1 | **archived** — finished and stable, never changed again | – |
+
+When a Kafka 5.x line starts on `main`, the 4.x line is branched off as `4.x` and `3.x` leaves maintenance. What
+the archived lines established is carried by every line above them, so this document does not repeat their
+specifics; their branches carry their own README and release records.
 
 Producer API
 ------------
@@ -172,7 +187,7 @@ wrote there was deleted by `deleteRecords()` or by a retention run. That one the
 **repairs by itself**: the `logStartOffset` that Produce v5 added to the answer shows that the
 records fell below the start of the log, so the partition is numbered from the sequence 0 again
 and the batch is sent once more, under the same producer id and without touching any other
-partition. All three are documented, with what a real 1.1.1 broker answers, in
+partition. All three are documented, with what a real broker answers, in
 [docs/protocol/3.9.md](docs/protocol/3.9.md), section "The idempotent producer".
 
 ### Transactions
@@ -389,7 +404,7 @@ See the [consumer configuration] reference for the full set of options.
 Admin API
 ---------
 
-The Admin API exposes the low-level cluster operations a 1.1.1 broker can serve:
+The Admin API exposes the low-level cluster operations a Kafka node can serve:
 
 ```php
 use Protocol\Kafka\Admin\AdminClient;
@@ -625,8 +640,8 @@ Configuration reference
 
 Every option is a plain array key of the configuration passed to `KafkaProducer`, `KafkaConsumer`
 or `AdminClient`; the constants are documented one by one on `Common\ClientConfig`,
-`Consumer\ConsumerConfig` and `Producer\ProducerConfig`. The options the 0.10 line adds are
-marked **(0.10)**.
+`Consumer\ConsumerConfig` and `Producer\ProducerConfig`. An option that arrived with the 2.x major or later is
+marked with its Kafka release.
 
 **Client** (`Common\ClientConfig`, shared by all three)
 
@@ -634,9 +649,9 @@ marked **(0.10)**.
 |---|---|---|
 | `bootstrap.servers` | – | list of `tcp://host:port` entries, the only required option |
 | `client.id` | `PHP/Kafka` | name of the application; the broker uses it for quotas and it is the prefix of a group member id |
-| `security.protocol` | `PLAINTEXT` | `PLAINTEXT`, `SSL`, **(0.10)** `SASL_PLAINTEXT`, `SASL_SSL` |
-| `sasl.mechanism` **(0.10)** | `PLAIN` | the only implemented mechanism; `GSSAPI` and the two SCRAM ones are refused with the reason |
-| `sasl.username` / `sasl.password` **(0.10)** | – | credentials of the PLAIN token, required for a SASL transport |
+| `security.protocol` | `PLAINTEXT` | `PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`, `SASL_SSL` |
+| `sasl.mechanism` | `PLAIN` | the only implemented mechanism; `GSSAPI` and the two SCRAM ones are refused with the reason |
+| `sasl.username` / `sasl.password` | – | credentials of the PLAIN token, required for a SASL transport |
 | `ssl.protocol`, `ssl.enabled.protocols`, `ssl.ca.cert.location`, `ssl.client.cert.location`, `ssl.key.location`, `ssl.key.password` | see "Security" below | TLS transport |
 | `request.timeout.ms` | 30000 (consumer: 305000) | read timeout of a single request |
 | `metadata.fetch.timeout.ms` | 60000 | how long `Cluster::bootstrap()` and the coordinator lookup keep retrying |
@@ -656,12 +671,12 @@ marked **(0.10)**.
 | `group.remote.assignor` **(3.5)** | `null` | the server-side assignor of a `group.protocol=consumer` member — `uniform` or `range` on a 3.9.2 node — `null` lets the coordinator pick; a name the broker does not have is the **112** |
 | `partition.assignment.strategy` | `range` | `range`, `roundrobin` or a `PartitionAssignorInterface` class; not used at all by `group.protocol=consumer`, where the **broker** assigns |
 | `session.timeout.ms` | **10000** | how long the coordinator waits for a heartbeat; the Java 0.10.1 default |
-| `max.poll.interval.ms` **(0.10)** | 300000 | the `rebalance_timeout` of JoinGroup v1: how long the group waits for this member to rejoin a rebalance |
+| `max.poll.interval.ms` | 300000 | the `rebalance_timeout` of JoinGroup v1: how long the group waits for this member to rejoin a rebalance |
 | `heartbeat.interval.ms` | 3000 | how often `poll()` sends a heartbeat |
 | `request.timeout.ms` | **305000** | has to exceed both timeouts above, because a JoinGroup blocks |
 | `fetch.min.bytes` / `fetch.max.wait.ms` | 1 / 500 | when the broker answers a fetch |
-| `fetch.max.bytes` **(0.10)** | 52428800 | request-level `max_bytes` of Fetch v3, the bound of a whole answer |
-| `isolation.level` **(0.11)** | `read_uncommitted` | `read_uncommitted` or `read_committed`: what a Fetch v4 and above and an Offsets v2 make of transactional records |
+| `fetch.max.bytes` | 52428800 | request-level `max_bytes` of Fetch v3, the bound of a whole answer |
+| `isolation.level` | `read_uncommitted` | `read_uncommitted` or `read_committed`: what a Fetch v4 and above and an Offsets v2 make of transactional records |
 | `max.partition.fetch.bytes` | 65536 | per-partition bound; from Fetch v3 on the first partition is served whole even if it exceeds both |
 | `auto.offset.reset` | `latest` | `latest` or `earliest`, used when a partition has no committed offset |
 | `enable.auto.commit` / `auto.commit.interval.ms` | true / 0 | commit from `poll()`; 0 means "after every poll" |
@@ -677,13 +692,13 @@ marked **(0.10)**.
 | `acks` | 1 | `0` fire-and-forget, `1` the leader's log, `-1` all in-sync replicas |
 | `timeout.ms` | 2000 | how long the broker waits for the replicas of a batch |
 | `batch.size` / `linger.ms` | 0 / 0 | when a batch is sent |
-| `compression.type` | `none` | `none`, `gzip`, `snappy`, **(0.10)** `lz4`, **(2.1)** `zstd` (needs `ext-zstd`) |
-| `message.format.version` **(0.10)** | `0.11.0` | format a batch is written in, and with it the Produce version: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps (both a Produce v2), `0.11.0` the record batch v2 with headers (a Produce v11) |
+| `compression.type` | `none` | `none`, `gzip`, `snappy`, `lz4`, **(2.1)** `zstd` (needs `ext-zstd`) |
+| `message.format.version` | `0.11.0` | format a batch is written in, and with it the Produce version: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps (both a Produce v2), `0.11.0` the record batch v2 with headers (a Produce v11) |
 | `max.request.size` | 1048576 | biggest record this client will buffer |
 | `retries` / `retry.backoff.ms` | 0 / 100 | retry budget of a batch; **3** when `enable.idempotence` is on and it was not set |
-| `enable.idempotence` **(0.11)** | false | exactly once and in order per partition; implies `acks = all` and a non-zero `retries` |
-| `transactional.id` **(0.11)** | – | turns the producer into a transactional one and implies `enable.idempotence` |
-| `transaction.timeout.ms` **(0.11)** | 60000 | how long the coordinator lets a transaction of this producer stay open |
+| `enable.idempotence` | false | exactly once and in order per partition; implies `acks = all` and a non-zero `retries` |
+| `transactional.id` | – | turns the producer into a transactional one and implies `enable.idempotence` |
+| `transaction.timeout.ms` | 60000 | how long the coordinator lets a transaction of this producer stay open |
 | `partitioner.class` | `DefaultPartitioner` | murmur2 of the key, round robin without one |
 
 Security / SSL
@@ -755,8 +770,7 @@ answered with an empty token. **Kafka 1.0 (KIP-152) gave that token a request of
 client sends **v1**, so the token travels as an ordinary framed request and a refused credential
 comes back as the error code **58** with the message of the broker
 (`Authentication failed: Invalid username or password`) instead of a silently closed socket. The
-raw, unframed exchange of a v0 handshake is still implemented and still served by a 1.1.1 broker —
-it is what the four lines below speak. PLAIN sends the password in clear text, so use `SASL_SSL`
+raw, unframed exchange of a v0 handshake is still implemented for the wire vectors of the lines below. PLAIN sends the password in clear text, so use `SASL_SSL`
 outside a trusted network: the very same exchange, inside the TLS channel. Either way a refusal is
 a `SaslAuthenticationException` — carrying the code and the message when there is one — which
 leaves every retry loop of the client, because nothing about the connection would be different next
@@ -881,109 +895,79 @@ verified against the real broker, the login with their result is not implemented
 [examples/delegation-tokens.php](examples/delegation-tokens.php) runs one token's whole life against
 the SASL listener of `docker-compose.yml`.
 
-What the lines can do beyond the api versions themselves (the `main` column is the state of the
-current milestone):
+What the lines of the 2.x major and above can do beyond the api versions themselves. Everything the archived lines
+below 2.0 established is carried by every one of them and is not repeated in the table: the message formats v0 and
+v1 and the record batch v2 with its headers, the `gzip`, `snappy` and `lz4` codecs, the `SSL` and SASL/PLAIN
+transports, consumer groups and their assignors, offsets by timestamp, the idempotent and the transactional
+producer, incremental fetch sessions, the dynamic broker configuration with its config sources, and the admin apis
+of topics, partitions, log directories, configurations and delegation tokens:
 
-| Feature                                                | Arrived in | `0.8.x` | `0.9.x` | `0.10.x` | `0.11.x` | `1.x` | `2.x` | `main` |
-|--------------------------------------------------------|------------|---------|---------|----------|----------|-------|-------|--------|
-| Message format v0 (no timestamps)                      | 0.8        | yes     | yes     | yes      | yes      | yes   | yes    | yes    |
-| Message format v1 (timestamps, relative inner offsets) | 0.10.0     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| Record batch v2 (headers, varints, CRC-32C)            | 0.11       | –       | –       | –        | yes      | yes   | yes    | yes    |
-| Compression `gzip`, `snappy`                           | 0.8        | yes     | yes     | yes      | yes      | yes   | yes    | yes    |
-| Compression `lz4`                                      | 0.10.0     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| Transport `PLAINTEXT`                                  | 0.8        | yes     | yes     | yes      | yes      | yes   | yes    | yes    |
-| Transport `SSL`                                        | 0.9        | –       | yes     | yes      | yes      | yes   | yes    | yes    |
-| Transport `SASL_PLAINTEXT` / `SASL_SSL` (PLAIN)        | 0.10.0     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| Consumer groups (`subscribe()`, assignors)             | 0.9        | –       | yes     | yes      | yes      | yes   | yes    | yes    |
-| The group state `Empty`                                | 0.10.1     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| The group state `CompletingRebalance` (`AwaitingSync` below) | 1.0  | –       | –       | –        | –        | yes   | yes    | yes    |
-| Client quotas and their `throttle_time_ms`             | 0.9        | –       | yes     | yes      | yes      | yes   | yes    | yes    |
-| `throttle_time_ms` in the group and admin apis         | 0.11       | –       | –       | –        | yes      | yes   | yes    | yes    |
-| `controller_id`, broker `rack`, `is_internal`          | 0.10.0     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| `cluster_id` of Metadata v2                            | 0.10.1     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| Offsets by timestamp, `offsetsForTimes()`              | 0.10.1     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| `fetch.max.bytes` of Fetch v3                          | 0.10.1     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| `max.poll.interval.ms` and the `rebalance_timeout`     | 0.10.1     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| Admin: create and delete topics through the protocol   | 0.10.1     | –       | –       | yes      | yes      | yes   | yes    | yes    |
-| Admin: `getApiVersions()`                              | 0.10.0     | –       | –       | yes      | yes, v1  | yes, v1 | **yes, v2** | **yes, v4** |
-| Admin: `DeleteRecords`, `DescribeConfigs`/`AlterConfigs` | 0.11     | –       | –       | –        | yes      | yes   | yes    | yes    |
-| Record headers end to end (KIP-82)                     | 0.11       | –       | –       | –        | yes      | yes   | yes    | yes    |
-| `OffsetForLeaderEpoch`, `allow_auto_topic_creation`    | 0.11       | –       | –       | –        | yes      | yes   | yes    | yes    |
-| Idempotent producer (`enable.idempotence`)             | 0.11       | –       | –       | –        | yes      | yes   | yes    | yes    |
-| Transactional producer, `isolation.level`              | 0.11       | –       | –       | –        | yes      | yes   | yes    | yes    |
-| Framed SASL exchange (`SaslAuthenticate`, KIP-152)     | 1.0        | –       | –       | –        | –        | yes   | yes    | yes    |
-| `log_start_offset` of a produce answer, `offline_replicas` | 1.0    | –       | –       | –        | –        | yes   | yes    | yes    |
-| The five-batch duplicate window of a producer id        | 1.0        | –       | –       | –        | –        | yes   | yes    | yes    |
-| `UnknownProducerId` (59) repaired from the `log_start_offset` | 1.0  | –   | –       | –        | –        | yes   | yes — a 2.8.2 broker no longer sends 59 on the produce path | yes — a 2.8.2 broker no longer sends 59 on the produce path |
-| Incremental fetch sessions (KIP-227)                   | 1.1        | –       | –       | –        | –        | yes   | yes, one session per broker in the consumer | yes, one session per broker in the consumer |
-| Dynamic broker configuration, config sources and synonyms (KIP-226) | 1.1 | –  | –       | –        | –        | yes   | yes    | yes    |
-| Admin: `createPartitions()`, `deleteConsumerGroups()`  | 1.0 / 1.1  | –       | –       | –        | –        | yes   | yes    | yes    |
-| Admin: `describeLogDirs()`, `alterReplicaLogDirs()`    | 1.0        | –       | –       | –        | –        | yes   | yes    | yes    |
-| Delegation tokens (KIP-48)                             | 1.1        | –       | –       | –        | –        | issued, renewed, expired, described | issued, renewed, expired, described | issued, renewed, expired, described |
-| **KIP-219: the client waits out `throttle_time_ms`** (`throttle.wait`) | 2.0 | –  | –       | –        | –        | –     | **yes** | **yes** |
-| **KIP-279: the `leader_epoch` of an OffsetForLeaderEpoch answer** | 2.0 | – | –       | –        | –        | –     | **yes** | **yes** |
-| **KIP-283: `message.downconversion.enable`, measured** | 2.0        | –       | –       | –        | –        | –     | **yes** (35 per partition) | **yes** (35 per partition) |
-| **KIP-320: leader epochs in Fetch, ListOffsets, Metadata, OffsetCommit/OffsetFetch, OffsetForLeaderEpoch; truncation detection in the consumer** | 2.1 | – | – | – | – | – | **yes** (`LogTruncationException` with `auto.offset.reset=none`) | **yes** (`LogTruncationException` with `auto.offset.reset=none`) |
-| **KIP-110: the zstd codec** (`compression.type=zstd`)   | 2.1        | –       | –       | –        | –        | –     | **yes, through `ext-zstd`** (76 without it) | **yes, through `ext-zstd`** (76 without it) |
-| **KIP-211: OffsetCommit v5 without a per-commit retention** | 2.1     | –       | –       | –        | –        | –     | **yes** | **yes** |
-| **KIP-394: the second join** (79 on a first JoinGroup v4 without a member id) | 2.2 | – | – | – | – | – | **yes**, the consumer rejoins by itself | **yes**, the consumer rejoins by itself |
-| **KIP-207: 78 `OffsetNotAvailable`** of ListOffsets v5   | 2.2        | –       | –       | –        | –        | –     | **yes** (documented from the sources: one broker never lags) | **yes** (documented from the sources: one broker never lags) |
-| **KIP-368: the SASL session lifetime** of SaslAuthenticate v1 | 2.2   | –       | –       | –        | –        | –     | **reported** (re-authentication is 2.5's) | **reported** (re-authentication is 2.5's) |
-| **KIP-183: `electLeaders()`** (ElectLeaders v0)         | 2.2        | –       | –       | –        | –        | –     | **yes** (preferred elections; unclean from v1) | **yes** (preferred elections; unclean from v1) |
-| **KIP-380: the broker epoch** of ControlledShutdown v2  | 2.2        | –       | –       | –        | –        | –     | **yes** (`controlledShutdown()`) | **wire only** — the classes and the vectors stay, `controlledShutdown()` is gone: a KRaft node serves the api on its controller listener only |
-| **KIP-345: static membership** (`group.instance.id`, 82 fences the older instance) | 2.3 | – | – | – | – | – | **yes** — a static consumer keeps its partitions across a restart and does not leave on `close()` | **yes** — a static consumer keeps its partitions across a restart and does not leave on `close()` |
-| **KIP-430: authorized operations** of Metadata v8 and DescribeGroups v3 (`Common\AclOperation`) | 2.3 | – | – | – | – | – | **yes** (the supported operations on a broker without an authorizer) | **yes** (the supported operations on a broker without an authorizer) |
-| **KIP-392: reading from a follower** (`client.rack`, `preferred_read_replica` of Fetch v11) | 2.3 | – | – | – | – | – | **wire only** — one broker never names another replica | **wire only** — one broker never names another replica |
-| **KIP-339: `incrementalAlterConfigs()`** (IncrementalAlterConfigs v0) | 2.3 | – | – | – | – | – | **yes** (SET, DELETE, APPEND, SUBTRACT) | **yes** (SET, DELETE, APPEND, SUBTRACT) |
-| **KIP-482: flexible versions and tagged fields** (compact strings, bytes and arrays, request header v2, response header v1) | 2.4 | – | – | – | – | – | **yes** — the 2.4 versions were the first (ApiVersions v3, Metadata v9, the ten group apis, CreateTopics v5, DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1, ControlledShutdown v3, InitProducerId v2, CreateDelegationToken v2), and every flexible version Kafka 2.5 to 2.8 added is sent that way too — DeleteRecords v2 (2.6), Fetch v12 and the four transaction apis (2.7), Produce v9, ListOffsets v6, OffsetForLeaderEpoch v4 and Metadata v10/v11 (2.8) — so that **SaslHandshake v1 and OffsetDelete v0 are the only requests this client still sends in a plain frame** | **yes** — the 2.4 versions were the first (ApiVersions v3, Metadata v9, the ten group apis, CreateTopics v5, DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1, ControlledShutdown v3, InitProducerId v2, CreateDelegationToken v2), and every flexible version Kafka 2.5 to 2.8 added is sent that way too — DeleteRecords v2 (2.6), Fetch v12 and the four transaction apis (2.7), Produce v9, ListOffsets v6, OffsetForLeaderEpoch v4 and Metadata v10/v11 (2.8) — so that **SaslHandshake v1 and OffsetDelete v0 are the only requests this client still sends in a plain frame** |
-| **KIP-455: partition reassignments** (`alterPartitionReassignments()`, `listPartitionReassignments()`) | 2.4 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-496: `deleteConsumerGroupOffsets()`** (OffsetDelete v0) | 2.4 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-345: static members removed by hand** (`removeMembersFromConsumerGroup()`, LeaveGroup v3) and the `group_instance_id` of DescribeGroups v4 | 2.4 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-464 / KIP-525: topics created with the broker defaults** (`NewTopic::withBrokerDefaults()`) and answered with their configuration (`createTopicsWithResults()`) | 2.4 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-460: unclean leader election** (`ElectionType::UNCLEAN`, ElectLeaders v1) | 2.4 | – | – | – | – | – | **wire only** — a one-broker cluster has no partition whose leader is gone | **wire only** — a one-broker cluster has no partition whose leader is gone |
-| **KIP-467: the record errors of a refused batch** (Produce v8, `InvalidRecordException` names the records) | 2.4 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-360: the epoch bump of a transactional producer** (InitProducerId v3 with the producer's own id and epoch; an abortable error no longer ends the producer) | 2.5 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-447: exactly-once with a consumer group** (`sendOffsetsToTransaction()` with `ConsumerGroupMetadata`, TxnOffsetCommit v3; `require_stable` of OffsetFetch v7 and the 88, read by a `read_committed` consumer) | 2.5 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-559: the protocol type and name of a generation** (JoinGroup v7, SyncGroup v5) | 2.5 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-546: client quotas over the wire** (`describeClientQuotas()`, `alterClientQuotas()`) | 2.6 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-518: the states of `listConsumerGroups()`** (ListGroups v4) | 2.6 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-569: the type and documentation of a configuration entry** (DescribeConfigs v3, `ConfigType`) | 2.6 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-599: throttled topic creation** (the 89 `THROTTLING_QUOTA_EXCEEDED` of CreateTopics v6, DeleteTopics v5 and CreatePartitions v3, retried after the throttle) | 2.7 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-588: a fenced producer is 90** (InitProducerId v4, `TransactionalProducerFencedException`) | 2.7 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-595: epoch validation in the fetch itself** (Fetch v12, `last_fetched_epoch` and the `diverging_epoch` of the answer) | 2.7 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-554: SCRAM credentials over the wire** (`describeUserScramCredentials()`, `alterUserScramCredentials()`) | 2.7 | – | – | – | – | – | **yes** — the credentials can be managed, the SCRAM login itself is still not spoken | **yes** — the credentials can be managed, the SCRAM login itself is still not spoken |
-| **KIP-584: feature versions** (`describeFeatures()`, `updateFeatures()`) | 2.7 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-516: topic ids** (`Common\Uuid`, Metadata v10 and v11, `TopicMetadata::$topicId`, CreateTopics v7 and DeleteTopics v6 with `CreatedTopic::$topicId` and the 100 `UnknownTopicId`) | 2.8 | – | – | – | – | – | **yes** — a deleted and re-created topic of the same name gets a new id | **yes** — a deleted and re-created topic of the same name gets a new id |
-| **KIP-482 on the last plain apis** (the flexible v3 of AddPartitionsToTxn, AddOffsetsToTxn and EndTxn, DescribeConfigs v4, AlterConfigs v2, AlterReplicaLogDirs v2, WriteTxnMarkers v1) | 2.8 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-700: the cluster-wide authorized operations leave Metadata** (gone from the request and the answer of Metadata v11, asked with `describeCluster()`) and **KIP-664: `describeProducers()`** | 2.8 | – | – | – | – | – | **yes** | **yes** |
-| **KIP-664: `describeTransactions()` / `listTransactions()`** (DescribeTransactions v0, ListTransactions v0) | 3.0 | – | – | – | – | – | – | **yes** |
-| **KIP-734: the max timestamp** (`OffsetsRequest::MAX_TIMESTAMP`, ListOffsets v7) | 3.0 | – | – | – | – | – | – | **yes** (`maxTimestampOffsets()`, `listMaxTimestampOffsets()`) |
-| **KIP-699: several coordinators in one FindCoordinator** (v4) and **several groups in one OffsetFetch** (v8) | 3.0 | – | – | – | – | – | – | **yes** (`getGroupCoordinators()`, `listConsumerGroupOffsets()`) |
-| **KIP-516, the request side: topics named by their id** (Fetch v13, Metadata v12; `Cluster::topicIdOf()`/`topicNameById()`, `describeTopicsByIds()`; the 106 of a fetch session that mixes ids and names) | 3.1 | – | – | – | – | – | – | **yes** |
-| **KIP-800: the `reason` of a join and of a leave** (JoinGroup v8, LeaveGroup v5; `Client::joinGroup()`/`leaveGroup()`, `KafkaConsumer::unsubscribe()`, `removeMembersFromConsumerGroup()`) and **KIP-814: `skip_assignment`** (JoinGroup v9; a static leader that returns to a `Stable` group keeps its assignment) | 3.2 | – | – | – | – | – | – | **yes** |
-| **DescribeLogDirs v3: the top-level error code** of a refused request (thrown by `describeLogDirs()`) | 3.2 | – | – | – | – | – | – | **yes** |
-| **The ACL apis at v3** (DescribeAcls, CreateAcls, DeleteAcls; `describeAcls()`, `createAcls()`, `deleteAcls()`, `Common\AclBinding`) | 3.3 | – | – | – | – | – | – | **yes** — the first line of this package to speak them, against a real authorizer |
-| **KIP-778: the upgrade type and the dry run of a feature update** (`Admin\UpgradeType`, `updateFeatures(..., validateOnly: true)`, UpdateFeatures v1) | 3.3 | – | – | – | – | – | – | **yes** — the safe and the unsafe downgrade are two frames, and a dry run writes nothing |
-| **KIP-836: the lag of a voter** (`describeMetadataQuorum()`, the `LastFetchTimestamp` and `LastCaughtUpTimestamp` of DescribeQuorum v1) | 3.3 | – | – | – | – | – | – | **yes** — the one-node quorum reports the leader's own current time in both |
-| **KIP-827: the volume sizes of a log directory** (DescribeLogDirs v4, `LogDirInfo::$totalBytes`/`$usableBytes`) and **KIP-373: a token for another principal** (CreateDelegationToken v3, DescribeDelegationToken v3, `createDelegationToken(..., $owner)`, `TokenInformation::$tokenRequester`) | 3.3 | – | – | – | – | – | – | **yes** |
-| **KIP-405, the client side of tiered storage** (Fetch v14 and the error code 109, ListOffsets v8 and the target time `-4`; `OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP`, `listEarliestLocalOffsets()`) | 3.5 | – | – | – | – | – | – | **yes** — the wire; the node has no remote storage, so `-4` is the earliest offset and the 109 stays declared |
-| **KIP-903: the replica state of a follower fetch** (Fetch v15, the tagged `replica_state` in the place of the top-level `replica_id`; `Data\FetchRequestReplicaState`, `FetchRequest::$replicaEpoch`) | 3.5 | – | – | – | – | – | – | **yes** — a consumer writes nothing and its frame is four bytes shorter; a one-node cluster answers a follower 75 or 6 before the epoch is looked at |
-| **KIP-890, part 1: AddPartitionsToTxn v4, the batched broker version** (`AddPartitionsToTxnRequest::forTransactions()`, `Data\AddPartitionsToTxnTransaction`, `Data\AddPartitionsToTxnResult`) | 3.5 | – | – | – | – | – | – | **wire only** — the node answers a client the 31 of `CLUSTER_ACTION`; `Client::addPartitionsToTxn()` keeps the v3 until the v5 of Kafka 3.8 |
-| **KIP-848, the first version a classic client sends: OffsetCommit v9** (the v8 frame; the 69 `GroupIdNotFound` of an unknown group and the 113 `StaleMemberEpoch` of a member epoch; `OffsetCommitRequestV8`/`ResponseV8` keep the v8) | 3.6 | – | – | – | – | – | – | **yes** — the 113 observed with a hand-built KIP-848 member; the consumer protocol itself is the last wave of the line |
-| **KIP-951: leader discovery** (Produce v10, Fetch v16; the tagged `current_leader` of a refused partition and the `node_endpoints` of the answer, `ProduceResponsePartition::$currentLeader`, `ProduceResponse::$nodeEndpoints`, `FetchResponse::$nodeEndpoints`, handed to the caller in the exception context as `currentLeaderId`/`Epoch`/`Host`/`Port`) | 3.7 | – | – | – | – | – | – | **yes** — the wire and the hint; the client still refreshes its metadata instead of following the endpoint |
-| **KIP-919: the endpoint type of a DescribeCluster** (v1, `Admin\EndpointType`, `describeCluster(..., EndpointType::Controller)`, the codes 114 and 115) | 3.7 | – | – | – | – | – | – | **yes** — a broker listener answers the 114 for the controllers, the controller listener of the node is not exposed |
-| **KIP-848, the fetch half: the member id and epoch of an OffsetFetch** (v9; `Client::fetchGroupOffsetsAsMember()`, `OffsetFetchRequest::forMember()`, `Data\OffsetFetchRequestGroup::$memberId`/`$memberEpoch`; the 113 and the 25 as group-level codes) | 3.7 | – | – | – | – | – | – | **yes** — measured with a hand-built KIP-848 member; the consumer protocol itself is the last wave of the line |
-| **KIP-714: client metrics** (GetTelemetrySubscriptions 71, PushTelemetry 72, ListClientMetricsResources 74) | 3.7 | – | – | – | – | – | – | **wire only** — classes and vectors of a node without a receiver plugin, no client method, no emitter (owner decision) |
-| **KIP-966: the eligible leader replicas over the wire** (DescribeTopicPartitions, key 75; `describeTopicPartitions()`, `Admin\TopicDescription`, `Admin\TopicPartitionInfo`, `Protocol\NullableStruct`) and **KIP-994: the duration filter of `listTransactions()`** (ListTransactions v1) | 3.8 | – | – | – | – | – | – | **yes** — the api pages, and the node answers the two ELR arrays empty |
-| **KIP-890 (part 1): the abortable transaction error** (Produce v11; the **120** `TransactionAbortable` a transactional batch of an unverified partition is refused with, `TransactionAbortableException`, which makes the transaction abortable instead of fatal) | 3.8 | – | – | – | – | – | – | **yes** — the wire and the producer state machine; the transaction protocol v2 of part 2 is not in 3.9 (the node finalizes no `transaction.version`) |
-| **KIP-848 (the group types of a listing)** (ListGroups v5, `group_type` + `types_filter`) and **KIP-890 (the code 120 reaches FindCoordinator)** (v5, no field) | 3.8 | – | – | – | – | – | – | **yes** (`listGroups($node, $states, $types)`, `ListGroupResponseProtocol::TYPE_*`); the 120 is produced at AddPartitionsToTxn and Produce, never at FindCoordinator |
-| **KIP-848, the consumer protocol itself** (ConsumerGroupHeartbeat 68, ConsumerGroupDescribe 69, `group.protocol=consumer`, `group.remote.assignor`) | 3.5 / 3.7 | – | – | – | – | – | – | **yes** — one api in place of four, the assignment computed by the coordinator, the heartbeat interval dictated by the broker, an **incremental** rebalance, the member epoch on OffsetCommit v9 / OffsetFetch v9, the static leave of the epoch **-2**, and the codes 110, 111, 112 and the 69 of a classic group observed on the node |
-| **KIP-890, part 2 (the wire half): the abortable transaction error** (InitProducerId v5, AddPartitionsToTxn v5, AddOffsetsToTxn v4, EndTxn v4, TxnOffsetCommit v4, and the error code 120 `TransactionAbortableException`) | 3.8 | – | – | – | – | – | – | **yes** — the four client-facing versions are sent; AddPartitionsToTxn v5 stays a broker version. The node finalizes no `transaction.version`, so only the partition verification of part 1 produces the 120: a TxnOffsetCommit v4 whose offsets partition the transaction does not hold, where the v3 is answered 48 |
-| **KAFKA-17011: a supported feature with the minimum version 0** (ApiVersions v4, no field; `kraft.version` 0…1 appears in the answer of a v4 and in no answer below it) and **KIP-853: the reconfigurable quorum over the wire** (DescribeQuorum v2, the `Nodes` array, the `ReplicaDirectoryId` of a replica state and the two `ErrorMessage` fields; `Admin\QuorumNode`, `Admin\RaftVoterEndpoint`, `ReplicaState::$replicaDirectoryId`, and the `uint16` the engine gained for a listener port) | 3.9 | – | – | – | – | – | – | **yes** — the wire of both; the node runs a **static** voter set (`kraft.version` finalized at 0), so every directory id it reports is the zero uuid and the reconfiguration apis 80 and 81 refuse every frame with the 35 |
-| **KIP-853: the directory id of a follower fetch** (Fetch v17, the tagged `replica_directory_id` of every partition entry; `Data\FetchRequestTopicPartition::$replicaDirectoryId`, `FetchRequest::getReplicaDirectoryId()`) | 3.9 | – | – | – | – | – | – | **yes** — the wire; a consumer writes nothing and its frame does not change, and a fetch of an ordinary topic never reads the field: only `KafkaRaftClient` does, for `__cluster_metadata` on the controller listener |
-| **KIP-1005: the last tiered offset** (ListOffsets v9, the target time `-5`; `OffsetsRequest::LATEST_TIERED_TIMESTAMP`, `AdminClient::listLatestTieredOffsets()`) | 3.9 | – | – | – | – | – | – | **yes** — the wire; without remote storage the node answers the offset `-1` with the error code 0, on a filled log as on an empty one |
-| **KIP-932 (the coordinator type of a share group)** (FindCoordinator v6, `COORDINATOR_TYPE_SHARE`) | 3.9 | – | – | – | – | – | – | **wire only** — the version and the constant; the type 2 is legal from v6 and answered the **15** `CoordinatorNotAvailable` by a 3.9.2 node, which has no share coordinator, and the **42** below it. Share groups themselves (76–79, 83–87) are out of this line |
-| Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
+| Feature | Arrived in | `2.x` | `3.x` (this branch) |
+|---|---|---|---|
+| **KIP-219: the client waits out `throttle_time_ms`** (`throttle.wait`) | 2.0 | **yes** | **yes** |
+| **KIP-279: the `leader_epoch` of an OffsetForLeaderEpoch answer** | 2.0 | **yes** | **yes** |
+| **KIP-283: `message.downconversion.enable`, measured** | 2.0 | **yes** (35 per partition) | **yes** (35 per partition) |
+| **KIP-320: leader epochs in Fetch, ListOffsets, Metadata, OffsetCommit/OffsetFetch, OffsetForLeaderEpoch; truncation detection in the consumer** | 2.1 | **yes** (`LogTruncationException` with `auto.offset.reset=none`) | **yes** (`LogTruncationException` with `auto.offset.reset=none`) |
+| **KIP-110: the zstd codec** (`compression.type=zstd`) | 2.1 | **yes, through `ext-zstd`** (76 without it) | **yes, through `ext-zstd`** (76 without it) |
+| **KIP-211: OffsetCommit v5 without a per-commit retention** | 2.1 | **yes** | **yes** |
+| **KIP-394: the second join** (79 on a first JoinGroup v4 without a member id) | 2.2 | **yes**, the consumer rejoins by itself | **yes**, the consumer rejoins by itself |
+| **KIP-207: 78 `OffsetNotAvailable`** of ListOffsets v5 | 2.2 | **yes** (documented from the sources: one broker never lags) | **yes** (documented from the sources: one broker never lags) |
+| **KIP-368: the SASL session lifetime** of SaslAuthenticate v1 | 2.2 | **reported** (re-authentication is 2.5's) | **reported** (re-authentication is 2.5's) |
+| **KIP-183: `electLeaders()`** (ElectLeaders v0) | 2.2 | **yes** (preferred elections; unclean from v1) | **yes** (preferred elections; unclean from v1) |
+| **KIP-380: the broker epoch** of ControlledShutdown v2 | 2.2 | **yes** (`controlledShutdown()`) | **wire only** — the classes and the vectors stay, `controlledShutdown()` is gone: a KRaft node serves the api on its controller listener only |
+| **KIP-345: static membership** (`group.instance.id`, 82 fences the older instance) | 2.3 | **yes** — a static consumer keeps its partitions across a restart and does not leave on `close()` | **yes** — a static consumer keeps its partitions across a restart and does not leave on `close()` |
+| **KIP-430: authorized operations** of Metadata v8 and DescribeGroups v3 (`Common\AclOperation`) | 2.3 | **yes** (the supported operations on a broker without an authorizer) | **yes** (the supported operations on a broker without an authorizer) |
+| **KIP-392: reading from a follower** (`client.rack`, `preferred_read_replica` of Fetch v11) | 2.3 | **wire only** — one broker never names another replica | **wire only** — one broker never names another replica |
+| **KIP-339: `incrementalAlterConfigs()`** (IncrementalAlterConfigs v0) | 2.3 | **yes** (SET, DELETE, APPEND, SUBTRACT) | **yes** (SET, DELETE, APPEND, SUBTRACT) |
+| **KIP-482: flexible versions and tagged fields** (compact strings, bytes and arrays, request header v2, response header v1) | 2.4 | **yes** — the 2.4 versions were the first (ApiVersions v3, Metadata v9, the ten group apis, CreateTopics v5, DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1, ControlledShutdown v3, InitProducerId v2, CreateDelegationToken v2), and every flexible version Kafka 2.5 to 2.8 added is sent that way too — DeleteRecords v2 (2.6), Fetch v12 and the four transaction apis (2.7), Produce v9, ListOffsets v6, OffsetForLeaderEpoch v4 and Metadata v10/v11 (2.8) — so that **SaslHandshake v1 and OffsetDelete v0 are the only requests this client still sends in a plain frame** | **yes** — the 2.4 versions were the first (ApiVersions v3, Metadata v9, the ten group apis, CreateTopics v5, DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1, ControlledShutdown v3, InitProducerId v2, CreateDelegationToken v2), and every flexible version Kafka 2.5 to 2.8 added is sent that way too — DeleteRecords v2 (2.6), Fetch v12 and the four transaction apis (2.7), Produce v9, ListOffsets v6, OffsetForLeaderEpoch v4 and Metadata v10/v11 (2.8) — so that **SaslHandshake v1 and OffsetDelete v0 are the only requests this client still sends in a plain frame** |
+| **KIP-455: partition reassignments** (`alterPartitionReassignments()`, `listPartitionReassignments()`) | 2.4 | **yes** | **yes** |
+| **KIP-496: `deleteConsumerGroupOffsets()`** (OffsetDelete v0) | 2.4 | **yes** | **yes** |
+| **KIP-345: static members removed by hand** (`removeMembersFromConsumerGroup()`, LeaveGroup v3) and the `group_instance_id` of DescribeGroups v4 | 2.4 | **yes** | **yes** |
+| **KIP-464 / KIP-525: topics created with the broker defaults** (`NewTopic::withBrokerDefaults()`) and answered with their configuration (`createTopicsWithResults()`) | 2.4 | **yes** | **yes** |
+| **KIP-460: unclean leader election** (`ElectionType::UNCLEAN`, ElectLeaders v1) | 2.4 | **wire only** — a one-broker cluster has no partition whose leader is gone | **wire only** — a one-broker cluster has no partition whose leader is gone |
+| **KIP-467: the record errors of a refused batch** (Produce v8, `InvalidRecordException` names the records) | 2.4 | **yes** | **yes** |
+| **KIP-360: the epoch bump of a transactional producer** (InitProducerId v3 with the producer's own id and epoch; an abortable error no longer ends the producer) | 2.5 | **yes** | **yes** |
+| **KIP-447: exactly-once with a consumer group** (`sendOffsetsToTransaction()` with `ConsumerGroupMetadata`, TxnOffsetCommit v3; `require_stable` of OffsetFetch v7 and the 88, read by a `read_committed` consumer) | 2.5 | **yes** | **yes** |
+| **KIP-559: the protocol type and name of a generation** (JoinGroup v7, SyncGroup v5) | 2.5 | **yes** | **yes** |
+| **KIP-546: client quotas over the wire** (`describeClientQuotas()`, `alterClientQuotas()`) | 2.6 | **yes** | **yes** |
+| **KIP-518: the states of `listConsumerGroups()`** (ListGroups v4) | 2.6 | **yes** | **yes** |
+| **KIP-569: the type and documentation of a configuration entry** (DescribeConfigs v3, `ConfigType`) | 2.6 | **yes** | **yes** |
+| **KIP-599: throttled topic creation** (the 89 `THROTTLING_QUOTA_EXCEEDED` of CreateTopics v6, DeleteTopics v5 and CreatePartitions v3, retried after the throttle) | 2.7 | **yes** | **yes** |
+| **KIP-588: a fenced producer is 90** (InitProducerId v4, `TransactionalProducerFencedException`) | 2.7 | **yes** | **yes** |
+| **KIP-595: epoch validation in the fetch itself** (Fetch v12, `last_fetched_epoch` and the `diverging_epoch` of the answer) | 2.7 | **yes** | **yes** |
+| **KIP-554: SCRAM credentials over the wire** (`describeUserScramCredentials()`, `alterUserScramCredentials()`) | 2.7 | **yes** — the credentials can be managed, the SCRAM login itself is still not spoken | **yes** — the credentials can be managed, the SCRAM login itself is still not spoken |
+| **KIP-584: feature versions** (`describeFeatures()`, `updateFeatures()`) | 2.7 | **yes** | **yes** |
+| **KIP-516: topic ids** (`Common\Uuid`, Metadata v10 and v11, `TopicMetadata::$topicId`, CreateTopics v7 and DeleteTopics v6 with `CreatedTopic::$topicId` and the 100 `UnknownTopicId`) | 2.8 | **yes** — a deleted and re-created topic of the same name gets a new id | **yes** — a deleted and re-created topic of the same name gets a new id |
+| **KIP-482 on the last plain apis** (the flexible v3 of AddPartitionsToTxn, AddOffsetsToTxn and EndTxn, DescribeConfigs v4, AlterConfigs v2, AlterReplicaLogDirs v2, WriteTxnMarkers v1) | 2.8 | **yes** | **yes** |
+| **KIP-700: the cluster-wide authorized operations leave Metadata** (gone from the request and the answer of Metadata v11, asked with `describeCluster()`) and **KIP-664: `describeProducers()`** | 2.8 | **yes** | **yes** |
+| **KIP-664: `describeTransactions()` / `listTransactions()`** (DescribeTransactions v0, ListTransactions v0) | 3.0 | – | **yes** |
+| **KIP-734: the max timestamp** (`OffsetsRequest::MAX_TIMESTAMP`, ListOffsets v7) | 3.0 | – | **yes** (`maxTimestampOffsets()`, `listMaxTimestampOffsets()`) |
+| **KIP-699: several coordinators in one FindCoordinator** (v4) and **several groups in one OffsetFetch** (v8) | 3.0 | – | **yes** (`getGroupCoordinators()`, `listConsumerGroupOffsets()`) |
+| **KIP-516, the request side: topics named by their id** (Fetch v13, Metadata v12; `Cluster::topicIdOf()`/`topicNameById()`, `describeTopicsByIds()`; the 106 of a fetch session that mixes ids and names) | 3.1 | – | **yes** |
+| **KIP-800: the `reason` of a join and of a leave** (JoinGroup v8, LeaveGroup v5; `Client::joinGroup()`/`leaveGroup()`, `KafkaConsumer::unsubscribe()`, `removeMembersFromConsumerGroup()`) and **KIP-814: `skip_assignment`** (JoinGroup v9; a static leader that returns to a `Stable` group keeps its assignment) | 3.2 | – | **yes** |
+| **DescribeLogDirs v3: the top-level error code** of a refused request (thrown by `describeLogDirs()`) | 3.2 | – | **yes** |
+| **The ACL apis at v3** (DescribeAcls, CreateAcls, DeleteAcls; `describeAcls()`, `createAcls()`, `deleteAcls()`, `Common\AclBinding`) | 3.3 | – | **yes** — the first line of this package to speak them, against a real authorizer |
+| **KIP-778: the upgrade type and the dry run of a feature update** (`Admin\UpgradeType`, `updateFeatures(..., validateOnly: true)`, UpdateFeatures v1) | 3.3 | – | **yes** — the safe and the unsafe downgrade are two frames, and a dry run writes nothing |
+| **KIP-836: the lag of a voter** (`describeMetadataQuorum()`, the `LastFetchTimestamp` and `LastCaughtUpTimestamp` of DescribeQuorum v1) | 3.3 | – | **yes** — the one-node quorum reports the leader's own current time in both |
+| **KIP-827: the volume sizes of a log directory** (DescribeLogDirs v4, `LogDirInfo::$totalBytes`/`$usableBytes`) and **KIP-373: a token for another principal** (CreateDelegationToken v3, DescribeDelegationToken v3, `createDelegationToken(..., $owner)`, `TokenInformation::$tokenRequester`) | 3.3 | – | **yes** |
+| **KIP-405, the client side of tiered storage** (Fetch v14 and the error code 109, ListOffsets v8 and the target time `-4`; `OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP`, `listEarliestLocalOffsets()`) | 3.5 | – | **yes** — the wire; the node has no remote storage, so `-4` is the earliest offset and the 109 stays declared |
+| **KIP-903: the replica state of a follower fetch** (Fetch v15, the tagged `replica_state` in the place of the top-level `replica_id`; `Data\FetchRequestReplicaState`, `FetchRequest::$replicaEpoch`) | 3.5 | – | **yes** — a consumer writes nothing and its frame is four bytes shorter; a one-node cluster answers a follower 75 or 6 before the epoch is looked at |
+| **KIP-890, part 1: AddPartitionsToTxn v4, the batched broker version** (`AddPartitionsToTxnRequest::forTransactions()`, `Data\AddPartitionsToTxnTransaction`, `Data\AddPartitionsToTxnResult`) | 3.5 | – | **wire only** — the node answers a client the 31 of `CLUSTER_ACTION`; `Client::addPartitionsToTxn()` keeps the v3 until the v5 of Kafka 3.8 |
+| **KIP-848, the first version a classic client sends: OffsetCommit v9** (the v8 frame; the 69 `GroupIdNotFound` of an unknown group and the 113 `StaleMemberEpoch` of a member epoch; `OffsetCommitRequestV8`/`ResponseV8` keep the v8) | 3.6 | – | **yes** — the 113 observed with a hand-built KIP-848 member; the consumer protocol itself is the last wave of the line |
+| **KIP-951: leader discovery** (Produce v10, Fetch v16; the tagged `current_leader` of a refused partition and the `node_endpoints` of the answer, `ProduceResponsePartition::$currentLeader`, `ProduceResponse::$nodeEndpoints`, `FetchResponse::$nodeEndpoints`, handed to the caller in the exception context as `currentLeaderId`/`Epoch`/`Host`/`Port`) | 3.7 | – | **yes** — the wire and the hint; the client still refreshes its metadata instead of following the endpoint |
+| **KIP-919: the endpoint type of a DescribeCluster** (v1, `Admin\EndpointType`, `describeCluster(..., EndpointType::Controller)`, the codes 114 and 115) | 3.7 | – | **yes** — a broker listener answers the 114 for the controllers, the controller listener of the node is not exposed |
+| **KIP-848, the fetch half: the member id and epoch of an OffsetFetch** (v9; `Client::fetchGroupOffsetsAsMember()`, `OffsetFetchRequest::forMember()`, `Data\OffsetFetchRequestGroup::$memberId`/`$memberEpoch`; the 113 and the 25 as group-level codes) | 3.7 | – | **yes** — measured with a hand-built KIP-848 member; the consumer protocol itself is the last wave of the line |
+| **KIP-714: client metrics** (GetTelemetrySubscriptions 71, PushTelemetry 72, ListClientMetricsResources 74) | 3.7 | – | **wire only** — classes and vectors of a node without a receiver plugin, no client method, no emitter (owner decision) |
+| **KIP-966: the eligible leader replicas over the wire** (DescribeTopicPartitions, key 75; `describeTopicPartitions()`, `Admin\TopicDescription`, `Admin\TopicPartitionInfo`, `Protocol\NullableStruct`) and **KIP-994: the duration filter of `listTransactions()`** (ListTransactions v1) | 3.8 | – | **yes** — the api pages, and the node answers the two ELR arrays empty |
+| **KIP-890 (part 1): the abortable transaction error** (Produce v11; the **120** `TransactionAbortable` a transactional batch of an unverified partition is refused with, `TransactionAbortableException`, which makes the transaction abortable instead of fatal) | 3.8 | – | **yes** — the wire and the producer state machine; the transaction protocol v2 of part 2 is not in 3.9 (the node finalizes no `transaction.version`) |
+| **KIP-848 (the group types of a listing)** (ListGroups v5, `group_type` + `types_filter`) and **KIP-890 (the code 120 reaches FindCoordinator)** (v5, no field) | 3.8 | – | **yes** (`listGroups($node, $states, $types)`, `ListGroupResponseProtocol::TYPE_*`); the 120 is produced at AddPartitionsToTxn and Produce, never at FindCoordinator |
+| **KIP-848, the consumer protocol itself** (ConsumerGroupHeartbeat 68, ConsumerGroupDescribe 69, `group.protocol=consumer`, `group.remote.assignor`) | 3.5 / 3.7 | – | **yes** — one api in place of four, the assignment computed by the coordinator, the heartbeat interval dictated by the broker, an **incremental** rebalance, the member epoch on OffsetCommit v9 / OffsetFetch v9, the static leave of the epoch **-2**, and the codes 110, 111, 112 and the 69 of a classic group observed on the node |
+| **KIP-890, part 2 (the wire half): the abortable transaction error** (InitProducerId v5, AddPartitionsToTxn v5, AddOffsetsToTxn v4, EndTxn v4, TxnOffsetCommit v4, and the error code 120 `TransactionAbortableException`) | 3.8 | – | **yes** — the four client-facing versions are sent; AddPartitionsToTxn v5 stays a broker version. The node finalizes no `transaction.version`, so only the partition verification of part 1 produces the 120: a TxnOffsetCommit v4 whose offsets partition the transaction does not hold, where the v3 is answered 48 |
+| **KAFKA-17011: a supported feature with the minimum version 0** (ApiVersions v4, no field; `kraft.version` 0…1 appears in the answer of a v4 and in no answer below it) and **KIP-853: the reconfigurable quorum over the wire** (DescribeQuorum v2, the `Nodes` array, the `ReplicaDirectoryId` of a replica state and the two `ErrorMessage` fields; `Admin\QuorumNode`, `Admin\RaftVoterEndpoint`, `ReplicaState::$replicaDirectoryId`, and the `uint16` the engine gained for a listener port) | 3.9 | – | **yes** — the wire of both; the node runs a **static** voter set (`kraft.version` finalized at 0), so every directory id it reports is the zero uuid and the reconfiguration apis 80 and 81 refuse every frame with the 35 |
+| **KIP-853: the directory id of a follower fetch** (Fetch v17, the tagged `replica_directory_id` of every partition entry; `Data\FetchRequestTopicPartition::$replicaDirectoryId`, `FetchRequest::getReplicaDirectoryId()`) | 3.9 | – | **yes** — the wire; a consumer writes nothing and its frame does not change, and a fetch of an ordinary topic never reads the field: only `KafkaRaftClient` does, for `__cluster_metadata` on the controller listener |
+| **KIP-1005: the last tiered offset** (ListOffsets v9, the target time `-5`; `OffsetsRequest::LATEST_TIERED_TIMESTAMP`, `AdminClient::listLatestTieredOffsets()`) | 3.9 | – | **yes** — the wire; without remote storage the node answers the offset `-1` with the error code 0, on a filled log as on an empty one |
+| **KIP-932 (the coordinator type of a share group)** (FindCoordinator v6, `COORDINATOR_TYPE_SHARE`) | 3.9 | – | **wire only** — the version and the constant; the type 2 is legal from v6 and answered the **15** `CoordinatorNotAvailable` by a 3.9.2 node, which has no share coordinator, and the **42** below it. Share groups themselves (76–79, 83–87) are out of this line |
+| Error codes | – | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x line; everything else the 3.9.2
 node serves is "not yet" until its milestone lands):
@@ -1000,25 +984,19 @@ node serves is "not yet" until its milestone lands):
 | `offsets.storage = zookeeper` (OffsetCommit/OffsetFetch v0) | 0.8.1 | removed from this line — the option and its code path are gone; the classes stay for the wire vectors of the lines below, and a KRaft node answers both v0 requests with 35 `UnsupportedVersion` |
 | `controlledShutdown()` (ControlledShutdown, key 7) | 0.8 | removed from this line — the method is gone from the admin client; the classes and the vectors stay, and a KRaft node serves the api on its controller listener only |
 
-Five properties of a 3.9.2 node (and of every broker since 1.0) regularly surprise clients, and this
+Five properties of a Kafka node regularly surprise clients, and this
 implementation deals with all of them explicitly:
 
 * **An api the broker does not serve costs the connection.** A request whose api key or version
   a 3.9.2 node cannot parse — and a body that does not match the schema of a version it
   does serve — makes it **close the socket**: `Closing socket for … because of error` in the
-  broker log, and the end of the stream for the client, reported as a `NetworkException`. A
-  0.9.0.1 broker only dropped such a frame and kept the connection open, so code ported from
-  that line waits for a timeout that will never come. There is exactly one exception:
-  **ApiVersions** answers an unknown version with the error code 35 and survives. Up to Kafka 0.11
-  there was a second, **ControlledShutdown**, which the broker still parsed with a Scala class that
-  never looked at the version; Kafka 1.0 moved that api to the schemas of the Java client, so it now
-  serves v0 and v1 and hangs up on anything above. This client only ever sends the api versions of
-  the table above.
+  broker log, and the end of the stream for the client, reported as a `NetworkException`. There
+  is exactly one exception: **ApiVersions** answers an unknown version with the error code 35 and
+  survives. This client only ever sends the api versions of the table above.
 * **A group whose last member leaves does not disappear.** Since Kafka 0.10.1 it stays in the
   state `Empty` with its committed offsets until `offsets.retention.minutes` expires them, is
   still listed by `AdminClient::listGroups()` and is described as `Empty`, not `Dead`. That is
-  what lets a restarted consumer of the same group resume where the group committed — and it is
-  a behaviour change against 0.9, where the coordinator dropped such a group at once.
+  what lets a restarted consumer of the same group resume where the group committed.
 * **A fetch answer may be empty although the partition has data — and larger than the limit it
   asked for.** Fetch v3 (Kafka 0.10.1) added a request-level `fetch.max.bytes`, and the broker
   spends it on the partitions **in the order of the request**: a partition behind an exhausted
@@ -1033,28 +1011,9 @@ implementation deals with all of them explicitly:
   reading the offsets of the group out of it. Both are retried with `retry.backoff.ms` until
   `metadata.fetch.timeout.ms` by `Common\CoordinatorLookup`, which
   `AdminClient::findCoordinator()` and `Client::getGroupCoordinator()` use.
-* **The broker remembers the last five batches of a producer, and it drops record headers when it
-  converts a batch down.** Both are Kafka 1.0 changes against the 0.11 line and both are invisible
-  in the frame: a duplicate of any of the last five batches of a producer id and partition is
-  answered as the original append (0.11 remembered one batch and answered 45 for anything older),
-  and a Fetch below v4 of a partition whose records carry headers now succeeds with the headers
-  silently removed, where a 0.11 broker refused the whole partition with the error code -1.
-
-One thing that a 0.10 broker no longer does: **a broker without a single topic answers Metadata
-with its brokers**, where 0.8 and 0.9 answered an empty broker array until some topic existed. An
-empty broker array is still "not ready, retry" and never "the cluster has no brokers", and
-`tests/Fixture/ClusterReadinessProbe.php` still treats it that way, but it is no longer the
-normal state of a fresh cluster.
-
-Two changes against the 0.8.2.2 line show up in single apis, and both are worth knowing when
-porting code between the branches. **OffsetFetch v1 no longer validates the partition**: asking
-for a partition the cluster does not host answers offset `-1` with the error code `0` —
-"nothing committed" — where 0.8.2.2 answered 3 (UnknownTopicOrPartition), so Metadata is the
-only api that says whether a partition exists. And a ControlledShutdown for a broker id the
-controller does not know was answered with **8 (BrokerNotAvailable)** from 0.9 on, the code a 0.8.2.2
-broker turned into -1 (Unknown) by mapping the *cause* of an exception that has none — a measurement
-of the lines below, since a KRaft node does not serve the api on a client listener. The protocol
-document has the details.
+* **The broker remembers the last five batches of a producer.** A duplicate of any of the last
+  five batches of a producer id and partition is answered as the original append, invisibly in the
+  frame.
 
 Testing & Contributing
 -----------------------
@@ -1071,7 +1030,7 @@ wire vectors, and 540 integration tests against a real broker over its four list
 vendor/bin/phpunit --testsuite unit          # pure unit tests, no broker
 vendor/bin/phpunit --testsuite compliance    # replays the documented wire vectors
 
-docker compose up -d                         # Kafka 1.1.1: PLAINTEXT 9092, SSL 9093,
+docker compose up -d                         # Kafka 3.9.2: PLAINTEXT 9092, SSL 9093,
                                              #                 SASL_PLAINTEXT 9094, SASL_SSL 9095
 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration
 ```
