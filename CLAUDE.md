@@ -1,23 +1,31 @@
 # Working on lisachenko/kafka-client
 
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
-lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
-(Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
-(Kafka 0.11.0.3, **complete**) → `1.x` (Kafka **1.1.1**, **complete**) → `2.x` (Kafka **2.8.2**, **complete**,
-**protected**) → `3.x` (Kafka **3.9.2**, **complete**, **protected**) → `main` (the **4.x line**, Kafka **4.3.1**, **complete**).
+lowest-first, then cascade-merged upwards: `0.8.x` → `0.9.x` → `0.10.x` → `0.11.x` → `1.x` (the archived lines
+below 2.0, see "Maintenance" below) → `2.x` (Kafka **2.8.2**, **complete**, **protected**) → `3.x` (Kafka **3.9.2**,
+**complete**, **protected**) → `main` (the **4.x line**, Kafka **4.3.1**, **complete**).
 `main` stays the 4.x line until a Kafka 5.x line starts: no `4.x` branch is cut before then (the owner's decision).
-From the 1.x line on the lines are **major** lines: one branch per Kafka major version, covering every minor release
-inside it (`1.x` speaks 1.1.1 and with it everything 1.0 and 1.1 added; `2.x` speaks 2.8.2 and with it everything
-2.0 to 2.8 added; `3.x` speaks 3.9.2 and with it everything 3.0 to 3.9 added plus the **KIP-848 consumer protocol**,
-one gated milestone commit per minor). See `docs/CASCADE.md` and, for each line, `docs/handoff/<branch>.md`: every
-one of those files carries the release notes of its line with the plan it was built from below them —
-`docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/2.x.md` the record of the 2.x line,
-`docs/handoff/3.x.md` the record of the 3.x line, and **`docs/handoff/main.md` is the record of the 4.x line** (its
-release notes above the plan it was built from). `main` and `3.x` were identical at the start of the 4.x line, so
-the line started on `main` without branching anything off; its foundation brought the node of the line (**Kafka
-4.3.1**, `docker/kafka-4.3.1`), renamed the grammar to `docs/protocol/4.3.md` and declared what Kafka 4.x adds (the
-api keys 88–92, the error codes 128–133), and the milestones 4.0 to 4.3 and the KIP-932 share consumer completed it
-(epic #213, PR #219).
+The lines are **major** lines: one branch per Kafka major version, covering every minor release inside it (`2.x`
+speaks 2.8.2 and with it everything 2.0 to 2.8 added; `3.x` speaks 3.9.2 and with it everything 3.0 to 3.9 added plus
+the **KIP-848 consumer protocol**, one gated milestone commit per minor). See `docs/CASCADE.md` and, for each line,
+`docs/handoff/<branch>.md`: every one of those files carries the release notes of its line with the plan it was
+built from below them — `docs/handoff/2.x.md` is the record of the 2.x line, `docs/handoff/3.x.md` the record of the
+3.x line, and **`docs/handoff/main.md` is the record of the 4.x line** (its release notes above the plan it was built
+from). The records of the archived lines live on their own branches. `main` and `3.x` were identical at the start of
+the 4.x line, so the line started on `main` without branching anything off; its foundation brought the node of the
+line (**Kafka 4.3.1**, `docker/kafka-4.3.1`), renamed the grammar to `docs/protocol/4.3.md` and declared what Kafka
+4.x adds (the api keys 88–92, the error codes 128–133), and the milestones 4.0 to 4.3 and the KIP-932 share consumer
+completed it (epic #213, PR #219).
+
+## Maintenance
+
+**The two latest major lines are maintained**: today `main` (4.x, Kafka 4.3.1) and `3.x` (Kafka 3.9.2). They take
+fixes and run the full CI matrix. When a Kafka 5.x line starts on `main`, `4.x` is branched off and `3.x` leaves
+maintenance. `2.x` is out of maintenance: it stays buildable on the PHP versions CI covers, but takes no further
+work unless the owner asks for it. The lines below 2.0 (`0.8.x`, `0.9.x`, `0.10.x`, `0.11.x`, `1.x`) are
+**archived**: finished and stable, never changed again; what they established is carried by every line above
+them, so their specifics are not repeated here — their branches (and `docs/handoff/<line>.md` on them) are the
+record.
 
 **The 3.x line started from `main` as it stood at the end of 2.x** and speaks Kafka 3.9.2 on a **KRaft** node
 (`docs/handoff/3.x.md`). What it added over 2.8.2: the api keys 65–87 declared and six of them spoken
@@ -46,7 +54,7 @@ client at the line's release for what is new".
    `highWaterMarkOffset`, `ProduceRequestTopic`…). Historical names go in docblocks.
 3. **Every protocol message is a `getScheme()` declaration** on `Protocol\Kafka\Protocol\BinarySchema`
    (`BinarySchemaInterface`). No hand-written `pack()`/`unpack()` in request/response/DTO classes.
-   Requests declare `parent::getScheme() + [...]` — never `$header = null;` (a defect on `main`).
+   Requests declare `parent::getScheme() + [...]` — never `$header = null;` (the defect of the pre-schema code).
 4. **Start from `main`'s implementation** of a class (`git show origin/main:<path>`) and strip what the
    branch's Kafka version lacks, instead of writing it anew. Backport version-independent pieces
    verbatim.
@@ -56,19 +64,21 @@ client at the line's release for what is new".
 6. Tests are spec tests: byte-exact hex vectors (also replayed by `tests/Compliance`) plus
    integration tests against the real broker, skipped when `KAFKA_BOOTSTRAP_SERVERS` is unset.
 
-For the lines up to 0.11 the `main` of the rules 2, 3 and 4 was the **pre-schema `main`**, i.e. the branch as
-it stood before the cascade merge of `0.10.x` (`git show 94f896a:<path>`): its identifiers are the ones this
-package publishes, and its `$header = null` requests were the defect the schema engine replaced. Since the 0.11
-line landed, every line starts from the finished, schema-based implementation of the line below it: for the 2.x
-line that is the **1.1.1 implementation** (`git show origin/1.x:<path>`), rule 4 means "start from the 1.1 class
-and add what the new release adds", and rule 2 means "the names of the 1.1 classes, plus the names of the Java
-client @ 2.8.2 for what is new" (`ElectLeadersRequest`, `IncrementalAlterConfigsRequest`, `OffsetDeleteRequest`,
-…). A published identifier is never renamed for a rename in the Java client (code 47 stays
+Every line starts from the finished, schema-based implementation of the line below it: for the 3.x line that was
+the **2.8.2 implementation** (`git show origin/2.x:<path>`), rule 4 meant "start from the 2.8 class and add what the
+new release adds", and rule 2 "the names of the 2.8 classes, plus the names of the Java client @ 3.9.2 for what is
+new". A published identifier is never renamed for a rename in the Java client (code 47 stays
 `ProducerFencedException`, code 90 is `TransactionalProducerFencedException`).
 
 ## Toolchain and quality gate
 
 - PHP 8.4 is the target (`composer.json`, CI). The sandbox may have a newer CLI — write 8.4 code.
+- CI (`.github/workflows/ci.yml`) runs lint, unit, compliance and integration on **PHP 8.4 and 8.5** on `2.x`, `3.x`
+  and `main`; `main` adds **PHP 8.6** as an experimental row (lint, unit and compliance) that may fail without failing
+  the build. cs and phpstan run on 8.4. **Coverage** is collected on `main` only — the PHP 8.4 unit/compliance and
+  integration jobs of a push to `main` run under pcov and upload their clover reports to Codecov (flags `unit` and
+  `integration`, repository secret `CODECOV_TOKEN`); pull requests and the other branches run without a coverage
+  driver.
 - Gate before every push: `vendor/bin/php-cs-fixer check`, `php vendor/bin/phpstan analyse --memory-limit=512M`,
   `vendor/bin/phpunit` (unit + compliance), and
   `KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration` (whole suite).
@@ -103,8 +113,8 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   **`docker/kafka-4.3.1`**, the container `kafka-4-3-1`: a **KRaft** node (`process.roles=broker,controller`, no
   ZooKeeper, a CONTROLLER listener on 9096 inside the container, a dynamic quorum formatted `--standalone`); on
   `3.x` it is `docker/kafka-3.9.2` (`kafka-3-9-2`, KRaft with a static quorum), on `2.x` `docker/kafka-2.8.2`
-  (`kafka-2-8-2`, ZooKeeper bundled), on `0.11.x` `docker/kafka-0.11.0.3` (`kafka-0-11-0-3`). Either way it has the four listeners
-  PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch
+  (`kafka-2-8-2`, ZooKeeper bundled). Either way it has the four listeners PLAINTEXT 9092, SSL 9093,
+  SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch
   carries — the first ticket of a new line adds its image, points `docker-compose.yml` and every fixture at
   it and **deletes the one below**. A stale container name does not fail a test, it makes it *skip*: grep
   the tree for the old container and the old image directory (`MessageFormatV1Test`, `RecordBatchV2Test`,
@@ -115,32 +125,14 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   build the image from `docker/` (the Kafka tarball comes from archive.apache.org, which is reachable).
   Behind the sandbox proxy the build's `curl` needs the proxy CA: drop it into `docker/kafka-<version>/ca/`,
   which the Dockerfile copies to `/usr/local/share/ca-certificates/extra/` before `update-ca-certificates`.
-- A 0.8/0.9 broker answers Metadata with **zero brokers** until a topic exists; use the readiness probe
-  in `tests/Integration/IntegrationTestCase.php`. Fresh topics transiently answer 5/6 — helpers must retry.
+- Fresh topics transiently answer 5/6 — helpers must retry; use the readiness probe in
+  `tests/Integration/IntegrationTestCase.php`.
 - Several agents share one broker: unique topic/group/transactional-id names per test class; never restart it from
   a subagent. **Every test deletes the topics it creates** (tearDown / tearDownAfterClass): the container inherits
   the daemon's file-descriptor limit (20000 in the sandbox, and `ulimits: nofile` in `docker-compose.yml` is refused
   there), and ~20000 leftover partitions took a log directory offline with "Too many open files" in the 2.x session,
   leaving `__consumer_offsets` and `__transaction_state` partitions without a leader. The coordinator recreates the
   container between milestones (`docker compose down -v`, then `up -d --wait`).
-- **0.11 specifics.** The Apache repository has **no `0.11.0.3` tag** — `0.11.0.3-rc0` is the commit the release was
-  built from and is what "@ 0.11.0.3" means in this repository. The `server.properties` shipped with 0.11 ends
-  **without a trailing newline**, so `start.sh` appends one before it writes the settings of this repository into
-  the file. A one-broker cluster additionally needs `transaction.state.log.replication.factor=1` and
-  `transaction.state.log.min.isr=1`, or `__transaction_state` cannot be created and every transactional request ends
-  in the error code 15.
-- **1.1 specifics.** The tag **`1.1.1` does exist** in the Apache repository (and so does `1.0.2`, which is where a
-  field has to be attributed to the 1.0 release rather than to 1.1), so "@ 1.1.1" is that tag. **`Protocol.java` is
-  no longer the schema authority**: from Kafka 1.0 the layout of an api version is the `schemaVersions()` of
-  `clients/…/common/requests/<Api>{Request,Response}.java`, the api table is `common/protocol/ApiKeys.java` and the
-  errors are `common/protocol/Errors.java`. The `server.properties` shipped with 1.1.1 ends without a trailing
-  newline as well, so `start.sh` keeps appending one, and the one-broker `transaction.state.log.*=1` settings are
-  still needed. Two settings are new in this image: **two log directories**
-  (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2` — a partition lands in either, find it with
-  `docker exec kafka-4-3-1 ls /tmp/kafka-logs /tmp/kafka-logs-2`) and a
-  **`delegation.token.master.key`**, without which the token apis 38–41 answer 61 instead of 64. And **a 1.x broker
-  closes the socket on a version above its table for every api, ControlledShutdown included** — only ApiVersions
-  answers an unknown version with the error code 35.
 - **3.9 specifics (KRaft).** There is **no ZooKeeper**: every tool takes `--bootstrap-server localhost:9092`
   (`kafka-topics.sh`, `kafka-configs.sh` for quotas and broker configs alike, `kafka-consumer-groups.sh`,
   `kafka-acls.sh`, `kafka-delegation-tokens.sh`), and `tests/Fixture/ClientQuota` sets quotas through the quota
@@ -152,7 +144,11 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   OffsetFetch v0 answer 35** (`offsets.storage = zookeeper` cannot be used). The `StandardAuthorizer` is on with
   `super.users=User:ANONYMOUS;User:admin;User:kafkatest`; the SASL user `acltest`/`acltest-secret` is the one
   principal the ACLs apply to. The KIP-848 coordinator is on (`group.coordinator.rebalance.protocols=classic,consumer`).
-  Metadata answers brokers before any topic exists; a fresh topic still answers 5/6 for a moment.
+  Metadata answers brokers before any topic exists; a fresh topic still answers 5/6 for a moment. The node has
+  **two log directories** (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2` — a partition lands in either, find it with
+  `docker exec kafka-4-3-1 ls /tmp/kafka-logs /tmp/kafka-logs-2`), a delegation-token secret key (without it the
+  token apis 38–41 answer 61) and `transaction.state.log.replication.factor=1`/`.min.isr=1` (without them
+  `__transaction_state` cannot be created and every transactional request ends in the error code 15).
 - **4.3 specifics (KRaft, the node of `main`).** Everything of the 3.9 paragraph above holds except what follows.
   The distribution keeps its configuration in `config/server.properties` (no `config/kraft/`) and `start.sh`
   writes it from scratch. The quorum is **dynamic** (KIP-853): `controller.quorum.bootstrap.servers` and
@@ -168,27 +164,23 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   `share.version`; the single-node share state topic needs `share.coordinator.state.topic.replication.factor=1`
   and `.min.isr=1`. AddRaftVoter/RemoveRaftVoter are answered (126 for the node's own id 1, 127 for an unknown one)
   — **never send a RemoveRaftVoter of voter 1 or an AddRaftVoter of a reachable node**: the quorum has one voter.
-- Useful in-container tools (the `--zookeeper` forms are the lines up to 2.x): `docker exec <container>
-  /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list` (`--zookeeper localhost:2181` on a
-  ZooKeeper broker),
-  `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-run-class.sh kafka.tools.DumpLogSegments` (from 4.x
-  `kafka-dump-log.sh`: the class is gone from 4.3.1),
-  `kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list|--describe --group G`, `kafka-configs.sh` (both
-  `--zookeeper` for quotas and, from 1.1, `--bootstrap-server … --entity-type brokers` for the dynamic broker
-  configuration of KIP-226) and, from 1.1, `kafka-delegation-tokens.sh`.
-  From 0.9 on, the console consumer joins a *group* only with `--new-consumer --bootstrap-server host:port` and
-  a `--consumer.config <file>` carrying `group.id` (and, if it matters, `partition.assignment.strategy`).
+- Useful in-container tools (the `--zookeeper` forms are those of the ZooKeeper broker of `2.x`): `docker exec
+  <container> /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list`,
+  `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-dump-log.sh` (`kafka-run-class.sh
+  kafka.tools.DumpLogSegments` up to 3.x: the class is gone from 4.3.1),
+  `kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list|--describe --group G`, `kafka-configs.sh`
+  (`--bootstrap-server … --entity-type brokers|topics|clients`) and `kafka-delegation-tokens.sh`.
 
 ## Branching and delivery
 
-- Feature branches: `t<n>-<slug>` off the protocol branch (a nested `0.9.x/<slug>` ref cannot coexist
-  with the branch `0.9.x`). PRs target the protocol branch, are merged with a merge commit, and close
+- Feature branches: `t<n>-<slug>` off the protocol branch (a nested `3.x/<slug>` ref cannot coexist
+  with the branch `3.x`). PRs target the protocol branch, are merged with a merge commit, and close
   their ticket with "Closes #n" in the body (the auto-close only works for `main`, so close the issue
   by hand after merging).
 - Conventional commits. No force-pushes on shared branches.
 - Cascade: after a line is complete, merge it upwards on a `cascade/<from>-into-<to>` branch (rules in
-  `docs/CASCADE.md`); `.github/workflows/cascade.yml` opens the PR automatically on pushes to `0.8.x`,
-  `0.9.x`, `0.10.x`, `0.11.x`, `1.x`, `2.x` and `3.x`. `main` is the top of the cascade: the finished 4.x line, until a 5.x line starts on it.
+  `docs/CASCADE.md`); `.github/workflows/cascade.yml` opens the PR automatically on pushes to the line branches
+  (`2.x` and `3.x` are the ones that still move). `main` is the top of the cascade: the finished 4.x line, until a 5.x line starts on it.
 
 ## How the work is organised (multi-agent)
 
