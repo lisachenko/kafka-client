@@ -54,5 +54,10 @@
         "cs": "Check coding standards without changing files",
         "cs:fix": "Fix coding-standard violations",
         "check": "Run coding-standards check, static analysis and the test suite"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "4.x-dev"
+        }
     }
 }
