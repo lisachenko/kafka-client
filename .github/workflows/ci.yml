@@ -17,6 +17,8 @@ jobs:
       matrix:
         php: ['8.4', '8.5']
         experimental: [false]
+        # The next PHP release: an allowed-to-fail row on main (pushes and pull requests into it) only
+        include: ${{ fromJSON((github.ref == 'refs/heads/main' || github.base_ref == 'main') && '[{"php":"8.6","experimental":true}]' || '[]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -56,6 +58,8 @@ jobs:
       matrix:
         php: ['8.4', '8.5']
         experimental: [false]
+        # The next PHP release: an allowed-to-fail row on main (pushes and pull requests into it) only
+        include: ${{ fromJSON((github.ref == 'refs/heads/main' || github.base_ref == 'main') && '[{"php":"8.6","experimental":true}]' || '[]') }}
     env:
       # Coverage is collected once, on PHP 8.4, for the pushes to main only (the Codecov badge of the README)
       COVERAGE: ${{ matrix.php == '8.4' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
