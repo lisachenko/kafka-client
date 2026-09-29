@@ -1,0 +1,44 @@
+# Weekly dependency updates, one pull request per group.
+#
+# The pull requests target 3.x, the lowest maintained line (see "Maintenance" in CLAUDE.md):
+# every merge into 3.x reaches main through the cascade (.github/workflows/cascade.yml), so
+# one update serves both maintained lines, and the frozen 2.x and the archived lines below it
+# are left alone. Dependabot reads this file from the default branch, main, which receives it
+# through the same cascade.
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: /
+    target-branch: "3.x"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    # composer.lock follows every release inside the ranges of composer.json; a range is only
+    # raised when a release falls outside it (a new major), in a pull request of its own
+    versioning-strategy: increase-if-necessary
+    groups:
+      composer-minor-and-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: chore
+      include: scope
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: "3.x"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    # every action of ci.yml and cascade.yml, majors included, in one pull request
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+      include: scope
+    open-pull-requests-limit: 5
