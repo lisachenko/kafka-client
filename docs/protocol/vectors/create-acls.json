@@ -285,6 +285,129 @@
                     }
                 ]
             }
+        },
+        {
+            "id": "createacls.request.v3.cidr",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "CreateAcls request v3 with two CIDR hosts of KIP-1276 (Kafka 4.4, `metadata.version` 4.4-IV1) for `User:acltest` on the topic `t4-44-cidr-vectors`: READ ALLOW from the IPv4 block `10.0.0.0/8` and DESCRIBE ALLOW from the IPv6 block `2001:db8::/32`. The frame is the one of every other creation - the block is the compact string of the host.",
+            "hex": "00000082001e00030000114400126b61666b612d636c69656e742d74342d34340003021374342d34342d636964722d766563746f7273030d557365723a61636c746573740b31302e302e302e302f38030300021374342d34342d636964722d766563746f7273030d557365723a61636c746573740e323030313a6462383a3a2f333208030000",
+            "fields": {
+                "messageSize": 130,
+                "apiKey": 30,
+                "apiVersion": 3,
+                "correlationId": 4420,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "creations": [
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-44-cidr-vectors",
+                            "patternType": 3
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "10.0.0.0/8",
+                            "operation": 3,
+                            "permissionType": 3
+                        }
+                    },
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-44-cidr-vectors",
+                            "patternType": 3
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "2001:db8::/32",
+                            "operation": 8,
+                            "permissionType": 3
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.response.v3.cidr",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The code 0 for both creations, with the empty `error_message` of a bare `AclCreationResult` as for every other acl: the controller parsed both hosts as CIDR blocks and wrote the acls.",
+            "hex": "0000001300001144000000000003000001000000010000",
+            "fields": {
+                "messageSize": 19,
+                "correlationId": 4420,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "results": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    },
+                    {
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.request.v3.invalid-cidr",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "A creation whose host `10.0.0.0/33` has a `/` and is no CIDR block - a prefix length above 32.",
+            "hex": "00000050001e00030000114500126b61666b612d636c69656e742d74342d34340002021374342d34342d636964722d766563746f7273030d557365723a61636c746573740c31302e302e302e302f333303030000",
+            "fields": {
+                "messageSize": 80,
+                "apiKey": 30,
+                "apiVersion": 3,
+                "correlationId": 4421,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "creations": [
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-44-cidr-vectors",
+                            "patternType": 3
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "10.0.0.0/33",
+                            "operation": 3,
+                            "permissionType": 3
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.response.v3.invalid-cidr",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The **42** `InvalidRequest` of `AclControlManager.validateHostPattern` @ 4.4.0 in the entry of the creation, with the message \"Invalid CIDR notation '10.0.0.0/33': Value [33] not in range [0,32]\" - the text of `SubnetUtils` behind the prefix of the controller.",
+            "hex": "0000005200001145000000000002002a44496e76616c69642043494452206e6f746174696f6e202731302e302e302e302f3333273a2056616c7565205b33335d206e6f7420696e2072616e6765205b302c33325d0000",
+            "fields": {
+                "messageSize": 82,
+                "correlationId": 4421,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "results": [
+                    {
+                        "errorCode": 42,
+                        "errorMessage": "Invalid CIDR notation '10.0.0.0/33': Value [33] not in range [0,32]"
+                    }
+                ]
+            }
         }
     ]
 }
