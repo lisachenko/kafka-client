@@ -172,11 +172,24 @@ final class ShareGroupStateApiTest extends IntegrationTestCase
 
     /**
      * A partition that was never initialized cannot be read: the 42 of the share coordinator, and nothing written
+     *
+     * Kafka 4.4 validates the leader epoch of a read first: `ShareCoordinatorShard.readStateAndMaybeUpdateLeaderEpoch`
+     * @ 4.4.0 answers a negative one with the 42 `The leader epoch cannot be a negative number.` before it looks at
+     * the partition, where the 4.3.1 node answered the -1 of this suite with the uninitialized-partition message.
+     * The read of the uninitialized partition is therefore sent with the leader epoch 0, and the -1 is pinned on its
+     * own; the summary read of the apis 87 takes no such check and keeps the -1.
      */
     public function testAReadOfAnUninitializedSharePartitionIsInvalidRequest(): void
     {
         $stream = $this->connect();
-        new ReadShareGroupStateRequest(self::ABSENT_GROUP, $this->onePartition(), self::CLIENT_ID, 4801)
+        new ReadShareGroupStateRequest(self::ABSENT_GROUP, $this->onePartition(-1), self::CLIENT_ID, 4800)
+            ->writeTo($stream);
+        $negative = ReadShareGroupStateResponse::unpack($stream)->results[0]->partitions[0];
+
+        self::assertSame(KafkaException::INVALID_REQUEST, $negative->errorCode);
+        self::assertSame('The leader epoch cannot be a negative number.', $negative->errorMessage, 'Kafka 4.4');
+
+        new ReadShareGroupStateRequest(self::ABSENT_GROUP, $this->onePartition(0), self::CLIENT_ID, 4801)
             ->writeTo($stream);
         $answer = ReadShareGroupStateResponse::unpack($stream);
 
@@ -505,12 +518,12 @@ final class ShareGroupStateApiTest extends IntegrationTestCase
      *
      * @return list<ReadShareGroupStateRequestTopic>
      */
-    private function onePartition(): array
+    private function onePartition(int $leaderEpoch = -1): array
     {
         return [
             new ReadShareGroupStateRequestTopic(
                 (string) self::$topicId,
-                [new ReadShareGroupStateRequestPartition(0, -1)]
+                [new ReadShareGroupStateRequestPartition(0, $leaderEpoch)]
             ),
         ];
     }

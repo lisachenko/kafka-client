@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponseV1;
 
 /**
- * Exercises UpdateFeatures (key 57) at the version 2 of Kafka 4.0 and the version 1 of KIP-778 against the 4.3.1 node.
+ * Exercises UpdateFeatures (key 57) at the version 2 of Kafka 4.0 and the version 1 of KIP-778 against the 4.4.0 node.
  *
  * The version 1 brought the `upgrade_type` of an update and the top-level `validate_only`, with which the
  * controller says what it *would* do and writes nothing; the version 2 dropped the per-feature results of the
@@ -51,11 +51,11 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponseV1;
 final class FeatureUpdateApiTest extends IntegrationTestCase
 {
     /**
-     * The feature of the node, finalized at the level 30 (`4.3-IV0`) by `kafka-storage.sh format`
+     * The feature of the node, finalized at the level 33 (`4.4-IV2`; 30, `4.3-IV0`, on the 4.3.1 node) by `kafka-storage.sh format`
      */
     private const string METADATA_VERSION = 'metadata.version';
 
-    private const int FINALIZED_LEVEL = 30;
+    private const int FINALIZED_LEVEL = 33;
 
     /**
      * A feature the node finalizes at the level 1 and may lower to 0: the consumer protocol of KIP-848
@@ -69,8 +69,8 @@ final class FeatureUpdateApiTest extends IntegrationTestCase
         'eligible.leader.replicas.version' => 1,
         'group.version'                    => 1,
         'kraft.version'                    => 1,
-        'metadata.version'                 => 30,
-        'share.version'                    => 1,
+        'metadata.version'                 => 33,
+        'share.version'                    => 2,
         'streams.version'                  => 1,
         'transaction.version'              => 2,
     ];
@@ -170,18 +170,18 @@ final class FeatureUpdateApiTest extends IntegrationTestCase
     }
 
     /**
-     * `metadata.version` 30 cannot be lowered at all, and each upgrade type is refused with its own reason
+     * `metadata.version` 33 cannot be lowered at all, and each upgrade type is refused with its own reason
      */
     public function testTheMetadataVersionOfTheNodeCannotBeLowered(): void
     {
         $lower   = self::FINALIZED_LEVEL - 1;
         $reasons = [
-            UpgradeType::Upgrade->name         => 'Invalid update version 29 for feature metadata.version. Can\'t'
+            UpgradeType::Upgrade->name         => 'Invalid update version 32 for feature metadata.version. Can\'t'
                 . ' downgrade the version of this feature without setting the upgrade type to either safe or unsafe'
                 . ' downgrade.',
-            UpgradeType::SafeDowngrade->name   => 'Unsupported metadata.version downgrade from 30 to 29. Refusing to'
+            UpgradeType::SafeDowngrade->name   => 'Unsupported metadata.version downgrade from 33 to 32. Refusing to'
                 . ' perform the requested downgrade because it might delete metadata information.',
-            UpgradeType::UnsafeDowngrade->name => 'Unsupported metadata.version downgrade from 30 to 29. Unsafe'
+            UpgradeType::UnsafeDowngrade->name => 'Unsupported metadata.version downgrade from 33 to 32. Unsafe'
                 . ' metadata downgrade is not supported in this version.',
         ];
 
@@ -200,9 +200,9 @@ final class FeatureUpdateApiTest extends IntegrationTestCase
 
         self::assertSame(
             self::ALL_FEATURES_FAILED . 'Invalid update version 99 for feature metadata.version. Local controller 1'
-            . ' only supports versions 7-30',
+            . ' only supports versions 7-33',
             $tooHigh->getContext()['error'],
-            'the range of 4.3.1 starts at 3.3-IV3, the level 7'
+            'the range of 4.4.0 starts at 3.3-IV3, the level 7'
         );
     }
 
