@@ -853,7 +853,7 @@ final class ClientTest extends TestCase
             ->produce([self::TOPIC => [0 => [$record]]]);
 
         // The leader is asked what it serves first: a node of Kafka 3.x serves Produce from version 0
-        self::assertStringStartsWith('00120004', bin2hex($leader->getReceivedFrames()[0]), 'ApiVersions v4');
+        self::assertStringStartsWith('00120005', bin2hex($leader->getReceivedFrames()[0]), 'ApiVersions v5');
 
         $frame = bin2hex($leader->getReceivedFrames()[1]);
         self::assertStringStartsWith('00000002', $frame, 'a message set can only be sent below version 3');
