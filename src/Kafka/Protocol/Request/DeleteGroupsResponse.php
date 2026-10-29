@@ -15,20 +15,22 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
+use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroupV2;
 
 /**
- * DeleteGroups response object, version 1 (key 42, Kafka 1.1)
+ * DeleteGroups response object, version 3 (key 42, Kafka 1.1)
  *
  * <pre>
- *   DeleteGroups Response (Version: 0 and 1) => throttle_time_ms [group_error_codes]
+ *   DeleteGroups Response (Version: 3) => throttle_time_ms [group_error_codes]
  *     throttle_time_ms  => INT32
- *     group_error_codes => group_id error_code
- *       group_id   => STRING
- *       error_code => INT16
+ *     group_error_codes => group_id error_code error_message
+ *       group_id      => STRING
+ *       error_code    => INT16
+ *       error_message => NULLABLE_STRING           -- since version 3
  * </pre>
  *
- * There is no top-level error code and no `error_message`: every group of the request gets an entry with a code of
- * its own, in the order the coordinator walked its map. The codes `DeleteGroupsResponse.java` @ 1.1.1 lists are:
+ * There is no top-level error code: every group of the request gets an entry with a code of its own, in the order
+ * the coordinator walked its map. The codes `DeleteGroupsResponse.java` @ 1.1.1 lists are:
  *
  * | Code | Name                        | Meaning                                                                  |
  * |------|-----------------------------|--------------------------------------------------------------------------|
@@ -43,20 +45,32 @@ use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
  *
  * Version 1 (KIP-219, Kafka 2.0) answers the same bytes, which {@see DeleteGroupsResponseV0} decodes as well.
  *
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * **Kafka 4.4 added the version 3 and with it the `error_message` of KIP-1331** ("Version 3 adds the per-group
+ * ErrorMessage field" of `DeleteGroupsResponse.json` @ 4.4.0): a nullable string at the **end of every group entry**,
+ * behind its code, for the new code **134** `GroupDeletionFailed` - a streams group whose stored topology
+ * description the plugin of KIP-1331 (`group.streams.topology.description.plugin.class`) could not drop; the group is
+ * kept and a retry is safe. {@see DeleteGroupsResponseV2} decodes the answer of a broker below Kafka 4.4, whose
+ * entries end with the code.
+ *
+ * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 class DeleteGroupsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
      * is compact and every structure of it ends in a tagged-field section.
      */
     public const int FLEXIBLE_VERSION = 2;
+
+    /**
+     * The version 3 of Kafka 4.4 is the first one whose group entries carry an error message (KIP-1331)
+     */
+    public const int ERROR_MESSAGE_VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas
@@ -79,7 +93,19 @@ class DeleteGroupsResponse extends AbstractResponse
 
         return $header + [
             'throttleTimeMs' => BinarySchema::TYPE_INT32,
-            'groups'         => ['groupId' => DeleteGroupsResponseGroup::class],
+            'groups'         => ['groupId' => static::groupClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a group entry for the version of the API that this class decodes
+     *
+     * @return class-string<DeleteGroupsResponseGroup>
+     */
+    protected static function groupClass(): string
+    {
+        return static::VERSION >= self::ERROR_MESSAGE_VERSION
+            ? DeleteGroupsResponseGroup::class
+            : DeleteGroupsResponseGroupV2::class;
     }
 }

@@ -1,8 +1,8 @@
 {
     "api": "delete-groups",
     "apiKey": 42,
-    "section": "DeleteGroups API (key 42, v0 to v2)",
-    "description": "Wire vectors of the DeleteGroups API (key 42, v0 to v2), replayed by tests/Compliance.",
+    "section": "DeleteGroups API (key 42, v0 to v3)",
+    "description": "Wire vectors of the DeleteGroups API (key 42, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "deletegroups.request.v0.non-empty",
@@ -168,7 +168,7 @@
         {
             "id": "deletegroups.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "DeleteGroups request v2 (KIP-482): a compact array of compact group ids and two tag buffers.",
@@ -188,7 +188,7 @@
         {
             "id": "deletegroups.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2 of the group that was deleted: the throttle time and one compact entry per group, the error code 0 for the group whose last member had just left.",

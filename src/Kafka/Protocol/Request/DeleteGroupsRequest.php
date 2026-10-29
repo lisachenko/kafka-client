@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DeleteGroups, version 1: makes the coordinator forget consumer groups (ApiKey 42, Kafka 1.1, KIP-229)
+ * DeleteGroups, version 3: makes the coordinator forget consumer groups (ApiKey 42, Kafka 1.1, KIP-229)
  *
  * <pre>
  *   DeleteGroups Request (Version: 0 and 1) => [groups]
@@ -39,10 +39,15 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `GroupsNames` at `0+` - and only moved the api into the throttling contract of KIP-219;
  * {@see DeleteGroupsRequestV0} sends the same bytes one api version lower.
  *
+ * Version 2 (Kafka 2.4, KIP-482) is the first flexible one, and **version 3 (Kafka 4.4, KIP-1331) changed nothing
+ * in the request**: "The request body shape is unchanged at version 3" of `DeleteGroupsRequest.json` @ 4.4.0. The
+ * version alone asks for the `error_message` every group entry of the answer carries from then on
+ * ({@see DeleteGroupsResponse}); {@see DeleteGroupsRequestV2} asks a broker below Kafka 4.4 without it.
+ *
  * The Java admin client calls the call `deleteConsumerGroups()`, which is the name
  * {@see \Protocol\Kafka\Admin\AdminClient::deleteConsumerGroups()} carries.
  *
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 class DeleteGroupsRequest extends AbstractRequest
 {
@@ -54,7 +59,7 @@ class DeleteGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

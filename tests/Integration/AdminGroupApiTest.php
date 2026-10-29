@@ -51,7 +51,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * groups of this class and never about the whole answer.
  *
  * @see docs/protocol/4.4.md, sections "DescribeGroups API (key 15, v0 to v6)", "ListGroups API (key 16, v0 to v5)"
- *      and "DeleteGroups API (key 42, v0 to v2)"
+ *      and "DeleteGroups API (key 42, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeGroupsRequest::class)]
