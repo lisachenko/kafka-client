@@ -77,7 +77,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
  * dynamic per-broker option `cordoned.log.dirs` and so takes no new replica ({@see DescribeLogDirsResponse}).
  * {@see DescribeLogDirsRequestV4} is the same frame with the version field of Kafka 3.3.
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 class DescribeLogDirsRequest extends AbstractRequest
 {

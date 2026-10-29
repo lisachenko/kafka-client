@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * identical: a frame recorded at version 1 is replayed through the class of version 1, and a caller that sends a
  * {@see ListTransactionsRequestV1} reads its answer with it.
  *
- * @see docs/protocol/4.3.md, sections "ListTransactions API (key 66, v0 to v2)" and "The transactional id pattern
+ * @see docs/protocol/4.4.md, sections "ListTransactions API (key 66, v0 to v2)" and "The transactional id pattern
  *      of KIP-1152 (v2)"
  */
 final class ListTransactionsResponseV1 extends ListTransactionsResponse

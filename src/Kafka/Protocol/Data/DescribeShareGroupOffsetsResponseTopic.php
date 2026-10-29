@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see self::partitionClass()}: {@see DescribeShareGroupOffsetsResponseTopicV0} carries the entries without the
  * `lag` of Kafka 4.2.
  *
- * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
  */
 class DescribeShareGroupOffsetsResponseTopic implements BinarySchemaInterface
 {

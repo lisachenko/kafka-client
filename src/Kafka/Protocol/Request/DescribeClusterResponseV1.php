@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-1073) appended the `is_fenced` flag to a broker, and this is the answer below it, whose brokers are
  * {@see \Protocol\Kafka\Protocol\Data\DescribeClusterBrokerV1} entries and whose list never names a fenced one.
  *
- * @see docs/protocol/4.3.md, sections "The endpoint type of KIP-919 (v1)" and "The fenced brokers of KIP-1073 (v2)"
+ * @see docs/protocol/4.4.md, sections "The endpoint type of KIP-919 (v1)" and "The fenced brokers of KIP-1073 (v2)"
  */
 final class DescribeClusterResponseV1 extends DescribeClusterResponse
 {

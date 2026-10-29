@@ -21,7 +21,7 @@ use Protocol\Kafka\Common\TopicPartition;
  * `ListShareGroupOffsetsSpec` of the Java admin client @ 4.3.1: a list of partitions, or `null` - the default - for
  * every partition the group holds state for, which goes out as the null topic array of DescribeShareGroupOffsets.
  *
- * @see docs/protocol/4.3.md, section "The share-group admin methods"
+ * @see docs/protocol/4.4.md, section "The share-group admin methods"
  */
 final class ListShareGroupOffsetsSpec
 {

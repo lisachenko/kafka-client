@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\Request\ShareFetchRequest;
  * {@see Client::joinShareGroup()}; that member leaves with the epoch -1 before its group is deleted. Every topic and
  * every group this class creates is deleted again.
  *
- * @see docs/protocol/4.3.md, section "The share-group admin methods"
+ * @see docs/protocol/4.4.md, section "The share-group admin methods"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ListShareGroupOffsetsSpec::class)]
@@ -676,7 +676,7 @@ final class ShareGroupAdminTest extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
 
-        return $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
+        return $container === false || trim($container) === '' ? 'kafka-4-4-0' : trim($container);
     }
 
     /**

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The states of a share group are `Empty`, `Stable` and `Dead` (`ShareGroup.ShareGroupState` @ 4.1.0): a share group
  * never reconciles, so it has no `Assigning` and no `Reconciling`.
  *
- * @see docs/protocol/4.3.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 final class ShareGroupDescribedGroup implements BinarySchemaInterface
 {

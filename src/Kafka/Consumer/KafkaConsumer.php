@@ -135,7 +135,7 @@ use Throwable;
  * {@see \Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter} before poll() returns, because a 0.11.0.3
  * broker sends them and only names them. The default is `read_uncommitted`, which shows every record of the log.
  *
- * @see docs/protocol/4.3.md, section "Transactions"
+ * @see docs/protocol/4.4.md, section "Transactions"
  */
 class KafkaConsumer
 {
@@ -687,7 +687,7 @@ class KafkaConsumer
      * @throws InvalidConfigurationException When `group.protocol` is not `consumer`: the classic protocol has no
      *                                       field for a regex
      *
-     * @see docs/protocol/4.3.md, section "The regex subscription (v1, KIP-848)"
+     * @see docs/protocol/4.4.md, section "The regex subscription (v1, KIP-848)"
      */
     public function subscribeByPattern(SubscriptionPattern $pattern, ?ConsumerRebalanceListener $listener = null): void
     {

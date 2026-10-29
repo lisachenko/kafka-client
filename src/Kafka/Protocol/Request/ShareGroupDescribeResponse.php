@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Data\ShareGroupDescribedGroup;
  *
  * There is no top-level error code: every group carries its own ({@see ShareGroupDescribedGroup}).
  *
- * @see docs/protocol/4.3.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 class ShareGroupDescribeResponse extends AbstractResponse
 {

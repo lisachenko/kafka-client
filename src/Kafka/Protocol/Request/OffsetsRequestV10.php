@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * and the connection untouched - the same per-partition refusal the target times `-3` to `-5` get from the versions
  * below the one that introduced them.
  *
- * @see docs/protocol/4.3.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
+ * @see docs/protocol/4.4.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
  *      KIP-1075 (v10)" and "The earliest pending upload offset of KIP-1023 (v11)"
  */
 final class OffsetsRequestV10 extends OffsetsRequest

@@ -68,7 +68,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * whenever the producer id of the answer is not -1 and starts every sequence at 0 again.
  * {@see EndTxnResponseV4} is the answer of Kafka 3.8, without the two fields.
  *
- * @see docs/protocol/4.3.md, section "EndTxn API (key 26, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "EndTxn API (key 26, v0 to v5)"
  */
 class EndTxnResponse extends AbstractResponse
 {

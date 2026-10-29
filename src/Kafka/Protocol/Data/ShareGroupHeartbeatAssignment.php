@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * may fetch now. Unlike a KIP-848 member, a share member does not acknowledge the assignment - the same partition is
  * assigned to several members of a share group at once, and a record is what one of them acquires, not a partition.
  *
- * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
  */
 final class ShareGroupHeartbeatAssignment implements BinarySchemaInterface
 {

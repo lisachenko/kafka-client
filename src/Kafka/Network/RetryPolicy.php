@@ -45,7 +45,7 @@ use Throwable;
  * All five are answered by refreshing the cluster metadata and sending the request again, up to `retries` times
  * with `retry.backoff.ms` in between; every other error is final and is reported to the caller straight away.
  *
- * @see docs/protocol/4.3.md, section "Error codes"
+ * @see docs/protocol/4.4.md, section "Error codes"
  */
 final class RetryPolicy
 {

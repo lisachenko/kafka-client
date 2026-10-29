@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see ReadShareGroupStateSummaryResponsePartitionV0}, without the `DeliveryCompleteCount` of version 1 (Kafka 4.2,
  * KIP-1226).
  *
- * @see docs/protocol/4.3.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
  */
 final class ReadShareGroupStateSummaryResponseTopicV0 extends ReadShareGroupStateSummaryResponseTopic
 {

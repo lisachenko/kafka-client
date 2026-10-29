@@ -106,7 +106,7 @@ use Throwable;
  * are refused by the constructor, as `ShareConsumerConfig` @ 4.3.1 refuses them
  * ({@see ConsumerConfig::SHARE_GROUP_UNSUPPORTED_CONFIGS}).
  *
- * @see docs/protocol/4.3.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
  */
 class KafkaShareConsumer
 {

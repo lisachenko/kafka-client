@@ -19,7 +19,7 @@ use RecursiveIteratorIterator;
 use SplFileInfo;
 
 /**
- * Keeps `docs/protocol/4.3.md` and `docs/protocol/vectors/*.json` from drifting apart.
+ * Keeps `docs/protocol/4.4.md` and `docs/protocol/vectors/*.json` from drifting apart.
  *
  * Every vector is documented twice: as an annotated hex dump in the protocol document, introduced by an
  * `<!-- vector: <id> -->` marker, and as raw hex plus decoded fields in the vector file that {@see ProtocolVectorTest}
@@ -131,7 +131,7 @@ final class DocumentationSyncTest extends TestCase
     /**
      * A section reference names the protocol document of this line and no other
      *
-     * The document is renamed with every line (`docs/protocol/3.9.md` became `docs/protocol/4.3.md`), and a
+     * The document is renamed with every line (`docs/protocol/3.9.md` became `docs/protocol/4.4.md`), and a
      * reference that still names the old file is a reference nothing checks.
      */
     public function testEverySectionReferenceNamesTheProtocolDocumentOfThisLine(): void

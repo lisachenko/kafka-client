@@ -73,7 +73,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * altogether: a 4.3.1 node closes the connection on OffsetCommit v0 and v1 and on OffsetFetch v0, so this suite
  * exercises the versions the coordinator still answers - OffsetCommit 2 and up, OffsetFetch 1 and up.
  *
- * @see docs/protocol/4.3.md, sections "GroupCoordinator API (key 10, v0 to v6)",
+ * @see docs/protocol/4.4.md, sections "GroupCoordinator API (key 10, v0 to v6)",
  *      "OffsetCommit API (key 8, v0 to v10)" and "OffsetFetch API (key 9, v0 to v10)"
  */
 #[CoversClass(Client::class)]

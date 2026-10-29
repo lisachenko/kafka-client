@@ -21,9 +21,9 @@ namespace Protocol\Kafka\Protocol\Request;
  * versions `8-9`. Version 10 (Kafka 4.2, KIP-848) named the topics by id instead ({@see OffsetFetchRequest}); this
  * version is what a client sends for a topic whose id it does not know, and what a node below Kafka 4.2 serves.
  *
- * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
- * @see docs/protocol/4.3.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
+ * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.4.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 final class OffsetFetchRequestV9 extends OffsetFetchRequest
 {

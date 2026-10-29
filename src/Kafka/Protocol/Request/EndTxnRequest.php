@@ -68,7 +68,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * cluster finalizes `transaction.version` 2. {@see EndTxnRequestV4} is the frame of the protocol v1, with the
  * version field of Kafka 3.8.
  *
- * @see docs/protocol/4.3.md, section "EndTxn API (key 26, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "EndTxn API (key 26, v0 to v5)"
  */
 class EndTxnRequest extends AbstractRequest
 {

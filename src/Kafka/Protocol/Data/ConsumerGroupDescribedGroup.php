@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * no `CompletingRebalance`, because the new protocol has no stop-the-world rebalance to prepare or complete.
  *
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponse
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 class ConsumerGroupDescribedGroup implements BinarySchemaInterface
 {

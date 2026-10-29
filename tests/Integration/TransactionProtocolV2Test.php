@@ -61,7 +61,7 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
  *
  * Every transactional id is unique per run, and every topic and group this class creates is deleted again.
  *
- * @see docs/protocol/4.3.md, sections "The transaction protocol v2 on a node that finalizes it (Kafka 4.0)",
+ * @see docs/protocol/4.4.md, sections "The transaction protocol v2 on a node that finalizes it (Kafka 4.0)",
  *      "EndTxn API (key 26, v0 to v5)" and "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 #[CoversClass(Client::class)]

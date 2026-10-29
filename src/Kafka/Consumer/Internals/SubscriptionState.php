@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * regex and no topic list at all (`SubscriptionState.subscribe(SubscriptionPattern, …)` @ 4.0.0, the type
  * `AUTO_PATTERN_RE2J` of the Java client).
  *
- * @see docs/protocol/4.3.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/4.4.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 final class SubscriptionState
 {

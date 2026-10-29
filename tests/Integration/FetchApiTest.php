@@ -71,7 +71,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * truncated message of a version below 3. Those tests measure the refusal now; the test data of this class is
  * written as record batches v2 through a Produce v3, the lowest version the node serves.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/4.4.md, sections "Fetch API (key 1, v0 to v18)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]

@@ -92,7 +92,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
  * 4` unless the cluster finalizes `transaction.version` 2; {@see TxnOffsetCommitRequestV4} is that frame, with the
  * version field of Kafka 3.8, and the one that still has an AddOffsetsToTxn in front of it.
  *
- * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {

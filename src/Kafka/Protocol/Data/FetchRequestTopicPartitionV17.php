@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * one without the `high_watermark` of a follower that version 18 (Kafka 4.1, KIP-1166) declares as the tag 1, see
  * {@see FetchRequestTopicPartition::$highWatermark}. A consumer writes the same bytes into both.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "The replica directory id of KIP-853 (v17)"
+ * @see docs/protocol/4.4.md, sections "Fetch API (key 1, v0 to v18)" and "The replica directory id of KIP-853 (v17)"
  */
 final class FetchRequestTopicPartitionV17 extends FetchRequestTopicPartition
 {

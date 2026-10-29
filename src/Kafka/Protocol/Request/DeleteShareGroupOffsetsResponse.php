@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Data\DeleteShareGroupOffsetsResponseTopic;
  * does not hold, the **68** `NonEmptyGroup` of one with members - and one code per topic, the 3
  * `UnknownTopicOrPartition` among the supported errors of `DeleteShareGroupOffsetsResponse.json` @ 4.1.0.
  *
- * @see docs/protocol/4.3.md, section "DeleteShareGroupOffsets API (key 92, v0)"
+ * @see docs/protocol/4.4.md, section "DeleteShareGroupOffsets API (key 92, v0)"
  */
 class DeleteShareGroupOffsetsResponse extends AbstractResponse
 {

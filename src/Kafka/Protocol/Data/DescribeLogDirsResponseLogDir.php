@@ -63,7 +63,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * directory is answered without it, i.e. with the default. {@see DescribeLogDirsResponseLogDirV4} is the entry of
  * the version 4.
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 class DescribeLogDirsResponseLogDir implements BinarySchemaInterface
 {

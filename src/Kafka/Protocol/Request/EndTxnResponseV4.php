@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * code of the whole request, and the producer that sent it keeps its producer id and epoch - which is why
  * {@see EndTxnResponse::hasProducerIdAndEpoch()} answers `false` for it.
  *
- * @see docs/protocol/4.3.md, section "EndTxn API (key 26, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "EndTxn API (key 26, v0 to v5)"
  */
 final class EndTxnResponseV4 extends EndTxnResponse
 {

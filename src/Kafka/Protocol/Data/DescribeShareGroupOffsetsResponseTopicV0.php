@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The fields of {@see DescribeShareGroupOffsetsResponseTopic}, with the partition entries of the version 0
  * ({@see DescribeShareGroupOffsetsResponsePartitionV0}), which carry no `lag`.
  *
- * @see docs/protocol/4.3.md, section "The share-partition lag of KIP-1226 (v1)"
+ * @see docs/protocol/4.4.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 final class DescribeShareGroupOffsetsResponseTopicV0 extends DescribeShareGroupOffsetsResponseTopic
 {

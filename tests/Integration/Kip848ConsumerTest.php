@@ -48,8 +48,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * subscription by a regular expression the coordinator matches (ConsumerGroupHeartbeat v1), which
  * {@see KafkaConsumer::subscribeByPattern()} sends and which this suite consumes with as well.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
- * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "The member epoch of KIP-848 (v9)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(ConsumerGroupHeartbeatCoordinator::class)]

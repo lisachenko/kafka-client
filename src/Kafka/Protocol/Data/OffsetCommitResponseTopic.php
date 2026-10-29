@@ -35,8 +35,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the client maps the id back to the name it committed for; {@see OffsetCommitResponseTopicV0} is the entry of the
  * versions 0 to 9.
  *
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+ * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 class OffsetCommitResponseTopic implements BinarySchemaInterface
 {

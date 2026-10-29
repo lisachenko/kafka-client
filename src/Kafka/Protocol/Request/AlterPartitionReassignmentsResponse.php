@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\ReassignableTopicResponse;
  * it over, "whether changing the replication factor of any given partition as part of the request was allowed".
  * {@see AlterPartitionReassignmentsResponseV0} is the answer of Kafka 2.4.
  *
- * @see docs/protocol/4.3.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
  */
 class AlterPartitionReassignmentsResponse extends AbstractResponse
 {

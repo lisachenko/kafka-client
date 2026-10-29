@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember;
  * protocol with JoinGroup - the online upgrade of KIP-848. {@see self::upgraded()} is the `upgraded()` of the
  * Java `MemberDescription` @ 4.0.0 that reports it.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 final class ConsumerGroupMemberDescription
 {

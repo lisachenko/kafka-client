@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * bytes of its id alone, as in the answer of the consumer protocol ({@see ConsumerGroupHeartbeatTopicPartitions}).
  * The request of a share member carries no partitions at all - a share member acknowledges records, not partitions.
  *
- * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
  */
 final class ShareGroupHeartbeatTopicPartitions implements BinarySchemaInterface
 {

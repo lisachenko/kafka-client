@@ -59,9 +59,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group of this class carries the `t3-41-sf-` prefix; every member closes its share session (epoch -1) and
  * leaves (epoch -1) in {@see self::tearDownAfterClass()} at the latest, and every group is deleted there.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
- * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+ * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+ * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(ShareFetchRequest::class)]

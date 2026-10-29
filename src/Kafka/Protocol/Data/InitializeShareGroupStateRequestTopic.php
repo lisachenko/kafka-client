@@ -22,7 +22,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `InitializeShareGroupStateRequestData.InitializeStateData` @ 4.1.0: the topic id and the partitions of the share group
  * whose state is initialized.
  *
- * @see docs/protocol/4.3.md, section "InitializeShareGroupState API (key 83, v0)"
+ * @see docs/protocol/4.4.md, section "InitializeShareGroupState API (key 83, v0)"
  */
 class InitializeShareGroupStateRequestTopic implements BinarySchemaInterface
 {

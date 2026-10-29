@@ -36,8 +36,8 @@ use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponseGroupV0;
  * entries are those of the version this class is unpacked from, and {@see DescribeShareGroupOffsetsResponseV0}
  * keeps the answer of the version 0.
  *
- * @see docs/protocol/4.3.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
- * @see docs/protocol/4.3.md, section "The share-partition lag of KIP-1226 (v1)"
+ * @see docs/protocol/4.4.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 class DescribeShareGroupOffsetsResponse extends AbstractResponse
 {

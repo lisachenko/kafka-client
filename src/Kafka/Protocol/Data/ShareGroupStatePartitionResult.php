@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `DeleteShareGroupStateResponseData` @ 4.1.0: three generated classes with the same three fields, carried here
  * as one. The answers of the two read apis carry the state next to them.
  *
- * @see docs/protocol/4.3.md, section "The share-group state apis (keys 83 to 87) — wire only"
+ * @see docs/protocol/4.4.md, section "The share-group state apis (keys 83 to 87) — wire only"
  */
 class ShareGroupStatePartitionResult implements BinarySchemaInterface
 {

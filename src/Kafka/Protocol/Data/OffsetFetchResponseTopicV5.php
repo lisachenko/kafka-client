@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The entry of the versions 5 to 7 at the top level of the answer and of the versions 8 and 9 inside a group entry;
  * version 10 (Kafka 4.2, KIP-848) replaced its name with the `topic_id` of {@see OffsetFetchResponseTopic}.
  *
- * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
  */
 final class OffsetFetchResponseTopicV5 extends OffsetFetchResponseTopic
 {

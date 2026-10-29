@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * *when* the 0 is written - once the new voter set is committed, or as soon as the leader has appended it - never
  * the frame. {@see AddRaftVoterResponseV0} is the answer of a {@see AddRaftVoterRequestV0}.
  *
- * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
+ * @see docs/protocol/4.4.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
  *      Kafka 4.2 (v1)"
  */
 class AddRaftVoterResponse extends AbstractResponse

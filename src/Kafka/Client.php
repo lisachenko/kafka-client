@@ -215,7 +215,7 @@ use Throwable;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/4.3.md
+ * @see docs/protocol/4.4.md
  */
 class Client
 {
@@ -657,7 +657,7 @@ class Client
             );
         }
 
-        // The wire format carries one opaque record set per topic-partition, see docs/protocol/4.3.md
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/4.4.md
         $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
@@ -1411,7 +1411,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws UnknownTopicIdException If a topic id stayed stale after every retry (100, version 10)
      *
-     * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+     * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
      */
     public function commitGroupOffsets(
         Node $coordinatorNode,
@@ -3692,7 +3692,7 @@ class Client
      *
      * @return array<string, int|string>
      *
-     * @see docs/protocol/4.3.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
+     * @see docs/protocol/4.4.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
      *      KIP-951 (v16)"
      */
     private static function leaderHintOf(
@@ -3753,7 +3753,7 @@ class Client
      * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a (re-)join
      * @throws Common\Errors\InvalidRegularExpressionException If the coordinator cannot compile the regex (128)
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function joinConsumerGroup(
         Node $coordinatorNode,
@@ -3816,7 +3816,7 @@ class Client
      * @throws Common\Errors\GroupAuthorizationFailedException
      * @throws Common\Errors\InvalidRegularExpressionException If the coordinator cannot compile the regex (128)
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function consumerGroupHeartbeat(
         Node $coordinatorNode,
@@ -3869,7 +3869,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function leaveConsumerGroup(
         Node $coordinatorNode,
@@ -4172,7 +4172,7 @@ class Client
      * @throws Common\Errors\GroupMaxSizeReachedException If the group is full (`group.share.max.size`)
      * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a join
      *
-     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function joinShareGroup(
         Node $coordinatorNode,
@@ -4218,7 +4218,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function shareGroupHeartbeat(
         Node $coordinatorNode,
@@ -4263,7 +4263,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function leaveShareGroup(Node $coordinatorNode, string $groupId, string $memberId): ShareGroupHeartbeatResponse
     {
@@ -4331,8 +4331,8 @@ class Client
      * The request is the **version 2** of the api (Kafka 4.2, KIP-1206 and KIP-1222); a Renew renews the acquisition
      * lock of the records it names for another `acquisitionLockTimeoutMs`.
      *
-     * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
-     * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+     * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
+     * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public function shareFetch(
         Node $leaderNode,
@@ -4415,8 +4415,8 @@ class Client
      * @throws Common\Errors\InvalidRequestException If the frame breaks a rule of the api (42)
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
-     * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+     * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+     * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public function shareAcknowledge(
         Node $leaderNode,

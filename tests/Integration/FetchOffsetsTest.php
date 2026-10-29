@@ -64,7 +64,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Produce v3 and fetched with a Fetch v4 - the lowest versions the node serves - and the removed ListOffsets v0 is
  * measured as the refusal it is now.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "Offsets API (key 2, v0 to v11),
+ * @see docs/protocol/4.4.md, sections "Fetch API (key 1, v0 to v18)" and "Offsets API (key 2, v0 to v11),
  *      a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequestV4::class)]

@@ -21,6 +21,7 @@ use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\ClientExceptionInterface;
 use Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\ConcurrentTransactionsException;
+use Protocol\Kafka\Common\Errors\ControllerIdNotRegisteredException;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
 use Protocol\Kafka\Common\Errors\DelegationTokenAuthorizationException;
 use Protocol\Kafka\Common\Errors\DelegationTokenDisabledException;
@@ -42,6 +43,7 @@ use Protocol\Kafka\Common\Errors\FetchSessionIdNotFoundException;
 use Protocol\Kafka\Common\Errors\FetchSessionTopicIdException;
 use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupDeletionFailedException;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\GroupMaxSizeReachedException;
@@ -124,6 +126,7 @@ use Protocol\Kafka\Common\Errors\StaleControllerEpochException;
 use Protocol\Kafka\Common\Errors\StaleMemberEpochException;
 use Protocol\Kafka\Common\Errors\StreamsInvalidTopologyEpochException;
 use Protocol\Kafka\Common\Errors\StreamsInvalidTopologyException;
+use Protocol\Kafka\Common\Errors\StreamsTopologyDescriptionUpdateFailedException;
 use Protocol\Kafka\Common\Errors\StreamsTopologyFencedException;
 use Protocol\Kafka\Common\Errors\TelemetryTooLargeException;
 use Protocol\Kafka\Common\Errors\ThrottlingQuotaExceededException;
@@ -179,7 +182,9 @@ use RuntimeException;
  * with 3.3, 109-112 with 3.5, 113 with 3.6, 114-119 with 3.7, 120 with 3.8 and 121-127 with 3.9; of them only 106,
  * 122 and 123 extend RetriableException in the Java client. The codes 128-133 are those of Kafka 4.0 and 4.1
  * (Errors.java @ 4.3.1, read at the release tags): 128-129 with 4.0 and 130-133 with 4.1; of them only 133 extends
- * RetriableException in the Java client.
+ * RetriableException in the Java client. The codes 134-136 are those of Kafka 4.4 (Errors.java @ 4.4.0): 134 and 135
+ * of the streams topology description plugin of KIP-1331 and 136 of UnregisterController (KIP-1312); none of them is
+ * retriable in the Java client.
  */
 #[CoversClass(KafkaException::class)]
 final class KafkaExceptionTest extends TestCase
@@ -326,6 +331,13 @@ final class KafkaExceptionTest extends TestCase
             'StreamsInvalidTopologyEpoch'           => [131, StreamsInvalidTopologyEpochException::class, false],
             'StreamsTopologyFenced'                 => [132, StreamsTopologyFencedException::class, false],
             'ShareSessionLimitReached'              => [133, ShareSessionLimitReachedException::class, true],
+            'GroupDeletionFailed'                   => [134, GroupDeletionFailedException::class, false],
+            'StreamsTopologyDescriptionUpdateFailed' => [
+                135,
+                StreamsTopologyDescriptionUpdateFailedException::class,
+                false,
+            ],
+            'ControllerIdNotRegistered'             => [136, ControllerIdNotRegisteredException::class, false],
         ];
     }
 
@@ -379,7 +391,7 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Codes above 133 do not exist in Kafka 4.3.1, a 4.3.1 node never sends them
+     * Codes above 136 do not exist in Kafka 4.4.0, a 4.4.0 node never sends them
      *
      * @return array<string, array{int}>
      */
@@ -387,8 +399,8 @@ final class KafkaExceptionTest extends TestCase
     {
         return [
             'NoError'                       => [0],
-            'above the table (134)'         => [134],
-            'above the table (135)'         => [135],
+            'above the table (137)'         => [137],
+            'above the table (138)'         => [138],
             'out of range'                  => [4242],
             'negative out of range'         => [-999],
         ];
@@ -416,9 +428,9 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Guards against a post-4.3 error class sneaking into the mapping
+     * Guards against a post-4.4 error class sneaking into the mapping
      */
-    public function testOnlyTheErrorCodesOfKafka431AreMapped(): void
+    public function testOnlyTheErrorCodesOfKafka440AreMapped(): void
     {
         $mappedCodes = [];
         foreach (range(-10, 140) as $errorCode) {
@@ -428,7 +440,7 @@ final class KafkaExceptionTest extends TestCase
             }
         }
 
-        self::assertSame(array_merge([-1], range(1, 133)), $mappedCodes);
+        self::assertSame(array_merge([-1], range(1, 136)), $mappedCodes);
     }
 
     /**

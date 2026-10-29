@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * `ReadShareGroupStateRequestData.PartitionData` @ 4.1.0.
  *
- * @see docs/protocol/4.3.md, section "ReadShareGroupState API (key 84, v0)"
+ * @see docs/protocol/4.4.md, section "ReadShareGroupState API (key 84, v0)"
  */
 class ReadShareGroupStateRequestPartition implements BinarySchemaInterface
 {

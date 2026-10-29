@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\Data\ShareAcknowledgementBatch;
  *   processed; its acquisition lock starts over, and the next {@see KafkaShareConsumer::poll()} returns it again to be
  *   acknowledged once more.
  *
- * @see docs/protocol/4.3.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
  */
 enum AcknowledgeType: int
 {

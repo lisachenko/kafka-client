@@ -76,7 +76,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV4;
  * per-broker option `cordoned.log.dirs`, and the override is removed in a `finally` block - both directories are
  * never cordoned, because the node is shared and a broker with every directory cordoned takes no new replica.
  *
- * @see docs/protocol/4.3.md, sections "DescribeLogDirs API (key 35, v0 to v5)" and
+ * @see docs/protocol/4.4.md, sections "DescribeLogDirs API (key 35, v0 to v5)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
@@ -105,7 +105,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV4;
 final class LogDirsApiTest extends IntegrationTestCase
 {
     /**
-     * The two directories of `log.dirs` of `docker/kafka-4.3.1/start.sh`
+     * The two directories of `log.dirs` of `docker/kafka-4.4.0/start.sh`
      */
     private const string FIRST_DIR = '/tmp/kafka-logs';
 

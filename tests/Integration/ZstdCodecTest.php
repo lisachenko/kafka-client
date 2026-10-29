@@ -43,7 +43,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * of a zstd topic are served the zstd batch. The client-side half of the code is the
  * {@see UnsupportedCompressionTypeException} that this package raises without `ext-zstd`.
  *
- * @see docs/protocol/4.3.md, sections "The zstd codec (Kafka 2.1, KIP-110)" and "Version 10 and the zstd codec (KIP-110)"
+ * @see docs/protocol/4.4.md, sections "The zstd codec (Kafka 2.1, KIP-110)" and "Version 10 and the zstd codec (KIP-110)"
  */
 #[CoversClass(CompressionCodec::class)]
 #[CoversClass(FetchRequest::class)]
@@ -287,7 +287,7 @@ final class ZstdCodecTest extends IntegrationTestCase
     private static function deleteTopic(string $topic): void
     {
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-4-0' : trim($container);
 
         $output   = [];
         $exitCode = 0;
@@ -316,7 +316,7 @@ final class ZstdCodecTest extends IntegrationTestCase
         }
 
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-4-0' : trim($container);
         $command   = sprintf(
             'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create'
             . ' --if-not-exists --topic %s --partitions 1 --replication-factor 1%s 2>&1',

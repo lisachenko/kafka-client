@@ -41,8 +41,8 @@ use Protocol\Kafka\Protocol\Data\ShareNodeEndpoint;
  * and the renew acknowledgements - and an answer to a renew fetch that names the acknowledged partitions without
  * records. {@see ShareFetchResponseV1} decodes the same bytes one version lower.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
- * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+ * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
  */
 class ShareFetchResponse extends AbstractResponse
 {

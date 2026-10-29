@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see WriteShareGroupStateRequestPartition::$deliveryCompleteCount} never reaches the wire. The share coordinator
  * keeps the -1 of the default for a state written with it.
  *
- * @see docs/protocol/4.3.md, section "WriteShareGroupState API (key 85, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 final class WriteShareGroupStateRequestPartitionV0 extends WriteShareGroupStateRequestPartition
 {

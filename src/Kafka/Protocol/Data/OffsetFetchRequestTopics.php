@@ -32,8 +32,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see PartitionsForTopic}, the name and the partitions of every topic entry of the versions below; this class is
  * the entry of version 10 alone. {@see self::$topic} keeps the name for the client and never reaches the wire.
  *
- * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
+ * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 final class OffsetFetchRequestTopics implements BinarySchemaInterface
 {

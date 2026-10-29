@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV1;
  * listener; a one-node cluster has no fenced broker to show, so the flag of its one broker is false whether the
  * request asked for the fenced ones or not.
  *
- * @see docs/protocol/4.3.md, section "The fenced brokers of KIP-1073 (v2)"
+ * @see docs/protocol/4.4.md, section "The fenced brokers of KIP-1073 (v2)"
  */
 #[CoversClass(DescribeClusterRequest::class)]
 #[CoversClass(DescribeClusterRequestV1::class)]

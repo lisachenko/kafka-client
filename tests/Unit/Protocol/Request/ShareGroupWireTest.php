@@ -50,8 +50,8 @@ use Protocol\Kafka\Tests\Compliance\VectorFile;
  * add around them: the versions, the order of the fields, the named constructors and the helpers that build the
  * topics of a request and read the acquired records of an answer.
  *
- * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 #[CoversClass(ShareGroupHeartbeatRequest::class)]
 #[CoversClass(ShareGroupHeartbeatResponse::class)]

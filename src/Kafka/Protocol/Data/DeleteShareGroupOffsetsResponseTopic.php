@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     ErrorMessage => COMPACT_NULLABLE_STRING
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "DeleteShareGroupOffsets API (key 92, v0)"
+ * @see docs/protocol/4.4.md, section "DeleteShareGroupOffsets API (key 92, v0)"
  */
 final class DeleteShareGroupOffsetsResponseTopic implements BinarySchemaInterface
 {

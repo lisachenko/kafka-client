@@ -21,7 +21,7 @@ use RuntimeException;
  *
  * A node of Kafka 4.0 or later does not answer a version below the minimum of an api with the error code 35: the
  * request parser throws `UnsupportedVersionException: Received request for api with key 0 (Produce) and unsupported
- * version 2`, `SocketServer`'s processor catches it and **closes the connection**, and `docker logs kafka-4-3-1`
+ * version 2`, `SocketServer`'s processor catches it and **closes the connection**, and `docker logs kafka-4-4-0`
  * says `ERROR Closing socket for ... because of error (kafka.network.Processor)` with that exception behind it. That
  * holds for Produce v0 to v2 as well, which the ApiVersions answer still lists (KAFKA-18659). The classes of those
  * versions stay in this package - for the wire vectors of the lines below and for a peer of Kafka 3.x - and this
@@ -29,7 +29,7 @@ use RuntimeException;
  *
  * Every frame goes out on a connection of its own, so that one refusal can not cost the requests of a test.
  *
- * @see docs/protocol/4.3.md, section "The versions Kafka 4.0 removed (KIP-896)"
+ * @see docs/protocol/4.4.md, section "The versions Kafka 4.0 removed (KIP-896)"
  */
 final class RemovedVersionProbe
 {

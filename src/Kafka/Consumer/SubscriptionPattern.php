@@ -31,7 +31,7 @@ use Stringable;
  * {@see KafkaConsumer::subscribeByPattern()}, which requires `group.protocol=consumer`; the classic protocol has no
  * field for it.
  *
- * @see docs/protocol/4.3.md, section "The regex subscription (v1, KIP-848)"
+ * @see docs/protocol/4.4.md, section "The regex subscription (v1, KIP-848)"
  */
 final class SubscriptionPattern implements Stringable
 {

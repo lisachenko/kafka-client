@@ -18,9 +18,9 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol;
 
 /**
- * Numeric codes that the ApiKey in the request can take, as of Kafka 4.3.1.
+ * Numeric codes that the ApiKey in the request can take, as of Kafka 4.4.0.
  *
- * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 4.3.1: SaslHandshake (17) and ApiVersions (18)
+ * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 4.4.0: SaslHandshake (17) and ApiVersions (18)
  * arrived with Kafka 0.10.0, CreateTopics (19) and DeleteTopics (20) with 0.10.1, the keys 21 to 33 (DeleteRecords,
  * the idempotent and transactional producer apis, the ACL and config apis) with 0.11.0, the keys 34 to 37
  * (AlterReplicaLogDirs and DescribeLogDirs of KIP-113, SaslAuthenticate of KIP-152, CreatePartitions of KIP-195)
@@ -45,14 +45,17 @@ namespace Protocol\Kafka\Protocol;
  * from 4.2) and the share-group offset apis DescribeShareGroupOffsets (90), AlterShareGroupOffsets (91) and
  * DeleteShareGroupOffsets (92) of KIP-932. Kafka 4.0 removed the ZooKeeper-only apis 4 to 7 from every listener
  * (their message specifications declare `"validVersions": "none"`, the constants stay) and 4.1 renamed key 74 from
- * ListClientMetricsResources to ListConfigResources (KIP-1142); the constant keeps the published name.
+ * ListClientMetricsResources to ListConfigResources (KIP-1142); the constant keeps the published name. Kafka 4.4
+ * added the keys 93 and 94 (`ApiKeys.java` @ 4.4.0): StreamsGroupTopologyDescriptionUpdate (93) of the topology
+ * description plugin of KIP-1331, a streams-group api, and UnregisterController (94) of KIP-1312, which a broker
+ * forwards to the active controller like UnregisterBroker (64) and which needs `metadata.version` 4.4-IV2.
  * A broker of 0.10 or later answers an ApiVersions request with the keys and versions it serves; a request with a
  * key or version it cannot parse closes the connection. The answer is the set of the **listener** the request arrived
  * on: a ZooKeeper-backed broker serves the `zkBroker` set of the message specifications, a KRaft node the `broker`
  * set on its client listeners (and the `controller` set on its controller listener, which no client reaches). The
- * container of this line is a KRaft node of 4.3.1; what it lists is measured in `ApiVersionProbeTest` and written in
- * the "API keys" section of `docs/protocol/4.3.md`. The constants of the apis it does not list exist here so that a
- * frame of any 4.3.1 api can be named.
+ * container of this line is a KRaft node of 4.4.0; what it lists is measured in `ApiVersionProbeTest` and written in
+ * the "API keys" section of `docs/protocol/4.4.md`. The constants of the apis it does not list exist here so that a
+ * frame of any 4.4.0 api can be named.
  */
 class ApiKeys
 {
@@ -155,4 +158,6 @@ class ApiKeys
     public const DESCRIBE_SHARE_GROUP_OFFSETS     = 90;
     public const ALTER_SHARE_GROUP_OFFSETS        = 91;
     public const DELETE_SHARE_GROUP_OFFSETS       = 92;
+    public const STREAMS_GROUP_TOPOLOGY_DESCRIPTION_UPDATE = 93;
+    public const UNREGISTER_CONTROLLER            = 94;
 }

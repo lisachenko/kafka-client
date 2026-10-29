@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Data\ClientMetricsResourceV0;
  * of the same name - so the entries of this version are a **list**, in the order of the answer, where those of
  * {@see ListClientMetricsResourcesResponseV0} are keyed by the name that is all a v0 entry has.
  *
- * @see docs/protocol/4.3.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config
+ * @see docs/protocol/4.4.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config
  *      resources of KIP-1142 (v1)"
  */
 class ListClientMetricsResourcesResponse extends AbstractResponse

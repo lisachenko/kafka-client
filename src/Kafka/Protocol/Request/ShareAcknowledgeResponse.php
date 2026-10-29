@@ -37,8 +37,8 @@ use Protocol\Kafka\Protocol\Data\ShareNodeEndpoint;
  * request renewed stays locked for the member from now on. {@see ShareAcknowledgeResponseV1} decodes the answer
  * without it.
  *
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
- * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+ * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+ * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
  */
 class ShareAcknowledgeResponse extends AbstractResponse
 {

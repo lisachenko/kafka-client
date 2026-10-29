@@ -124,7 +124,7 @@ final class ConsumerConfig extends GeneralConfig
      * `consumer` is refused, and a ConsumerGroupHeartbeat for a classic group as well.
      *
      * @see \Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public const string GROUP_PROTOCOL = 'group.protocol';
 
@@ -332,7 +332,7 @@ final class ConsumerConfig extends GeneralConfig
      * A control batch - the COMMIT or ABORT marker the transaction coordinator appends - is never handed to an
      * application in either level.
      *
-     * @see docs/protocol/4.3.md, section "Transactions"
+     * @see docs/protocol/4.4.md, section "Transactions"
      */
     public const string ISOLATION_LEVEL = 'isolation.level';
 
@@ -350,7 +350,7 @@ final class ConsumerConfig extends GeneralConfig
      * having no field at all. A broker without a `replica.selector.class` - the default, and the configuration of
      * the container of this line - answers `-1` to every fetch whatever the rack, i.e. "read from me".
      *
-     * @see docs/protocol/4.3.md, section "Reading from a follower (v11, KIP-392)"
+     * @see docs/protocol/4.4.md, section "Reading from a follower (v11, KIP-392)"
      */
     public const string CLIENT_RACK = 'client.rack';
 
@@ -392,7 +392,7 @@ final class ConsumerConfig extends GeneralConfig
      *   with {@see KafkaShareConsumer::acknowledge()} - accept, release, reject or renew - before its next poll(),
      *   which refuses to run otherwise.
      *
-     * @see docs/protocol/4.3.md, section "The share consumer (KIP-932)"
+     * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
      */
     public const string SHARE_ACKNOWLEDGEMENT_MODE = 'share.acknowledgement.mode';
 
@@ -419,7 +419,7 @@ final class ConsumerConfig extends GeneralConfig
      * * **record_limit** ({@see self::SHARE_ACQUIRE_MODE_RECORD_LIMIT}, the wire value 1): the node acquires at most
      *   {@see self::MAX_POLL_RECORDS} records, and cuts a batch to do so.
      *
-     * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+     * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public const string SHARE_ACQUIRE_MODE = 'share.acquire.mode';
 

@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 2 (Kafka 4.2, KIP-1222) put the `acquisition_lock_timeout_ms` behind the error message
  * ({@see ShareAcknowledgeResponse}); an answer of this version leaves {@see self::$acquisitionLockTimeoutMs} at 0.
  *
- * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+ * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
  */
 final class ShareAcknowledgeResponseV1 extends ShareAcknowledgeResponse
 {

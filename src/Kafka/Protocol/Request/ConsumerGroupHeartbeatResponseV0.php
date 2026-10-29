@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The answer of version 1 (Kafka 4.0) is byte for byte this one, which {@see ConsumerGroupHeartbeatResponse} decodes;
  * the class exists so that the frames of the two versions are replayed through a class of their own version.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 final class ConsumerGroupHeartbeatResponseV0 extends ConsumerGroupHeartbeatResponse
 {

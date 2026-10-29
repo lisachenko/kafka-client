@@ -40,8 +40,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the wire. {@see self::$topic} still holds the name the client committed for, which is how the answer is read back;
  * {@see OffsetCommitRequestTopicV6} is the entry of the versions 6 to 9, which names the topic.
  *
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+ * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 class OffsetCommitRequestTopic implements BinarySchemaInterface
 {

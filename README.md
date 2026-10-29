@@ -22,7 +22,7 @@ sends is listed under
 the protocol snapshots below it live on `3.x` (Kafka 3.9.2) and `2.x` (Kafka 2.8.2) — see
 [Maintained lines](#maintained-lines) — and on the archived branches of the lines below 2.0, and every wire vector
 those lines captured is replayed against the classes of this branch. The grammar this branch
-implements is written down, byte for byte, in [docs/protocol/4.3.md](docs/protocol/4.3.md), verified against
+implements is written down, byte for byte, in [docs/protocol/4.4.md](docs/protocol/4.4.md), verified against
 a real Kafka 4.3.1 node running in KRaft mode (the frames of the 3.x line were captured on a 3.9.2 one); the record of the 4.x line — its release notes above the plan it was built from — is
 [docs/handoff/main.md](docs/handoff/main.md), and the records of the finished lines are
 [docs/handoff/3.x.md](docs/handoff/3.x.md) and [docs/handoff/2.x.md](docs/handoff/2.x.md).
@@ -191,7 +191,7 @@ wrote there was deleted by `deleteRecords()` or by a retention run. That one the
 records fell below the start of the log, so the partition is numbered from the sequence 0 again
 and the batch is sent once more, under the same producer id and without touching any other
 partition. All three are documented, with what a real broker answers, in
-[docs/protocol/4.3.md](docs/protocol/4.3.md), section "The idempotent producer".
+[docs/protocol/4.4.md](docs/protocol/4.4.md), section "The idempotent producer".
 
 ### Transactions
 
@@ -264,7 +264,7 @@ $producer->commitTransaction();
 The consumer of that loop runs with `enable.auto.commit = false` and `read_committed`. A runnable
 version is [examples/transactional-producer.php](examples/transactional-producer.php); the wire
 protocol behind it — the five apis 24 to 28, the control batches and the last stable offset — is in
-[docs/protocol/4.3.md](docs/protocol/4.3.md), section "Transactions".
+[docs/protocol/4.4.md](docs/protocol/4.4.md), section "Transactions".
 
 Consumer API
 ------------
@@ -832,7 +832,7 @@ ones, one that authenticates learns the SASL ones. They never mix, and there is 
 listener about another.
 
 [examples/ssl.php](examples/ssl.php) produces and consumes over the SSL listener of `docker-compose.yml`, whose
-self-signed certificate is checked in as `docker/kafka-4.3.1/ssl/broker.crt`.
+self-signed certificate is checked in as `docker/kafka-4.4.0/ssl/broker.crt`.
 
 **SASL/PLAIN works on this branch.** Kafka 0.9 did have SASL, but only GSSAPI (Kerberos) and
 negotiated *outside* the Kafka protocol; Kafka 0.10.0 (KIP-43) added the `SaslHandshake` request
@@ -1159,16 +1159,16 @@ is skipped when it is unset:
 | Variable | Default | What it runs |
 |---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | – | the whole integration suite, over the PLAINTEXT listener |
-| `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-4.3.1/ssl/broker.crt`) |
+| `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-4.4.0/ssl/broker.crt`) |
 | `KAFKA_SASL_BOOTSTRAP_SERVERS` | – | the SASL/PLAIN tests over `SASL_PLAINTEXT` (`127.0.0.1:9094`) |
 | `KAFKA_SASL_SSL_BOOTSTRAP_SERVERS` | – | the same exchange inside TLS (`127.0.0.1:9095`) |
-| `KAFKA_CONTAINER` | `kafka-4-3-1` | the container the log dumps and the topic tools of a few tests run their scripts in (the quotas are set through the wire since this line) |
+| `KAFKA_CONTAINER` | `kafka-4-4-0` | the container the log dumps and the topic tools of a few tests run their scripts in (the quotas are set through the wire since this line) |
 
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
 accepted — through the request and response classes and checks that the annotated dumps of
-[docs/protocol/4.3.md](docs/protocol/4.3.md) still hold the same bytes, and that every
-`@see docs/protocol/4.3.md, section "…"` of the sources names a heading that exists, so the
+[docs/protocol/4.4.md](docs/protocol/4.4.md) still hold the same bytes, and that every
+`@see docs/protocol/4.4.md, section "…"` of the sources names a heading that exists, so the
 document and the code cannot drift apart.
 
 Examples

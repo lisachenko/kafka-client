@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\EndTxnRequest;
  * ends a transaction of - 0 and 1 the legacy ones, 2 the protocol v2 of KIP-890. {@see WriteTxnMarkersRequestMarkerV1}
  * is the entry of the versions 0 and 1, without it.
  *
- * @see docs/protocol/4.3.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
+ * @see docs/protocol/4.4.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 class WriteTxnMarkersRequestMarker implements BinarySchemaInterface
 {

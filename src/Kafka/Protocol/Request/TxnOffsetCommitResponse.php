@@ -67,7 +67,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
  * that the version 4 is refused the **120** for - no AddOffsetsToTxn in front of it - is answered **0** at the
  * version 5. {@see TxnOffsetCommitResponseV4} is the answer of Kafka 3.8.
  *
- * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {

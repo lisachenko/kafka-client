@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see ConsumerGroupDescribeMember}; this is the entry without it, whose type stays
  * {@see ConsumerGroupDescribeMember::MEMBER_TYPE_UNKNOWN}.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 final class ConsumerGroupDescribeMemberV0 extends ConsumerGroupDescribeMember
 {

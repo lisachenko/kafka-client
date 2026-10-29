@@ -84,7 +84,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * batches of the message format v2, through the lowest version the node serves, 3, and the refusal of the removed
  * versions is measured instead of sent as if they were served.
  *
- * @see docs/protocol/4.3.md, section "Produce API (key 0, v0 to v13)"
+ * @see docs/protocol/4.4.md, section "Produce API (key 0, v0 to v13)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceRequestV11::class)]

@@ -49,7 +49,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * measured here. The message sets themselves stay a format of this package: their classes, the vectors the lines
  * below captured on real brokers, and the unit tests of the codecs.
  *
- * @see docs/protocol/4.3.md, sections "MessageSet and Message" and "The versions Kafka 4.0 removed (KIP-896)"
+ * @see docs/protocol/4.4.md, sections "MessageSet and Message" and "The versions Kafka 4.0 removed (KIP-896)"
  */
 #[CoversClass(RecordBatch::class)]
 #[CoversClass(MessageSet::class)]

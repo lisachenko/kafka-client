@@ -25,8 +25,8 @@ namespace Protocol\Kafka\Protocol\Data;
  * topic - `OffsetFetchRequest.json` @ 4.2.0 gives the `Name` of a topic entry the versions `8-9`. Version 10 (Kafka
  * 4.2, KIP-848) names the topics by id instead, in the {@see OffsetFetchRequestGroup} of that version.
  *
- * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The member id and epoch of KIP-848 (v9)"
  */
 final class OffsetFetchRequestGroupV9 extends OffsetFetchRequestGroup
 {

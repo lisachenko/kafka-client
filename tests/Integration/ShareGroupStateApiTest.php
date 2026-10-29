@@ -72,7 +72,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * `DeliveryCompleteCount` of KIP-1226. Its member leaves and the group is deleted in
  * {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/4.3.md, section "The share-group state apis (keys 83 to 87) — wire only"
+ * @see docs/protocol/4.4.md, section "The share-group state apis (keys 83 to 87) — wire only"
  */
 #[CoversClass(InitializeShareGroupStateRequest::class)]
 #[CoversClass(InitializeShareGroupStateResponse::class)]

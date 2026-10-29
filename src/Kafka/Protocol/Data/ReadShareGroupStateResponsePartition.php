@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the share coordinator keeps for it - the state epoch, the share-partition start offset (-1 while it is not
  * initialized) and the delivery state of the records behind it.
  *
- * @see docs/protocol/4.3.md, section "ReadShareGroupState API (key 84, v0)"
+ * @see docs/protocol/4.4.md, section "ReadShareGroupState API (key 84, v0)"
  */
 class ReadShareGroupStateResponsePartition implements BinarySchemaInterface
 {

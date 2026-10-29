@@ -54,7 +54,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * message.downconversion.enable". This class measures that, and that every version the node serves answers the log
  * as it lies.
  *
- * @see docs/protocol/4.3.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v18)"
+ * @see docs/protocol/4.4.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v18)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
