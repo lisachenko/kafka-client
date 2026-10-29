@@ -597,6 +597,23 @@ final class Cluster
     }
 
     /**
+     * Starts again from the bootstrap servers after a broker said that the metadata of this client is stale
+     *
+     * The answer to the 129 `REBOOTSTRAP_REQUIRED` of an ApiVersions v5 (Kafka 4.4, KIP-1242): the request named the
+     * cluster id of this metadata and the id of the node it meant to reach, and the broker at the address the
+     * metadata gave for that node is another node or belongs to another cluster. `NetworkClient` @ 4.4.0 closes its
+     * connections and calls `rebootstrap()` on its metadata; here that is a {@see self::reload()}, which always asks
+     * the `bootstrap.servers` and never a broker of the stale metadata. A reload that no bootstrap server answers
+     * keeps the metadata there was, like the periodic refresh: the caller reports the 129 either way.
+     *
+     * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+     */
+    public function rebootstrap(): void
+    {
+        $this->reloadQuietly();
+    }
+
+    /**
      * Returns the broker that is the active controller of the cluster, or null while there is none
      *
      * The controller is the broker that elects the partition leaders and the only one that serves the topic

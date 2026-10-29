@@ -25,14 +25,16 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV4;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV1;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV2;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV3;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV4;
 
 /**
- * Byte-exact tests for the ApiVersions API (api key 18, v0 to v4).
+ * Byte-exact tests for the ApiVersions API (api key 18, v0 to v5).
  *
  * Kafka 0.10.0 added version 0, Kafka 0.11 version 1 - the same request with a `throttle_time_ms` appended to the
  * answer, the one api of that release that puts the field at the end instead of the beginning - Kafka 2.0 the
@@ -41,37 +43,84 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV3;
  * header v2, two compact strings of KIP-511 in the request, a compact api array in the answer and the tagged
  * fields of KIP-584 at the end of it - behind a response header **v0**, which is the exception this api is.
  * Kafka 3.9 added the version 4, which declares no field: it is the v3 frame with a 4 in its header, and what it
- * buys is a supported feature whose `min_version` is 0 in the answer (KAFKA-17011).
+ * buys is a supported feature whose `min_version` is 0 in the answer (KAFKA-17011). Kafka 4.4 added the version 5
+ * of KIP-1242, which appends the cluster id and the node id the client means to reach to the request and answers a
+ * misrouted connection with the 129 `REBOOTSTRAP_REQUIRED`, in a frame of the answer that did not change.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v4)"
+ * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsRequestV0::class)]
 #[CoversClass(ApiVersionsRequestV1::class)]
 #[CoversClass(ApiVersionsRequestV2::class)]
 #[CoversClass(ApiVersionsRequestV3::class)]
+#[CoversClass(ApiVersionsRequestV4::class)]
 #[CoversClass(ApiVersionsResponse::class)]
 #[CoversClass(ApiVersionsResponseV0::class)]
 #[CoversClass(ApiVersionsResponseV1::class)]
 #[CoversClass(ApiVersionsResponseV2::class)]
 #[CoversClass(ApiVersionsResponseV3::class)]
+#[CoversClass(ApiVersionsResponseV4::class)]
 #[CoversClass(ApiVersionsResponseMetadata::class)]
 final class ApiVersionsTest extends TestCase
 {
     /**
-     * ApiVersions request v4, the version this client sends: the flexible frame of Kafka 2.4 one number higher.
+     * ApiVersions request v5, the version this client sends, for a client that knows neither id (KIP-1242).
      *
-     *   Size                  => 00 00 00 2c (44 bytes)
+     *   Size                  => 00 00 00 31 (49 bytes)
      *   ApiKey                => 00 12 (18)
-     *   ApiVersion            => 00 04
+     *   ApiVersion            => 00 05
      *   CorrelationId         => 00 00 00 01
      *   ClientId              => 00 04 "test"           (int16 length even here: "flexibleVersions": "none")
      *   TAG_BUFFER            => 00                     (the tagged fields of the request header v2)
      *   ClientSoftwareName    => 18 "lisachenko-kafka-client"   (compact: 23 + 1)
      *   ClientSoftwareVersion => 04 "4.4"                       (compact: 3 + 1)
+     *   ClusterId             => 00                     (the null of a compact nullable string)
+     *   NodeId                => ff ff ff ff            (-1)
      *   TAG_BUFFER            => 00                     (the tagged fields of the body)
      */
-    private const string REQUEST_HEX = '0000002c'
+    private const string REQUEST_HEX = '00000031'
+        . '0012'
+        . '0005'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00'
+        . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74'
+        . '04' . '342e34'
+        . '00'
+        . 'ffffffff'
+        . '00';
+
+    /**
+     * Cluster id of the 4.4.0 node the vectors of this version were captured on
+     */
+    private const string CLUSTER_ID = 'VrSKct6dSeqKNmOt0UlbLg';
+
+    /**
+     * The same request naming the node 1 of the cluster {@see self::CLUSTER_ID}: 22 bytes of id, one of length
+     *
+     *   Size       => 00 00 00 47 (71 bytes)
+     *   …
+     *   ClusterId  => 17 "VrSKct6dSeqKNmOt0UlbLg"   (compact: 22 + 1)
+     *   NodeId     => 00 00 00 01
+     *   TAG_BUFFER => 00
+     */
+    private const string REQUEST_ADDRESSED_HEX = '00000047'
+        . '0012'
+        . '0005'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00'
+        . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74'
+        . '04' . '342e34'
+        . '17' . '5672534b637436645365714b4e6d4f7430556c624c67'
+        . '00000001'
+        . '00';
+
+    /**
+     * The same request as version 4: the KIP-511 strings and the tag buffer, without the two fields of KIP-1242.
+     */
+    private const string REQUEST_V4_HEX = '0000002c'
         . '0012'
         . '0004'
         . '00000001'
@@ -79,6 +128,23 @@ final class ApiVersionsTest extends TestCase
         . '00'
         . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74'
         . '04' . '342e34'
+        . '00';
+
+    /**
+     * The 129 of KIP-1242 as the 4.4.0 node answered a v5 request with a foreign cluster id (correlation id 4402)
+     *
+     *   Size           => 00 00 00 0c (12 bytes)
+     *   CorrelationId  => 00 00 11 32   (response header v0)
+     *   ErrorCode      => 00 81         (129, RebootstrapRequired)
+     *   ApiKeys        => 01            (compact: 0 + 1 - the empty array of getErrorResponse())
+     *   ThrottleTimeMs => 00 00 00 00
+     *   TAG_BUFFER     => 00            (no feature, and the epoch at its default -1)
+     */
+    private const string REBOOTSTRAP_REQUIRED_RESPONSE_HEX = '0000000c'
+        . '00001132'
+        . '0081'
+        . '01'
+        . '00000000'
         . '00';
 
     /**
@@ -192,10 +258,92 @@ final class ApiVersionsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::API_VERSIONS, $request->getApiKey());
-        self::assertSame(4, $request->getApiVersion(), 'this client sends the version 4 of Kafka 3.9');
-        self::assertSame(44, $request->getMessageSize(), 'the header v2, the two compact strings and two tag buffers');
+        self::assertSame(5, $request->getApiVersion(), 'this client sends the version 5 of Kafka 4.4');
+        self::assertSame(49, $request->getMessageSize(), 'the header v2, two compact strings, two ids, two tag buffers');
+        self::assertNull($request->getClusterId(), 'the default of the specification');
+        self::assertSame(-1, $request->getNodeId());
         self::assertTrue(ApiVersionsRequest::isFlexible(), 'version 3 is the first flexible version of this api');
         self::assertSame(ApiVersionsRequest::HEADER_V2, ApiVersionsRequest::getHeaderVersion());
+    }
+
+    /**
+     * A request that names the cluster and the node carries the compact cluster id and the node id (KIP-1242)
+     */
+    public function testTheVersionFiveRequestNamesTheClusterAndTheNodeItMeansToReach(): void
+    {
+        $request = new ApiVersionsRequest('test', 1, self::CLUSTER_ID, 1);
+
+        self::assertSame(self::REQUEST_ADDRESSED_HEX, bin2hex((string) $request));
+        self::assertSame(71, $request->getMessageSize(), 'the size covers the 23 bytes of the compact cluster id');
+        self::assertSame(self::CLUSTER_ID, $request->getClusterId());
+        self::assertSame(1, $request->getNodeId());
+        self::assertSame(
+            ['clientSoftwareName', 'clientSoftwareVersion', 'clusterId', 'nodeId'],
+            array_slice(array_keys(ApiVersionsRequest::getScheme()), -4),
+            'the two fields of version 5 follow the KIP-511 strings and are not tagged'
+        );
+    }
+
+    /**
+     * Both ids or neither: the broker answers half a pair with the 42 (`ApiVersionsRequest.isValid()` @ 4.4.0)
+     *
+     * @return array<string, array{string|null, int, string|null, int}>
+     */
+    public static function addressProvider(): array
+    {
+        return [
+            'both known'           => [self::CLUSTER_ID, 1, self::CLUSTER_ID, 1],
+            'the node 0 is a node' => [self::CLUSTER_ID, 0, self::CLUSTER_ID, 0],
+            'no cluster id yet'    => [null, 1, null, -1],
+            'a bootstrap node, -1' => [self::CLUSTER_ID, -1, null, -1],
+            'any negative node id' => [self::CLUSTER_ID, -2, null, -1],
+            'neither'              => [null, -1, null, -1],
+        ];
+    }
+
+    #[DataProvider('addressProvider')]
+    public function testAnAddressedRequestCarriesBothIdsOrNeither(
+        ?string $clusterId,
+        int $nodeId,
+        ?string $sentClusterId,
+        int $sentNodeId
+    ): void {
+        $request = ApiVersionsRequest::addressedTo($clusterId, $nodeId, 'test', 1);
+
+        self::assertSame($sentClusterId, $request->getClusterId());
+        self::assertSame($sentNodeId, $request->getNodeId());
+        self::assertSame(5, $request->getApiVersion());
+        if ($sentClusterId === null) {
+            self::assertSame(self::REQUEST_HEX, bin2hex((string) $request), 'the frame of a client that knows nothing');
+        }
+    }
+
+    /**
+     * The version 4 request is the version 5 request without the two ids of KIP-1242
+     */
+    public function testTheVersionFourRequestEndsBeforeTheTwoIds(): void
+    {
+        $versionFour = new ApiVersionsRequestV4('test', 1, self::CLUSTER_ID, 1);
+
+        self::assertSame(4, $versionFour->getApiVersion());
+        self::assertSame(4, ApiVersionsRequestV4::VERSION);
+        self::assertTrue(ApiVersionsRequestV4::isFlexible());
+        self::assertSame(
+            self::REQUEST_V4_HEX,
+            bin2hex((string) $versionFour),
+            'a version 4 has no place for the two ids, whatever the constructor was given'
+        );
+        self::assertSame(44, $versionFour->getMessageSize());
+        self::assertSame(
+            str_replace('00120005', '00120004', substr(self::REQUEST_HEX, 8, -12)),
+            substr(self::REQUEST_V4_HEX, 8, -2),
+            'everything up to the tag buffer of the version 4 is the same bytes, the version aside'
+        );
+        self::assertSame(
+            array_slice(ApiVersionsRequest::getScheme(), 0, -2, true),
+            ApiVersionsRequestV4::getScheme(),
+            'KIP-1242 appended two fields to the schema of the version 4'
+        );
     }
 
     /**
@@ -212,12 +360,12 @@ final class ApiVersionsTest extends TestCase
         self::assertSame(3, ApiVersionsRequestV3::VERSION);
         self::assertTrue(ApiVersionsRequestV3::isFlexible());
         self::assertSame(
-            str_replace('00120004', '00120003', self::REQUEST_HEX),
+            str_replace('00120004', '00120003', self::REQUEST_V4_HEX),
             bin2hex((string) $versionThree),
             'the version is the only difference between the two frames'
         );
         self::assertSame(
-            ApiVersionsRequest::getScheme(),
+            ApiVersionsRequestV4::getScheme(),
             ApiVersionsRequestV3::getScheme(),
             'KAFKA-17011 bumped the version without changing the schema'
         );
@@ -229,17 +377,54 @@ final class ApiVersionsTest extends TestCase
     public function testTheVersionFourAnswerIsTheVersionThreeFrame(): void
     {
         $versionThree = ApiVersionsResponseV3::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
-        $versionFour  = ApiVersionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $versionFour  = ApiVersionsResponseV4::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(3, ApiVersionsResponseV3::VERSION);
-        self::assertSame(4, ApiVersionsResponse::VERSION);
+        self::assertSame(4, ApiVersionsResponseV4::VERSION);
         self::assertEquals(
             ApiVersionsResponseV3::getScheme(),
-            ApiVersionsResponse::getScheme(),
+            ApiVersionsResponseV4::getScheme(),
             'the same error code, the same compact api array, the same throttle time and the same three tags'
         );
         self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
         self::assertSame(ApiVersionsResponse::HEADER_V0, ApiVersionsResponseV3::getHeaderVersion());
+    }
+
+    /**
+     * The version 5 answer is the version 4 answer: KIP-1242 changed the request and added an error code
+     */
+    public function testTheVersionFiveAnswerIsTheVersionFourFrame(): void
+    {
+        $versionFour = ApiVersionsResponseV4::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $versionFive = ApiVersionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(5, ApiVersionsResponse::VERSION);
+        self::assertEquals(ApiVersionsResponseV4::getScheme(), ApiVersionsResponse::getScheme());
+        self::assertSame(bin2hex((string) $versionFour), bin2hex((string) $versionFive));
+        self::assertSame(ApiVersionsResponse::HEADER_V0, ApiVersionsResponseV4::getHeaderVersion());
+    }
+
+    /**
+     * The 129 of a misrouted connection arrives in the layout of the version asked for, not in the v0 layout of a 35
+     *
+     * `KafkaApis.handleApiVersionsRequest` @ 4.4.0 answers it through `ApiVersionsRequest.getErrorResponse()` of a
+     * request it did parse: the error code, the empty api array (only a 35 carries the row of KIP-511), the throttle
+     * time and the tag buffer of the body - so the class of the version 5 reads it like any other answer.
+     */
+    public function testARebootstrapRequiredIsReadWithTheLayoutOfTheVersionFive(): void
+    {
+        $response = ApiVersionsResponse::unpack(
+            new StringStream((string) hex2bin(self::REBOOTSTRAP_REQUIRED_RESPONSE_HEX))
+        );
+
+        self::assertSame(4402, $response->getCorrelationId());
+        self::assertSame(KafkaException::REBOOTSTRAP_REQUIRED, $response->errorCode);
+        self::assertSame([], $response->apiVersions, 'the refused request learns no api at all');
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame([], $response->supportedFeatures);
+        self::assertSame(-1, $response->finalizedFeaturesEpoch, 'an empty tag buffer leaves the default -1');
+        self::assertSame(12, $response->getMessageSize());
+        self::assertSame(self::REBOOTSTRAP_REQUIRED_RESPONSE_HEX, bin2hex((string) $response));
     }
 
     /**
@@ -297,8 +482,8 @@ final class ApiVersionsTest extends TestCase
         $request = new ApiVersionsRequest();
 
         self::assertSame(
-            '00000028' . '0012' . '0004' . '00000000' . '0000' . '00'
-            . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74' . '04' . '342e34' . '00',
+            '0000002d' . '0012' . '0005' . '00000000' . '0000' . '00'
+            . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74' . '04' . '342e34' . '00' . 'ffffffff' . '00',
             bin2hex((string) $request)
         );
     }

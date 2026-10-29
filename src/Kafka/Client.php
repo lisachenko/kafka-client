@@ -37,6 +37,7 @@ use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
+use Protocol\Kafka\Common\Errors\RebootstrapRequiredException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
@@ -280,53 +281,69 @@ class Client
      * Asks one broker which api keys and versions it serves (ApiKey 18, Kafka 0.10.0 and later)
      *
      * This is the answer to "what does the broker on the other side speak": the 0.8 and 0.9 lines of this client had
-     * to probe it by sending a request of every key and version, because the api did not exist yet. A 2.8.2 broker
-     * reports the **56** keys 0 to 51, 56, 57, 60 and 61 with the version ranges of the api-key table of the
-     * protocol document, and answers before any authentication has happened on a SASL listener.
+     * to probe it by sending a request of every key and version, because the api did not exist yet. The answer lists
+     * every api of the listener the request arrived on with its version range - the 77 keys of the api-key table of
+     * the protocol document on a client listener of the 4.4.0 node - and the features of KIP-584 in its tagged
+     * fields, and a broker gives it before any authentication has happened on a SASL listener.
      *
-     * The request goes out as **version 3**, the first flexible version of the protocol (Kafka 2.4): its frame
-     * carries the request header v2 with a tag buffer and the compact `client_software_name` and
-     * `client_software_version` of KIP-511 - `lisachenko-kafka-client` and the Kafka line this branch speaks - and
-     * its answer is compact as well, with the features of KIP-584 as tagged fields behind the `throttleTimeMs`
-     * that version 1 added. The version 2 below it is the KIP-219 bump of Kafka 2.0, which says that this client
-     * honours a throttle time itself because a broker answers a throttled request of a bumped version **before** it
-     * mutes the channel; the versions 3 and 4 inherit that promise.
-     *
-     * **The version this client sends is the 4** (Kafka 3.9), which declares no field of its own: it is the v3
-     * frame with a 4 in its header, and what it buys is in the answer - a supported feature whose `min_version` is
-     * **0** is only reported to a client that asks for it (KAFKA-17011), and on a KRaft node that is
-     * `kraft.version`. {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3} asks a peer of Kafka 2.4 to 3.8
-     * the same question.
+     * The request goes out as **version 5** (Kafka 4.4, KIP-1242): the flexible frame of Kafka 2.4 with the compact
+     * `client_software_name` and `client_software_version` of KIP-511, the promise of the version 4 (KAFKA-17011)
+     * that a supported feature with the minimum version 0 can be read, and the **cluster id and node id the
+     * connection is meant to reach** - the id of the {@see Cluster} and {@see Node::$nodeId} of the given node, both
+     * of them or, while the cluster knows no id or the node id is negative, neither
+     * ({@see ApiVersionsRequest::addressedTo()}). A broker that is not that node of that cluster answers the
+     * **129** `REBOOTSTRAP_REQUIRED`: the address the metadata gave for the node leads somewhere else, so the
+     * metadata is stale. Like `NetworkClient.handleApiVersionsResponse` @ 4.4.0 the client then drops the
+     * connection to that address and rebootstraps ({@see Cluster::rebootstrap()}), and the 129 is thrown; the next
+     * call asks the node at the address of the new metadata.
      *
      * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
      * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
-     * talking to, and the material a later line can build a negotiation on.
+     * talking to, and what the client reads when a decision depends on the peer (the Produce versions a legacy
+     * message format needs, the `transaction.version` of a transaction coordinator). It is **not** a handshake: the
+     * client does not send it on every new connection, which is why a misrouted connection is only noticed here.
      *
-     * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
-     * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion), since
-     * Kafka 2.4 with the single api row of ApiVersions itself (KIP-511) and before it with an empty array. That
-     * answer always arrives in the **version 0** layout, without the throttle time, so a peer older than Kafka 3.9
-     * has to be asked with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3},
-     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2},
-     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1} or
-     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and read with the response class of the same
-     * version; this line speaks to a 3.9.2 node, which serves v0 to v4.
+     * Every other error code is returned in the answer. A peer older than Kafka 4.4 answers the version 5 with the
+     * 35 in the **version 0** layout, which this response class cannot read; such a peer has to be asked with an
+     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV4} (Kafka 3.9 to 4.3) or a lower version class and
+     * read with the response class of the same version.
      *
      * @param Node $node Broker to ask; every broker of a cluster answers for itself
      *
      * @throws NetworkException If the connection to the broker dropped
+     * @throws RebootstrapRequiredException If the broker is not the node `$node` names, of the cluster of this
+     *         client (the 129 of KIP-1242); the cluster has been reloaded from its bootstrap servers by then
+     *
+     * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
      */
     public function apiVersions(Node $node): ApiVersionsResponse
     {
-        return $this->coordinatorRequest(
+        $clusterId = $this->cluster->clusterId();
+        $response  = $this->coordinatorRequest(
             $node,
-            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest(
+            fn(int $correlationId): ApiVersionsRequest => ApiVersionsRequest::addressedTo(
+                $clusterId,
+                $node->nodeId,
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
             ApiVersionsResponse::class,
             static fn(ApiVersionsResponse $response): ApiVersionsResponse => $response
         );
+        if ($response->errorCode === KafkaException::REBOOTSTRAP_REQUIRED) {
+            // KIP-1242: the address leads to another broker than the metadata says, so the metadata is stale
+            ConnectionFactory::closeStream($node->getConnection($this->configuration));
+            $this->cluster->rebootstrap();
+
+            throw new RebootstrapRequiredException([
+                'error'     => 'The broker is not the node the metadata names at its address (KIP-1242)',
+                'node'      => $node->nodeId,
+                'address'   => "{$node->host}:{$node->port}",
+                'clusterId' => $clusterId,
+            ]);
+        }
+
+        return $response;
     }
 
     /**
