@@ -28,6 +28,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV4;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV1;
@@ -101,6 +102,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 #[CoversClass(ApiVersionsRequestV1::class)]
 #[CoversClass(ApiVersionsRequestV2::class)]
 #[CoversClass(ApiVersionsRequestV3::class)]
+#[CoversClass(ApiVersionsRequestV4::class)]
 #[CoversClass(ApiVersionsResponse::class)]
 #[CoversClass(ApiVersionsResponseV0::class)]
 #[CoversClass(ApiVersionsResponseV1::class)]
@@ -446,13 +448,14 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
-     * The client sends version 4, and every version of the answer closes with the throttle time
+     * The client sends version 5, and every version of the answer closes with the throttle time
      */
     public function testTheAnswerCarriesTheTrailingThrottleTimeInEveryVersion(): void
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
-        self::assertSame(4, ApiVersionsRequest::VERSION, 'this line sends the ApiVersions v4 of KAFKA-17011');
+        self::assertSame(5, ApiVersionsRequest::VERSION, 'this line sends the ApiVersions v5 of KIP-1242');
+        self::assertSame(4, ApiVersionsRequestV4::VERSION, 'the version 4 of KAFKA-17011 below it');
         self::assertSame(3, ApiVersionsRequestV3::VERSION, 'the flexible frame of KIP-511 it is built on');
         self::assertSame(2, ApiVersionsRequestV2::VERSION);
         self::assertSame(1, ApiVersionsRequestV1::VERSION);

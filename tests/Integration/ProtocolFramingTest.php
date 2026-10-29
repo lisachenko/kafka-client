@@ -170,9 +170,10 @@ final class ProtocolFramingTest extends IntegrationTestCase
         $request = new ApiVersionsRequest('kafka-client-t1', 4248);
         $frame   = (string) $request;
 
-        // 4 size + 8 header + 2+15 client id + 1 header tag buffer + 24 name + 4 version + 1 body tag buffer
-        self::assertSame(59, strlen($frame));
-        self::assertSame('0012' . '0004', bin2hex(substr($frame, 4, 4)), 'the version of KAFKA-17011');
+        // 4 size + 8 header + 2+15 client id + 1 header tag buffer + 24 name + 4 version + 1 null cluster id
+        // + 4 node id -1 + 1 body tag buffer
+        self::assertSame(64, strlen($frame));
+        self::assertSame('0012' . '0005', bin2hex(substr($frame, 4, 4)), 'the version of KIP-1242');
         self::assertSame('000f', bin2hex(substr($frame, 12, 2)), 'the client id keeps its int16 length');
         self::assertSame('00', bin2hex(substr($frame, 29, 1)), 'the tag buffer of the request header v2');
         self::assertSame('18', bin2hex(substr($frame, 30, 1)), 'a compact string of 23 bytes announces 24');
