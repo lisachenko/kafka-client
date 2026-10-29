@@ -34,9 +34,11 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **Kafka 4.4 appended the `error_message` of KIP-1331** behind the code: "Version 3 adds the per-group
  * ErrorMessage field" of `DeleteGroupsResponse.json` @ 4.4.0, a nullable string that is `"ignorable": true` with
  * the default null. It is there for the **134** `GroupDeletionFailed` of a streams group whose stored topology
- * description the plugin of KIP-1331 could not drop - the group is kept and a retry is safe - but the coordinator
- * fills it for every code it refuses a group with. {@see DeleteGroupsResponseGroupV2} is the entry of the versions
- * below 3.
+ * description the plugin of KIP-1331 could not drop - "Topology description plugin failed to delete the topology."
+ * of `StreamsGroupTopologyDescriptionManager` @ 4.4.0; the group is kept and a retry is safe. Every other refusal
+ * keeps the null: measured on the 4.4.0 node, the 68 of a group with a member and the 69 of an unknown group carry
+ * no message, because `GroupCoordinatorShard.deleteGroups` @ 4.4.0 sets the code alone.
+ * {@see DeleteGroupsResponseGroupV2} is the entry of the versions below 3.
  *
  * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
  */

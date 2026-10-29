@@ -42,6 +42,7 @@ use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroupV2;
  * | 30   | GroupAuthorizationFailed    | The client may not delete that group                                     |
  * | 68   | NonEmptyGroup               | The group still has members, so nothing was deleted                      |
  * | 69   | GroupIdNotFound             | The coordinator has never heard of that group                            |
+ * | 134  | GroupDeletionFailed         | (Kafka 4.4, v3) The topology description plugin could not drop the group |
  *
  * Version 1 (KIP-219, Kafka 2.0) answers the same bytes, which {@see DeleteGroupsResponseV0} decodes as well.
  *
@@ -49,8 +50,10 @@ use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroupV2;
  * ErrorMessage field" of `DeleteGroupsResponse.json` @ 4.4.0): a nullable string at the **end of every group entry**,
  * behind its code, for the new code **134** `GroupDeletionFailed` - a streams group whose stored topology
  * description the plugin of KIP-1331 (`group.streams.topology.description.plugin.class`) could not drop; the group is
- * kept and a retry is safe. {@see DeleteGroupsResponseV2} decodes the answer of a broker below Kafka 4.4, whose
- * entries end with the code.
+ * kept and a retry is safe. A request below version 3 never sees the 134: `KafkaApis.handleDeleteGroupsRequest` @
+ * 4.4.0 downgrades it to the -1 `UnknownServerError` there. Every other code keeps the null message (measured on
+ * the 4.4.0 node). {@see DeleteGroupsResponseV2} decodes the answer of a broker below Kafka 4.4, whose entries end
+ * with the code.
  *
  * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
  */

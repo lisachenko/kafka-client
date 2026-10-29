@@ -432,7 +432,7 @@ final class ShareGroupAdminApiTest extends TestCase
     }
 
     /**
-     * Builds a DeleteGroups v2 answer
+     * Builds a DeleteGroups v3 answer (Kafka 4.4): every entry ends with the null error message of KIP-1331
      *
      * @param array<string, int> $groups Error code of every group
      */
@@ -440,7 +440,8 @@ final class ShareGroupAdminApiTest extends TestCase
     {
         $body = pack('N', 0) . ResponseFrame::compactCount(count($groups));
         foreach ($groups as $groupId => $errorCode) {
-            $body .= ResponseFrame::compactString((string) $groupId) . pack('n', $errorCode) . ResponseFrame::tagBuffer();
+            $body .= ResponseFrame::compactString((string) $groupId) . pack('n', $errorCode)
+                . ResponseFrame::compactString(null) . ResponseFrame::tagBuffer();
         }
 
         return ResponseFrame::flexible(0, $body);

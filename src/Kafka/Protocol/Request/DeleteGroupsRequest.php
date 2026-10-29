@@ -20,8 +20,8 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * DeleteGroups, version 3: makes the coordinator forget consumer groups (ApiKey 42, Kafka 1.1, KIP-229)
  *
  * <pre>
- *   DeleteGroups Request (Version: 0 and 1) => [groups]
- *     groups => STRING
+ *   DeleteGroups Request (Version: 0 to 3) => [groups]
+ *     groups => STRING                             -- COMPACT_STRING from version 2
  * </pre>
  *
  * The frame is the one of {@see DescribeGroupsRequest}, and so is the routing: a group is deleted by its own
