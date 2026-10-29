@@ -1,7 +1,8 @@
-# The 4.x line (Kafka 4.0 to 4.3 and the KIP-932 share consumer, verified against 4.3.1 in KRaft) — release notes
+# The 4.x line (Kafka 4.0 to 4.4 and the KIP-932 share consumer, verified against 4.3.1 and 4.4.0 in KRaft) — release notes
 
-**State: complete.** `main` speaks the Apache Kafka **4.3.1** wire protocol — the last 4.x release available when the
-line started, so it covers everything Kafka 4.0 to 4.3 added over 3.9.2 — on a **KRaft** node with a dynamic quorum,
+**State: complete.** `main` speaks the Apache Kafka **4.4.0** wire protocol. The line was built on **4.3.1**, the last
+4.x release available when it started, which covers everything Kafka 4.0 to 4.3 added over 3.9.2; the **4.4
+milestone** moved it onto 4.4.0 after that release came out (see "The 4.4 milestone" below) — on a **KRaft** node with a dynamic quorum,
 on the `BinarySchema` engine of the lines below. The line was built on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213), pull request
 [#219](https://github.com/lisachenko/kafka-client/pull/219)), **one Kafka minor at a time**: every minor ended in a
@@ -23,6 +24,7 @@ one is `3.x` (Kafka 3.9.2, [`docs/handoff/3.x.md`](3.x.md)).
 | Kafka 4.2 | #228 (T4), #229 (T1), #230 (T2), #231 (T3) | **OffsetCommit v10 and OffsetFetch v10** (topics by id) in both consumer coordinators and the admin offsets methods, `alterConsumerGroupOffsets()`, ShareFetch/ShareAcknowledge v2 (the acquire mode and the renew acknowledgement), ListOffsets v11 (`listEarliestPendingUploadOffsets()`), AddRaftVoter v1, and as wire classes the delivery-complete count and the share-partition lag of KIP-1226 and the marker transaction version of KIP-1228 |
 | Kafka 4.3 | #232 (T4), #233 (T1) | DescribeLogDirs v5 (the cordon flag of KIP-1066, measured by cordoning a directory) and the final audit of the api tables against the node and the message specs at the tags; BrokerHeartbeat v2, the other version of 4.3, is a controller api |
 | The share consumer | #234 (T4), #235 (T3) | **`Consumer\KafkaShareConsumer`** (implicit and explicit acknowledgement, ACCEPT/RELEASE/REJECT/RENEW, commit with a callback, one share session per leader, the lock timeout, the acquire mode) and the **share-group admin methods** `listShareGroups()`, `listShareGroupOffsets()`, `alterShareGroupOffsets()`, `deleteShareGroupOffsets()`, `deleteShareGroups()` |
+| Kafka 4.4 | #250 (foundation, T1, T3, T4 as merges of one integration branch) | The **4.4.0 node** (`metadata.version` 4.4-IV2, `share.version` 2), the api keys 93/94 and the codes 134–136, **ApiVersions v5** (KIP-1242: the cluster and node id of the target, `Cluster::rebootstrap()` on the 129), **TxnOffsetCommit v6** (KIP-1319: topics by id in the producer), **DeleteGroups v3** (KIP-1331: the per-group message), **UnregisterController** (94, KIP-1312, `AdminClient::unregisterController()`), and measured without a wire change: the CIDR ACL hosts of KIP-1276 and the share-group dead-letter queue of KIP-1191 |
 
 The **foundation** of the line, on the integration branch before the first milestone: the node image
 `docker/kafka-4.3.1/` (KRaft combined node with a **dynamic quorum** formatted `--standalone`, so that every feature
@@ -34,6 +36,28 @@ class each, and the baseline of the inherited suite on the new node — 140 fail
 the ticket that owned its surface and all of them brought to what the node answers by the 4.0 wave. The final
 documentation pass (the coordinator's, after the last wave) brought this file, the CHANGELOG head, the README and the
 document intro to the finished line and made the client report `4.3` as its software version to the broker (KIP-511).
+
+## The 4.4 milestone
+
+Kafka **4.4.0** was released on 2026-10-13, after the line was complete, and the owner asked for its features on
+`main`. The milestone ran as one integration branch, `feature/exciting-bell-vw8pwk` (pull request
+[#250](https://github.com/lisachenko/kafka-client/pull/250)), without issues: the coordinator's foundation (the node,
+the constants, the document renamed to `docs/protocol/4.4.md`, the probe at the 77-key table, the 28 failures the
+inherited suite showed on the new node), then three agents in parallel worktrees — T1 ApiVersions v5, T3 DeleteGroups
+v3 with the share-group dead-letter queue and the heartbeat 69, T4 TxnOffsetCommit v6 with UnregisterController and
+the CIDR ACLs — merged into it with merge commits. The diff of every `*Request.json` between the tags 4.3.1, 4.3.2 and
+4.4.0 is the source of the attributions: five versions on the client listener (ApiVersions v5, TxnOffsetCommit v6,
+DeleteGroups v3, StreamsGroupHeartbeat v1, StreamsGroupDescribe v1), two new keys, three new codes, no minimum raised
+and nothing removed; 4.3.2 changed a comment only. The streams apis 88, 89 and 93 stay out by decision and are probed.
+
+What the node taught the milestone: ApiVersions v5 is checked by `KafkaApis` only (an unauthenticated SASL connection
+is not), half an id pair is the 42; TxnOffsetCommit v6 answers the 69 and the 113 where v5 answers the 22; the
+controller unregisters any registered controller id without further checks (never id 1 on the shared node); a CIDR
+block is stored verbatim and matched against the address the node sees (the Docker gateway, not 127.0.0.1); a
+misconfigured dead-letter queue costs the client nothing, the record is archived anyway; DeleteGroups answers the
+empty group id with the 69; the share coordinator of 4.4 checks the leader epoch of a read before the partition.
+The milestone also lived through a container restart that cost the agents their uncommitted work — the briefs now ask
+for a commit after every step.
 
 ## How it was verified
 
@@ -48,6 +72,7 @@ recreated node (`docker compose down -v`) with no other test run on it:
 | Kafka 4.2 | 4093 | 1085 | 1413 in 74 files (278) |
 | Kafka 4.3 | 4117 | 1127 | 1421 in 74 files (286) |
 | The share consumer | 4162 | 1147 | 1421 in 74 files (286) |
+| Kafka 4.4 (the 4.4.0 node) | 4252 | 1183 | 1458 in 75 files (323) |
 
 * Every wire vector is replayed in both directions, the **669** frames of the lines up to 2.x and the frames of the
   3.x line among them — a 4.3.1 node refuses the versions KIP-896 removed, but their classes and vectors stay, and the

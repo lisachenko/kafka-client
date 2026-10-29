@@ -3,7 +3,7 @@
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` → `0.9.x` → `0.10.x` → `0.11.x` → `1.x` (the archived lines
 below 2.0, see "Maintenance" below) → `2.x` (Kafka **2.8.2**, **complete**, **protected**) → `3.x` (Kafka **3.9.2**,
-**complete**, **protected**) → `main` (the **4.x line**, Kafka **4.3.1**, **complete**).
+**complete**, **protected**) → `main` (the **4.x line**, Kafka **4.4.0**, **complete**).
 `main` stays the 4.x line until a Kafka 5.x line starts: no `4.x` branch is cut before then (the owner's decision).
 The lines are **major** lines: one branch per Kafka major version, covering every minor release inside it (`2.x`
 speaks 2.8.2 and with it everything 2.0 to 2.8 added; `3.x` speaks 3.9.2 and with it everything 3.0 to 3.9 added plus
@@ -21,7 +21,7 @@ the error codes 134–136 and the five versions 4.4 added (see "What 4.4.0 adds 
 
 ## Maintenance
 
-**The two latest major lines are maintained**: today `main` (4.x, Kafka 4.3.1) and `3.x` (Kafka 3.9.2). They take
+**The two latest major lines are maintained**: today `main` (4.x, Kafka 4.4.0) and `3.x` (Kafka 3.9.2). They take
 fixes and run the full CI matrix. When a Kafka 5.x line starts on `main`, `4.x` is branched off and `3.x` leaves
 maintenance. `2.x` is out of maintenance: it stays buildable on the PHP versions CI covers, but takes no further
 work unless the owner asks for it. The lines below 2.0 (`0.8.x`, `0.9.x`, `0.10.x`, `0.11.x`, `1.x`) are
@@ -39,8 +39,9 @@ versions** of KIP-482 (compact strings, bytes and arrays, tagged fields, request
 Kafka 2.4), the **leader epochs** of KIP-320 (2.1), the **zstd** codec of KIP-110 (2.1), the api keys 43 to 64 and
 the error codes 72-104.
 
-**The 4.x line started from `main` as it stood at the end of 3.x** and speaks **Kafka 4.3.1**, the last 4.x
-release available when the line started (epic #213) — Kafka 4.x is **KRaft only**, and 4.0 is the first release that
+**The 4.x line started from `main` as it stood at the end of 3.x** and speaks **Kafka 4.4.0**: it was built on
+Kafka 4.3.1, the last 4.x release available when the line started (epic #213), and moved onto 4.4.0 by the 4.4
+milestone (PR #250) — Kafka 4.x is **KRaft only**, and 4.0 is the first release that
 stops serving protocol versions a 3.9.2 node still answers (KIP-896), so the lower-line frames the compliance suite
 replays are no longer frames a 4.x node accepts. What Kafka 4.x adds over 3.9.2 api by api is derived from the message specs at the release tags by
 the foundation ticket, on the plan in `docs/handoff/main.md`. For this line rule 4 means "start from the 3.9.2 class of

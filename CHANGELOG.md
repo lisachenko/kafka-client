@@ -4,14 +4,14 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `main` is the **4.x line** and speaks the **Kafka 4.3.1 wire protocol** — everything Kafka 4.0 to 4.3 added,
+own: `main` is the **4.x line** and speaks the **Kafka 4.4.0 wire protocol** — everything Kafka 4.0 to 4.4 added,
 the KIP-848 consumer protocol and the KIP-932 share consumer — built one Kafka minor at a time on top of the finished
-3.x line, verified against a Kafka **4.3.1** KRaft node, and complete. The lines
+3.x line, verified against a Kafka **4.3.1** KRaft node and, from the 4.4 milestone on, a **4.4.0** one. The lines
 below it are `3.x` (Kafka 3.9.2), `2.x` (Kafka 2.8.2) and the archived lines below 2.0; every line is merged upwards
 into the next one, so the sections below accumulate: what a line added stays true of every line above it.
 
-Unreleased — the 4.x line (Kafka 4.0 to 4.3 and the KIP-932 share consumer, complete at 4.3.1)
------------------------------------------------------------------------------------------------
+Unreleased — the 4.x line (Kafka 4.0 to 4.4 and the KIP-932 share consumer, at 4.4.0)
+--------------------------------------------------------------------------------------
 
 The 4.x line, built on `main` on top of the finished 3.x line (branched off as `3.x`), on the integration branch
 `feature/beautiful-johnson-elv5yg` (epic [#213](https://github.com/lisachenko/kafka-client/issues/213)). The plan
@@ -71,6 +71,58 @@ brought every one of them to what the node answers (see "Kafka 4.0 — Changed" 
   [docs/handoff/3.x.md](docs/handoff/3.x.md) and the plan of the 4.x line took its place as
   `docs/handoff/main.md`; the tables of tag points and milestone commits left the handoff records — the tags of
   the repository are the record.
+
+### Kafka 4.4 — Added
+
+The 4.4 milestone, after the release of Kafka 4.4.0 (2026-10-13), on the integration branch
+`feature/exciting-bell-vw8pwk` (pull request [#250](https://github.com/lisachenko/kafka-client/pull/250)).
+
+- **The Kafka 4.4.0 node** — `docker/kafka-4.4.0/` replaces `docker/kafka-4.3.1/` (the same KRaft combined node with a
+  dynamic quorum); it finalizes `metadata.version` **4.4-IV2** (33) and `share.version` **2**, every other feature as
+  before. `docker-compose.yml` builds it as the container `kafka-4-4-0`.
+- **The api keys 93 and 94** (`STREAMS_GROUP_TOPOLOGY_DESCRIPTION_UPDATE`, `UNREGISTER_CONTROLLER`) and **the error
+  codes 134–136** with one exception class each: `GroupDeletionFailedException`,
+  `StreamsTopologyDescriptionUpdateFailedException`, `ControllerIdNotRegisteredException` (`Errors.java` @ 4.4.0).
+- **ApiVersions v5** (KIP-1242, misrouted connections): `ApiVersionsRequest` names the cluster id and node id the
+  connection is meant to reach (`ApiVersionsRequest::addressedTo()`, both ids or neither — the node answers half a
+  pair with the 42); `ApiVersionsRequestV4`/`ResponseV4` keep the version 4.
+- **`Cluster::rebootstrap()`**, a reload from `bootstrap.servers` that keeps the old metadata when nobody answers.
+- **TxnOffsetCommit v6** (KIP-1319): every topic named by its id. `TxnOffsetCommitRequestV5`/`ResponseV5`,
+  `TxnOffsetCommitRequestTopicV2` and `TxnOffsetCommitResponseTopicV0` keep the topics named by name; the response has
+  `topicsByName()`.
+- **UnregisterController** (key 94, KIP-1312) and **`AdminClient::unregisterController(int $controllerId)`**: the 136
+  of an unknown id, the 31 of a principal without ALTER on the cluster.
+- **DeleteGroups v3** (KIP-1331): `DeleteGroupsResponseGroup::$errorMessage`; `DeleteGroupsRequestV2`/`ResponseV2` and
+  `DeleteGroupsResponseGroupV2` keep the version 2.
+- **The share-group dead-letter queue** of KIP-1191 (`share.version` 2), measured end to end — no wire change, group
+  and topic configs only: `ShareGroupDeadLetterQueueTest` and `examples/share-dead-letter-queue.php`.
+- **CIDR host patterns in ACLs** (KIP-1276, `metadata.version` 4.4-IV1), measured end to end — no wire change: a block
+  is stored verbatim, an invalid one is the 42, and the authorizer matches the client address against it.
+- **37 wire vectors** captured on the `kafka-4-4-0` node (**323** on the 4.x line, **1458** in **75** files):
+  ApiVersions v5 (9), TxnOffsetCommit v6 (14), UnregisterController (6, a new file), the CIDR ACLs (6), DeleteGroups v3
+  (2).
+
+### Kafka 4.4 — Changed
+
+- **The protocol document is `docs/protocol/4.4.md`**, renamed from `docs/protocol/4.3.md` with every `@see`; it has a
+  new section "What 4.4.0 adds to the 4.3.1 protocol" and the api-key table of the node — **77 keys**.
+- **`ApiVersionsRequest::CLIENT_SOFTWARE_VERSION` is `4.4`**, and the client sends **ApiVersions v5**:
+  `Client::apiVersions()`, `AdminClient::getApiVersions()` and `AdminClient::describeFeatures()` name
+  `Cluster::clusterId()` and the node id; a **129** closes the connection, rebootstraps the cluster and throws
+  `RebootstrapRequiredException`. `describeFeatures()` asks the nodes one by one and stops at a 129.
+- **The transactional producer sends TxnOffsetCommit v6** inside a transaction of the protocol v2 when the cluster
+  knows every topic id, v5 otherwise and v4 for the protocol v1; it reloads the metadata on the 100, and the 69 and
+  the 113 a v6 answers (where a v5 answers the 22) make the transaction abortable. Building a
+  `TxnOffsetCommitRequest` directly now takes the topic ids, and one without them throws `UnknownTopicIdException`.
+- **`deleteConsumerGroups()` and `deleteShareGroups()` send DeleteGroups v3** and put a non-empty message of the
+  broker into the exception context as `error`.
+- **A KIP-848 consumer whose group is gone leaves without an exception**: the 69 of a leave is ignored, as the Java
+  client of 4.4.0 does.
+- **`ApiVersionProbeTest` pins the 4.4.0 table** (the v1 frames of the streams apis 88 and 89, the 35 of key 93 on a
+  node without a topology description plugin, the 136 of key 94), and the inherited suite follows the node: the
+  feature levels 33 and 2, the absolute compaction link of `TopicConfig` @ 4.4.0, the 42 of a ReadShareGroupState
+  with a negative leader epoch, the 69 of a DeleteGroups of the empty group id.
+- `CLAUDE.md`, `README.md`, the CI workflow and every fixture and example point at the 4.4.0 node.
 
 ### The share consumer (KIP-932) — Added
 
