@@ -44,6 +44,9 @@ class AccessControlEntryFilter implements BinarySchemaInterface
 
     /**
      * Host to match, or null for every host
+     *
+     * The filter compares the host string of an acl: the filter `10.0.0.0/8` finds the acl of that CIDR block
+     * (KIP-1276, Kafka 4.4), the address `10.1.2.3` inside it does not.
      */
     public ?string $host;
 

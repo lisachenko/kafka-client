@@ -176,8 +176,10 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV5;
 use Throwable;
 
 /**
@@ -3546,6 +3548,17 @@ class Client
      * the Java `TxnOffsetCommitRequest.Builder` @ 4.0.0 caps the version at 4 unless the transaction protocol v2 is
      * enabled - hence the default.
      *
+     * **With `$transactionV2` and a known id for every topic the version sent is the 6 of Kafka 4.4** (KIP-1319),
+     * which names every topic by its **id**: the ids are resolved through the cluster ({@see Cluster::topicIdsOf()}),
+     * and a commit that names a topic whose id the cluster does not know goes out as the version 5 instead, as the Java
+     * `TransactionManager` @ 4.4.0 does (`TxnOffsetCommitRequest.Builder.forTopicNames()` unless every topic has an
+     * id). A partition answered with the **100** `UnknownTopicId` - an id that went stale - reloads the metadata before
+     * the error is thrown, so that the retry of {@see RetryPolicy} names the topic anew; the answer is read back by
+     * name. The version 6 also tells apart what the version 5 reports as the 22 `IllegalGeneration`: the **69**
+     * `GroupIdNotFound` of a group the coordinator does not know and the **113** `StaleMemberEpoch` of a member of
+     * the consumer protocol of KIP-848 whose epoch it does not accept - the `generation_id_or_member_epoch` of the
+     * request carries the member epoch of such a member ({@see ConsumerGroupMetadata::$generationId}).
+     *
      * @param Node               $coordinatorNode    **Group** coordinator of `$groupId`
      * @param string             $transactionalId    `transactional.id` of the producer
      * @param string             $groupId            Consumer group whose offsets are committed
@@ -3554,9 +3567,12 @@ class Client
      * @param ConsumerGroupMetadata|null $groupMetadata Who the consumer is inside the group (KIP-447, version 3);
      *        `null` is the "not a member" commit of every version below 3
      * @param bool $transactionV2 Whether the transaction runs the protocol v2 of KIP-890 part 2 (Kafka 4.0), whose
-     *        version 5 enrols the offsets partition itself; `false` sends the version 4 of the protocol v1
+     *        versions 5 and 6 enrol the offsets partition themselves; `false` sends the version 4 of the protocol v1
      *
      * @throws KafkaException The error code of the first partition that was refused
+     * @throws UnknownTopicIdException If a topic id stayed stale after every retry (100, version 6)
+     *
+     * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
      */
     public function txnOffsetCommit(
         Node $coordinatorNode,
@@ -3567,27 +3583,55 @@ class Client
         ?ConsumerGroupMetadata $groupMetadata = null,
         bool $transactionV2 = false
     ): void {
-        $requestClass  = $transactionV2 ? TxnOffsetCommitRequest::class : TxnOffsetCommitRequestV4::class;
-        $responseClass = $transactionV2 ? TxnOffsetCommitResponse::class : TxnOffsetCommitResponseV4::class;
+        // The protocol v1 stops at the version 4; the protocol v2 names its topics by id when it knows every id
+        [$topicIds, $useTopicIds] = $transactionV2
+            ? $this->offsetTopicIdsOf(array_keys($topicPartitionOffsets))
+            : [[], false];
+        [$requestClass, $responseClass] = match (true) {
+            !$transactionV2 => [TxnOffsetCommitRequestV4::class, TxnOffsetCommitResponseV4::class],
+            $useTopicIds    => [TxnOffsetCommitRequest::class, TxnOffsetCommitResponse::class],
+            default         => [TxnOffsetCommitRequestV5::class, TxnOffsetCommitResponseV5::class],
+        };
 
         $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): TxnOffsetCommitRequest => new $requestClass(
+            function (int $correlationId) use (
+                &$topicIds,
+                $useTopicIds,
+                $requestClass,
                 $transactionalId,
                 $groupId,
-                $producerIdAndEpoch->producerId,
-                $producerIdAndEpoch->epoch,
+                $producerIdAndEpoch,
                 $topicPartitionOffsets,
-                $groupMetadata,
-                $this->configuration[ClientConfig::CLIENT_ID],
-                $correlationId
-            ),
+                $groupMetadata
+            ): TxnOffsetCommitRequest {
+                if ($useTopicIds) {
+                    // Every round names the ids the cluster holds now: a retry after a 100 has reloaded it
+                    $topicIds = $this->cluster->topicIdsOf(array_keys($topicIds)) + $topicIds;
+                }
+
+                return new $requestClass(
+                    $transactionalId,
+                    $groupId,
+                    $producerIdAndEpoch->producerId,
+                    $producerIdAndEpoch->epoch,
+                    $topicPartitionOffsets,
+                    $groupMetadata,
+                    $this->configuration[ClientConfig::CLIENT_ID],
+                    $correlationId,
+                    $topicIds
+                );
+            },
             $responseClass,
-            static function (TxnOffsetCommitResponse $response) use ($transactionalId, $groupId): void {
-                foreach ($response->topics as $topic => $topicResult) {
+            function (TxnOffsetCommitResponse $response) use ($transactionalId, $groupId, &$topicIds): void {
+                foreach ($response->topicsByName($topicIds) as $topic => $topicResult) {
                     /** @var TxnOffsetCommitResponsePartition $partitionResult */
                     foreach ($topicResult->partitions as $partitionId => $partitionResult) {
                         if ($partitionResult->errorCode !== KafkaException::NO_ERROR) {
+                            if ($partitionResult->errorCode === KafkaException::UNKNOWN_TOPIC_ID) {
+                                $this->reloadCluster();
+                            }
+
                             throw KafkaException::fromCode($partitionResult->errorCode, [
                                 'transactionalId' => $transactionalId,
                                 'groupId'         => $groupId,

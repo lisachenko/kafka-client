@@ -435,6 +435,74 @@
                 "errorMessage": "Request Request(processor=6, connectionId=172.18.0.2:9094-172.18.0.1:46252-22, session=org.apache.kafka.network.Session@b806f3c, listenerName=ListenerName(SASL_PLAINTEXT), securityProtocol=SASL_PLAINTEXT, buffer=null, envelope=None) is not authorized.",
                 "resources": []
             }
+        },
+        {
+            "id": "describeacls.request.v3.cidr",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeAcls request v3 for the acls of `User:acltest` on the LITERAL topic `t4-44-cidr-vectors`, every host, operation and permission type.",
+            "hex": "00000043001d00030000114600126b61666b612d636c69656e742d74342d343400021374342d34342d636964722d766563746f7273030d557365723a61636c7465737400010100",
+            "fields": {
+                "messageSize": 67,
+                "apiKey": 29,
+                "apiVersion": 3,
+                "correlationId": 4422,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "patternFilter": {
+                    "resourceType": 2,
+                    "resourceName": "t4-44-cidr-vectors",
+                    "patternType": 3
+                },
+                "entryFilter": {
+                    "principal": "User:acltest",
+                    "host": null,
+                    "operation": 1,
+                    "permissionType": 1
+                }
+            }
+        },
+        {
+            "id": "describeacls.response.v3.cidr",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The two acls of the topic with their hosts as they were written, `10.0.0.0/8` and `2001:db8::/32`: a CIDR block is stored and described verbatim.",
+            "hex": "0000005e00001146000000000000000102021374342d34342d636964722d766563746f727303030d557365723a61636c746573740b31302e302e302e302f380303000d557365723a61636c746573740e323030313a6462383a3a2f33320803000000",
+            "fields": {
+                "messageSize": 94,
+                "correlationId": 4422,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "resources": [
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-44-cidr-vectors",
+                            "patternType": 3
+                        },
+                        "acls": [
+                            {
+                                "principal": "User:acltest",
+                                "host": "10.0.0.0/8",
+                                "operation": 3,
+                                "permissionType": 3
+                            },
+                            {
+                                "principal": "User:acltest",
+                                "host": "2001:db8::/32",
+                                "operation": 8,
+                                "permissionType": 3
+                            }
+                        ]
+                    }
+                ]
+            }
         }
     ]
 }

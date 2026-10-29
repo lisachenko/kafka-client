@@ -17,7 +17,9 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
@@ -29,8 +31,10 @@ use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnTransaction;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestPartition;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
+use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV2;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
+use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarker;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarkerV1;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
@@ -73,12 +77,14 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV2;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV2;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV5;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequest;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequestV0;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequestV1;
@@ -90,7 +96,7 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV1;
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
  * @see docs/protocol/4.4.md, sections "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)",
- *      "EndTxn API (key 26, v0 to v5)", "WriteTxnMarkers API (key 27, v0 to v2)" and "TxnOffsetCommit API (key 28, v0 to v5)"
+ *      "EndTxn API (key 26, v0 to v5)", "WriteTxnMarkers API (key 27, v0 to v2)" and "TxnOffsetCommit API (key 28, v0 to v6)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
 #[CoversClass(AddPartitionsToTxnRequestV4::class)]
@@ -149,6 +155,10 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV1;
 #[CoversClass(TxnOffsetCommitResponseTopic::class)]
 #[CoversClass(TxnOffsetCommitResponsePartition::class)]
 #[CoversClass(TxnOffsetCommitRequestV4::class)]
+#[CoversClass(TxnOffsetCommitRequestV5::class)]
+#[CoversClass(TxnOffsetCommitResponseV5::class)]
+#[CoversClass(TxnOffsetCommitRequestTopicV2::class)]
+#[CoversClass(TxnOffsetCommitResponseTopicV0::class)]
 #[CoversClass(TxnOffsetCommitRequestV3::class)]
 #[CoversClass(TxnOffsetCommitRequestV2::class)]
 #[CoversClass(TxnOffsetCommitResponseV4::class)]
@@ -878,7 +888,7 @@ final class TransactionApiTest extends TestCase
      */
     public function testAProducerThatIsNoMemberSendsTheGenerationMinusOneAndAnEmptyMemberId(): void
     {
-        $request = new TxnOffsetCommitRequest(
+        $request = new TxnOffsetCommitRequestV5(
             'tx-1',
             'my-group',
             42,
@@ -908,7 +918,7 @@ final class TransactionApiTest extends TestCase
         ];
 
         foreach ($answers as $errorCode => $hex) {
-            $response = TxnOffsetCommitResponse::unpack(new StringStream((string) hex2bin($hex)));
+            $response = TxnOffsetCommitResponseV3::unpack(new StringStream((string) hex2bin($hex)));
 
             self::assertSame($errorCode, $response->topics['t4-25-vectors']->partitions[0]->errorCode);
             self::assertSame($hex, bin2hex((string) $response), 'and it survives a round trip');
@@ -1054,7 +1064,7 @@ final class TransactionApiTest extends TestCase
                 new EndTxnRequestV4('tx-1', 42, 3, EndTxnRequest::ABORT, 'test', 7),
             ],
             'TxnOffsetCommit' => [
-                new TxnOffsetCommitRequest('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
+                new TxnOffsetCommitRequestV5('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
                 new TxnOffsetCommitRequestV4('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
             ],
         ];
@@ -1111,13 +1121,142 @@ final class TransactionApiTest extends TestCase
         $hex = '0000001a' . '00000007' . '00' . '00000000' . '02' . '06746f706963' . '02' . '00000000' . '0078'
             . '00' . '00' . '00';
 
-        $new = TxnOffsetCommitResponse::unpack(new StringStream((string) hex2bin($hex)));
+        $new = TxnOffsetCommitResponseV5::unpack(new StringStream((string) hex2bin($hex)));
         $old = TxnOffsetCommitResponseV4::unpack(new StringStream((string) hex2bin($hex)));
 
         self::assertSame(5, $new::VERSION);
         self::assertSame(120, $new->topics['topic']->partitions[0]->errorCode);
         self::assertSame($hex, bin2hex((string) $new));
         self::assertSame(bin2hex((string) $old), bin2hex((string) $new));
+    }
+
+    /**
+     * TxnOffsetCommit v6 (Kafka 4.4, KIP-1319) names every topic by its id and by nothing else
+     *
+     * `TxnOffsetCommitRequest.json` @ 4.4.0: the `Name` of a topic entry is `"versions": "0-5"`, the new `TopicId`
+     * `"6+"`; the rest of the frame is the one of the version 5, field for field.
+     */
+    public function testTheVersionSixOfTxnOffsetCommitNamesTheTopicsById(): void
+    {
+        $topicId = (string) hex2bin('c9ea04c005a94a6284fa9dc3ef9fa177');
+        $request = new TxnOffsetCommitRequest(
+            'tx-1',
+            'my-group',
+            42,
+            3,
+            ['topic' => [0 => 17]],
+            new ConsumerGroupMetadata('my-group', 7, 'member-1'),
+            'test',
+            11,
+            ['topic' => $topicId, 'other' => str_repeat("\x01", 16)]
+        );
+        $versionFive = new TxnOffsetCommitRequestV5(
+            'tx-1',
+            'my-group',
+            42,
+            3,
+            ['topic' => [0 => 17]],
+            new ConsumerGroupMetadata('my-group', 7, 'member-1'),
+            'test',
+            11
+        );
+
+        $expected = self::sized(
+            '001c' . '0006' . '0000000b' . '0004' . bin2hex('test') . '00'
+            . '05' . bin2hex('tx-1') . '09' . bin2hex('my-group') . '000000000000002a' . '0003'
+            . '00000007' . '09' . bin2hex('member-1') . '00'
+            . '02' . bin2hex($topicId) . '02' . '00000000' . '0000000000000011' . 'ffffffff' . '00' . '00'
+            . '00' . '00'
+        );
+
+        self::assertSame(6, $request->getApiVersion());
+        self::assertSame($expected, bin2hex((string) $request));
+        self::assertSame(['topic' => $topicId, 'other' => str_repeat("\x01", 16)], $request->getTopicIds());
+
+        $five   = bin2hex((string) $versionFive);
+        $byName = str_replace('06' . bin2hex('topic'), bin2hex($topicId), $five);
+        self::assertSame(
+            substr($expected, 8, 4) . '0005' . substr($expected, 16),
+            substr($byName, 8),
+            'the version 5 frame with the id in place of the name is the version 6 frame but for its version field'
+        );
+        self::assertStringContainsString(
+            '02' . '06' . bin2hex('topic') . '02' . '00000000',
+            $five,
+            'the version 5 names the topic with a compact string where the version 6 writes the 16 bytes of the id'
+        );
+        self::assertSame(
+            bin2hex((string) $request),
+            bin2hex((string) TxnOffsetCommitRequest::unpack(new StringStream((string) $request))),
+            'and the frame survives a round trip'
+        );
+    }
+
+    /**
+     * A version 6 frame can not name a topic whose id the caller does not know, and refuses to be built
+     */
+    public function testATxnOffsetCommitOfVersionSixWithoutTheIdOfATopicIsRefused(): void
+    {
+        $this->expectException(UnknownTopicIdException::class);
+
+        new TxnOffsetCommitRequest('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 11, []);
+    }
+
+    /**
+     * An entry built for one version is repacked for another: the name of a v6 entry reaches the wire of a v5 frame,
+     * and the id of a ready-made entry is what a v6 frame names it with
+     */
+    public function testAReadyMadeTopicEntryIsRepackedForTheVersionOfTheRequest(): void
+    {
+        $topicId = str_repeat("\x07", 16);
+        $entry   = new TxnOffsetCommitRequestTopic('topic', [0 => 17], $topicId);
+
+        $five = new TxnOffsetCommitRequestV5('tx-1', 'my-group', 42, 3, ['topic' => $entry], null, 'test', 11);
+        $six  = new TxnOffsetCommitRequest('tx-1', 'my-group', 42, 3, ['topic' => $entry], null, 'test', 11);
+
+        self::assertStringContainsString('06' . bin2hex('topic'), bin2hex((string) $five));
+        self::assertStringNotContainsString(bin2hex($topicId), bin2hex((string) $five));
+        self::assertStringContainsString(bin2hex($topicId), bin2hex((string) $six));
+        self::assertStringNotContainsString(bin2hex('topic'), bin2hex((string) $six));
+    }
+
+    /**
+     * The answer of the version 6 names its topics by id, and is read back by the names of the request
+     */
+    public function testTheVersionSixAnswerOfTxnOffsetCommitIsReadBackByName(): void
+    {
+        $known   = (string) hex2bin('c9ea04c005a94a6284fa9dc3ef9fa177');
+        $unknown = str_repeat("\x02", 16);
+        $hex     = self::sized(
+            '00000007' . '00' . '00000000' . '03'
+            . bin2hex($known) . '02' . '00000000' . '0000' . '00' . '00'
+            . bin2hex($unknown) . '02' . '00000001' . '0064' . '00' . '00'
+            . '00'
+        );
+
+        $response = TxnOffsetCommitResponse::unpack(new StringStream((string) hex2bin($hex)));
+
+        self::assertSame(6, $response::VERSION);
+        self::assertSame([0, 1], array_keys($response->topics), 'a list: the entries carry no name');
+        self::assertSame($known, $response->topics[0]->topicId);
+        self::assertSame('', $response->topics[0]->topic);
+        self::assertSame($hex, bin2hex((string) $response));
+
+        $byName = $response->topicsByName(['t4-topic' => $known]);
+
+        self::assertSame(['t4-topic', Uuid::toString($unknown)], array_keys($byName));
+        self::assertSame(KafkaException::NO_ERROR, $byName['t4-topic']->partitions[0]->errorCode);
+        self::assertSame(
+            KafkaException::UNKNOWN_TOPIC_ID,
+            $byName[Uuid::toString($unknown)]->partitions[1]->errorCode,
+            'an id the node does not know is the 100'
+        );
+
+        $versionFive = TxnOffsetCommitResponseV5::unpack(new StringStream((string) hex2bin(
+            '0000001a' . '00000007' . '00' . '00000000' . '02' . '06746f706963' . '02' . '00000000' . '0016'
+            . '00' . '00' . '00'
+        )));
+        self::assertSame(['topic'], array_keys($versionFive->topicsByName()), 'below 6 the answer is named already');
     }
 
     /**

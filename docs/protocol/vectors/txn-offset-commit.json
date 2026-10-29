@@ -1,8 +1,8 @@
 {
     "api": "txn-offset-commit",
     "apiKey": 28,
-    "section": "TxnOffsetCommit API (key 28, v0 to v5)",
-    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v5), replayed by tests/Compliance.",
+    "section": "TxnOffsetCommit API (key 28, v0 to v6)",
+    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v6), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "txnoffsetcommit.request.v0",
@@ -609,7 +609,7 @@
         {
             "id": "txnoffsetcommit.request.v5",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV5",
             "version": 5,
             "source": "broker",
             "description": "TxnOffsetCommit request v5 (Kafka 4.0, KIP-890 part 2): the very same commit a moment later, byte for byte the frame above but for the version field and the correlation id. \"Version 5 is the same as version 4\" (`TxnOffsetCommitRequest.json` @ 4.0.0) - and it is the switch of the protocol v2: a version above 4 is `addPartition`, the group coordinator enrols the offsets partition into the transaction itself.",
@@ -646,7 +646,7 @@
         {
             "id": "txnoffsetcommit.response.v5",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV5",
             "version": 5,
             "source": "broker",
             "description": "TxnOffsetCommit answer v5: the code **0** for the commit the version 4 was refused the 120 for. The offsets partition is now part of the transaction, which this request has started - no AddOffsetsToTxn and no AddPartitionsToTxn went to the transaction coordinator at all.",
@@ -667,6 +667,467 @@
                         ]
                     }
                 }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "TxnOffsetCommit request v6 (Kafka 4.4, KIP-1319) of the producer `t4-44-vectors-tx` - producer id 1000, epoch 0, right after its InitProducerId and without any AddOffsetsToTxn - for the group `t4-44-vectors-group` without a membership: the generation -1, the empty member id, the null instance id, and one topic entry that names `t4-44-vectors` by its **topic id**, the 16 raw bytes of the uuid in place of the compact string of the name, with the offset 7, the leader epoch -1 and the null metadata of partition 0.",
+            "hex": "00000078001c00060000113000126b61666b612d636c69656e742d74342d3434001174342d34342d766563746f72732d74781474342d34342d766563746f72732d67726f757000000000000003e80000ffffffff010002db63ec8163fb47da9b9192afe75cbc6d02000000000000000000000007ffffffff00000000",
+            "fields": {
+                "messageSize": 120,
+                "apiKey": 28,
+                "apiVersion": 6,
+                "correlationId": 4400,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-44-vectors-tx",
+                "groupId": "t4-44-vectors-group",
+                "producerId": 1000,
+                "producerEpoch": 0,
+                "generationId": -1,
+                "memberId": "",
+                "groupInstanceId": null,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "db63ec8163fb47da9b9192afe75cbc6d"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 7,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The answer names the topic by the same id and nothing else, the partition with the code **0**. Like the version 5 the version 6 is `addPartition`: the group coordinator enrolled the `__consumer_offsets` partition of the group into the transaction this request started, and the EndTxn v5 that commits it makes the offset 7 visible to an OffsetFetch.",
+            "hex": "0000002400001130000000000002db63ec8163fb47da9b9192afe75cbc6d02000000000000000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 4400,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "db63ec8163fb47da9b9192afe75cbc6d"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v6.unknown-topic-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "The same producer inside the same transaction, the topic entry naming an id the node does not know - `8f3c2a5e0b6d4e1f9a7c3b2d1e0f4a5b`, made up for the frame - with the offset 8.",
+            "hex": "00000078001c00060000113100126b61666b612d636c69656e742d74342d3434001174342d34342d766563746f72732d74781474342d34342d766563746f72732d67726f757000000000000003e80000ffffffff0100028f3c2a5e0b6d4e1f9a7c3b2d1e0f4a5b02000000000000000000000008ffffffff00000000",
+            "fields": {
+                "messageSize": 120,
+                "apiKey": 28,
+                "apiVersion": 6,
+                "correlationId": 4401,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-44-vectors-tx",
+                "groupId": "t4-44-vectors-group",
+                "producerId": 1000,
+                "producerEpoch": 0,
+                "generationId": -1,
+                "memberId": "",
+                "groupInstanceId": null,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "8f3c2a5e0b6d4e1f9a7c3b2d1e0f4a5b"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 8,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v6.unknown-topic-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The **100** `UNKNOWN_TOPIC_ID` on the partition, the id echoed back: `KafkaApis.handleTxnOffsetCommitRequest` @ 4.4.0 resolves the ids through the metadata cache of the node before it authorizes the topics and answers an id it can not resolve itself, without asking the group coordinator.",
+            "hex": "00000024000011310000000000028f3c2a5e0b6d4e1f9a7c3b2d1e0f4a5b02000000000064000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 4401,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "8f3c2a5e0b6d4e1f9a7c3b2d1e0f4a5b"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 100
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v6.group-id-not-found",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "A commit for the group `t4-44-vectors-no-such-group`, which does not exist, in the name of a member of it - the generation 5 and the member id `t4-44-no-such-member` - under the epoch 1 the commit of the first transaction bumped the producer to.",
+            "hex": "00000094001c00060000113200126b61666b612d636c69656e742d74342d3434001174342d34342d766563746f72732d74781c74342d34342d766563746f72732d6e6f2d737563682d67726f757000000000000003e80001000000051574342d34342d6e6f2d737563682d6d656d6265720002db63ec8163fb47da9b9192afe75cbc6d02000000000000000000000009ffffffff00000000",
+            "fields": {
+                "messageSize": 148,
+                "apiKey": 28,
+                "apiVersion": 6,
+                "correlationId": 4402,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-44-vectors-tx",
+                "groupId": "t4-44-vectors-no-such-group",
+                "producerId": 1000,
+                "producerEpoch": 1,
+                "generationId": 5,
+                "memberId": "t4-44-no-such-member",
+                "groupInstanceId": null,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "db63ec8163fb47da9b9192afe75cbc6d"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 9,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v6.group-id-not-found",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The **69** `GROUP_ID_NOT_FOUND`: from the version 6 on `OffsetMetadataManager.validateTransactionalOffsetCommit` @ 4.4.0 lets the `GroupIdNotFoundException` through (`TxnOffsetCommitRequest.supportsGroupIdNotFoundError`). The generation -1 would have created a simple group instead.",
+            "hex": "0000002400001132000000000002db63ec8163fb47da9b9192afe75cbc6d02000000000045000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 4402,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "db63ec8163fb47da9b9192afe75cbc6d"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 69
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v5.group-id-not-found",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV5",
+            "version": 5,
+            "source": "broker",
+            "description": "The same commit at the version 5, which names the topic.",
+            "hex": "00000092001c00050000113300126b61666b612d636c69656e742d74342d3434001174342d34342d766563746f72732d74781c74342d34342d766563746f72732d6e6f2d737563682d67726f757000000000000003e80001000000051574342d34342d6e6f2d737563682d6d656d62657200020e74342d34342d766563746f727302000000000000000000000009ffffffff00000000",
+            "fields": {
+                "messageSize": 146,
+                "apiKey": 28,
+                "apiVersion": 5,
+                "correlationId": 4403,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-44-vectors-tx",
+                "groupId": "t4-44-vectors-no-such-group",
+                "producerId": 1000,
+                "producerEpoch": 1,
+                "generationId": 5,
+                "memberId": "t4-44-no-such-member",
+                "groupInstanceId": null,
+                "topics": {
+                    "t4-44-vectors": {
+                        "topic": "t4-44-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 9,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v5.group-id-not-found",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV5",
+            "version": 5,
+            "source": "broker",
+            "description": "The **22** `ILLEGAL_GENERATION`: the legacy mapping of an unknown group that every version below 6 keeps.",
+            "hex": "00000022000011330000000000020e74342d34342d766563746f727302000000000016000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 4403,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-44-vectors": {
+                        "topic": "t4-44-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 22
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v6.stale-member-epoch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "A commit in the name of the member of the KIP-848 group `t4-44-vectors-848` that joined it with a ConsumerGroupHeartbeat and holds the member epoch 2, with the epoch **3** - one above it - in the field `generation_id_or_member_epoch`, the `generationId` of this client.",
+            "hex": "0000008c001c00060000113400126b61666b612d636c69656e742d74342d3434001174342d34342d766563746f72732d74781274342d34342d766563746f72732d38343800000000000003e80001000000031774342d34342d353736386633623862386636613937320002db63ec8163fb47da9b9192afe75cbc6d0200000000000000000000000affffffff00000000",
+            "fields": {
+                "messageSize": 140,
+                "apiKey": 28,
+                "apiVersion": 6,
+                "correlationId": 4404,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-44-vectors-tx",
+                "groupId": "t4-44-vectors-848",
+                "producerId": 1000,
+                "producerEpoch": 1,
+                "generationId": 3,
+                "memberId": "t4-44-5768f3b8b8f6a972",
+                "groupInstanceId": null,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "db63ec8163fb47da9b9192afe75cbc6d"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 10,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v6.stale-member-epoch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The **113** `STALE_MEMBER_EPOCH`: `ConsumerGroup.validateOffsetCommit` @ 4.4.0 refuses an epoch above the one the member holds, and the version 6 lets the code through (`supportsStaleMemberEpochError`).",
+            "hex": "0000002400001134000000000002db63ec8163fb47da9b9192afe75cbc6d02000000000071000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 4404,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "db63ec8163fb47da9b9192afe75cbc6d"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 113
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v5.stale-member-epoch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV5",
+            "version": 5,
+            "source": "broker",
+            "description": "The same commit with the epoch 3 at the version 5.",
+            "hex": "0000008a001c00050000113500126b61666b612d636c69656e742d74342d3434001174342d34342d766563746f72732d74781274342d34342d766563746f72732d38343800000000000003e80001000000031774342d34342d3537363866336238623866366139373200020e74342d34342d766563746f72730200000000000000000000000affffffff00000000",
+            "fields": {
+                "messageSize": 138,
+                "apiKey": 28,
+                "apiVersion": 5,
+                "correlationId": 4405,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-44-vectors-tx",
+                "groupId": "t4-44-vectors-848",
+                "producerId": 1000,
+                "producerEpoch": 1,
+                "generationId": 3,
+                "memberId": "t4-44-5768f3b8b8f6a972",
+                "groupInstanceId": null,
+                "topics": {
+                    "t4-44-vectors": {
+                        "topic": "t4-44-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 10,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v5.stale-member-epoch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV5",
+            "version": 5,
+            "source": "broker",
+            "description": "The **22** `ILLEGAL_GENERATION`, the code a version below 6 is answered for the stale member epoch.",
+            "hex": "00000022000011350000000000020e74342d34342d766563746f727302000000000016000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 4405,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-44-vectors": {
+                        "topic": "t4-44-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 22
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v6.member-epoch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "The same commit with the member epoch 2 the coordinator holds for the member.",
+            "hex": "0000008c001c00060000113600126b61666b612d636c69656e742d74342d3434001174342d34342d766563746f72732d74781274342d34342d766563746f72732d38343800000000000003e80001000000021774342d34342d353736386633623862386636613937320002db63ec8163fb47da9b9192afe75cbc6d0200000000000000000000000affffffff00000000",
+            "fields": {
+                "messageSize": 140,
+                "apiKey": 28,
+                "apiVersion": 6,
+                "correlationId": 4406,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-44-vectors-tx",
+                "groupId": "t4-44-vectors-848",
+                "producerId": 1000,
+                "producerEpoch": 1,
+                "generationId": 2,
+                "memberId": "t4-44-5768f3b8b8f6a972",
+                "groupInstanceId": null,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "db63ec8163fb47da9b9192afe75cbc6d"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 10,
+                                "committedLeaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v6.member-epoch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The code **0**: the member epoch of a KIP-848 member stands where a classic member writes its generation. The producer aborted the transaction afterwards.",
+            "hex": "0000002400001136000000000002db63ec8163fb47da9b9192afe75cbc6d02000000000000000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 4406,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "db63ec8163fb47da9b9192afe75cbc6d"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                ]
             }
         }
     ]
