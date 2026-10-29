@@ -2017,6 +2017,645 @@
                     }
                 }
             }
+        },
+        {
+            "id": "apiversions.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "ApiVersions request **v5**, the version this client sends since Kafka 4.4 (KIP-1242): the v4 frame with the `cluster_id` of the 4.4.0 node (a compact nullable string, 22 + 1) and its `node_id` 1 behind the two KIP-511 strings - the cluster and the node the connection is meant to reach.",
+            "hex": "00000055001200050000113000126b61666b612d636c69656e742d74312d343400186c6973616368656e6b6f2d6b61666b612d636c69656e7404342e34175672534b637436645365714b4e6d4f7430556c624c670000000100",
+            "fields": {
+                "messageSize": 85,
+                "apiKey": 18,
+                "apiVersion": 5,
+                "correlationId": 4400,
+                "clientId": "kafka-client-t1-44",
+                "headerTaggedFields": [],
+                "clientSoftwareName": "lisachenko-kafka-client",
+                "clientSoftwareVersion": "4.4",
+                "clusterId": "VrSKct6dSeqKNmOt0UlbLg",
+                "nodeId": 1
+            }
+        },
+        {
+            "id": "apiversions.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "What the 4.4.0 node answers that request: the ids name it, so the answer is the full one - the **77 keys** of its client listener, the trailing throttle time and the three tagged fields of KIP-584 with seven supported features, every one finalized at its highest level. The frame is the v4 layout: KIP-1242 added no field to the answer.",
+            "hex": "0000037f0000113000004e00000000000d000001000400120000020001000b0000030000000d0000080002000a0000090001000a00000a0000000600000b0000000900000c0000000400000d0000000500000e0000000500000f000000060000100000000500001100000001000012000000050000130002000700001400010006000015000000020000160000000500001700020004000018000000050000190000000400001a0000000500001b0001000200001c0000000600001d0001000300001e0001000300001f000100030000200001000400002100000002000022000100020000230001000500002400000002000025000000030000260001000300002700010002000028000100020000290001000300002a0000000300002b0000000200002c0000000100002d0000000100002e0000000000002f0000000000003000000001000031000000010000320000000000003300000000000037000000020000390000000200003c0000000200003d00000000000040000000000000410000000000004200000002000044000000010000450000000100004a0000000100004b0000000000004c0001000100004d0001000100004e0001000200004f0001000200005000000001000051000000000000530000000000005400000000000055000000010000560000000000005700000001000058000000010000590000000100005a0000000100005b0000000000005c0000000000005d0000000000005e0000000000000000000300a401080e67726f75702e76657273696f6e00000001000e6b726166742e76657273696f6e0000000100116d657461646174612e76657273696f6e00070021000e73686172652e76657273696f6e00000002001073747265616d732e76657273696f6e0000000100147472616e73616374696f6e2e76657273696f6e000000020021656c696769626c652e6c65616465722e7265706c696361732e76657273696f6e00000001000108000000000000359802a401080e67726f75702e76657273696f6e00010001000e6b726166742e76657273696f6e00010001000e73686172652e76657273696f6e0002000200116d657461646174612e76657273696f6e00210021001073747265616d732e76657273696f6e0001000100147472616e73616374696f6e2e76657273696f6e000200020021656c696769626c652e6c65616465722e7265706c696361732e76657273696f6e0001000100",
+            "fields": {
+                "messageSize": 895,
+                "correlationId": 4400,
+                "errorCode": 0,
+                "apiVersions": {
+                    "0": {
+                        "apiKey": 0,
+                        "minVersion": 0,
+                        "maxVersion": 13
+                    },
+                    "1": {
+                        "apiKey": 1,
+                        "minVersion": 4,
+                        "maxVersion": 18
+                    },
+                    "2": {
+                        "apiKey": 2,
+                        "minVersion": 1,
+                        "maxVersion": 11
+                    },
+                    "3": {
+                        "apiKey": 3,
+                        "minVersion": 0,
+                        "maxVersion": 13
+                    },
+                    "8": {
+                        "apiKey": 8,
+                        "minVersion": 2,
+                        "maxVersion": 10
+                    },
+                    "9": {
+                        "apiKey": 9,
+                        "minVersion": 1,
+                        "maxVersion": 10
+                    },
+                    "10": {
+                        "apiKey": 10,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "11": {
+                        "apiKey": 11,
+                        "minVersion": 0,
+                        "maxVersion": 9
+                    },
+                    "12": {
+                        "apiKey": 12,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "13": {
+                        "apiKey": 13,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "14": {
+                        "apiKey": 14,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "15": {
+                        "apiKey": 15,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "16": {
+                        "apiKey": 16,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "17": {
+                        "apiKey": 17,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "18": {
+                        "apiKey": 18,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "19": {
+                        "apiKey": 19,
+                        "minVersion": 2,
+                        "maxVersion": 7
+                    },
+                    "20": {
+                        "apiKey": 20,
+                        "minVersion": 1,
+                        "maxVersion": 6
+                    },
+                    "21": {
+                        "apiKey": 21,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "22": {
+                        "apiKey": 22,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "23": {
+                        "apiKey": 23,
+                        "minVersion": 2,
+                        "maxVersion": 4
+                    },
+                    "24": {
+                        "apiKey": 24,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "25": {
+                        "apiKey": 25,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "26": {
+                        "apiKey": 26,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "27": {
+                        "apiKey": 27,
+                        "minVersion": 1,
+                        "maxVersion": 2
+                    },
+                    "28": {
+                        "apiKey": 28,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "29": {
+                        "apiKey": 29,
+                        "minVersion": 1,
+                        "maxVersion": 3
+                    },
+                    "30": {
+                        "apiKey": 30,
+                        "minVersion": 1,
+                        "maxVersion": 3
+                    },
+                    "31": {
+                        "apiKey": 31,
+                        "minVersion": 1,
+                        "maxVersion": 3
+                    },
+                    "32": {
+                        "apiKey": 32,
+                        "minVersion": 1,
+                        "maxVersion": 4
+                    },
+                    "33": {
+                        "apiKey": 33,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "34": {
+                        "apiKey": 34,
+                        "minVersion": 1,
+                        "maxVersion": 2
+                    },
+                    "35": {
+                        "apiKey": 35,
+                        "minVersion": 1,
+                        "maxVersion": 5
+                    },
+                    "36": {
+                        "apiKey": 36,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "37": {
+                        "apiKey": 37,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "38": {
+                        "apiKey": 38,
+                        "minVersion": 1,
+                        "maxVersion": 3
+                    },
+                    "39": {
+                        "apiKey": 39,
+                        "minVersion": 1,
+                        "maxVersion": 2
+                    },
+                    "40": {
+                        "apiKey": 40,
+                        "minVersion": 1,
+                        "maxVersion": 2
+                    },
+                    "41": {
+                        "apiKey": 41,
+                        "minVersion": 1,
+                        "maxVersion": 3
+                    },
+                    "42": {
+                        "apiKey": 42,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "43": {
+                        "apiKey": 43,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "44": {
+                        "apiKey": 44,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "45": {
+                        "apiKey": 45,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "46": {
+                        "apiKey": 46,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "47": {
+                        "apiKey": 47,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "48": {
+                        "apiKey": 48,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "49": {
+                        "apiKey": 49,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "50": {
+                        "apiKey": 50,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "51": {
+                        "apiKey": 51,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "55": {
+                        "apiKey": 55,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "57": {
+                        "apiKey": 57,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "60": {
+                        "apiKey": 60,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "61": {
+                        "apiKey": 61,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "64": {
+                        "apiKey": 64,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "65": {
+                        "apiKey": 65,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "66": {
+                        "apiKey": 66,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "68": {
+                        "apiKey": 68,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "69": {
+                        "apiKey": 69,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "74": {
+                        "apiKey": 74,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "75": {
+                        "apiKey": 75,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "76": {
+                        "apiKey": 76,
+                        "minVersion": 1,
+                        "maxVersion": 1
+                    },
+                    "77": {
+                        "apiKey": 77,
+                        "minVersion": 1,
+                        "maxVersion": 1
+                    },
+                    "78": {
+                        "apiKey": 78,
+                        "minVersion": 1,
+                        "maxVersion": 2
+                    },
+                    "79": {
+                        "apiKey": 79,
+                        "minVersion": 1,
+                        "maxVersion": 2
+                    },
+                    "80": {
+                        "apiKey": 80,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "81": {
+                        "apiKey": 81,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "83": {
+                        "apiKey": 83,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "84": {
+                        "apiKey": 84,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "85": {
+                        "apiKey": 85,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "86": {
+                        "apiKey": 86,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "87": {
+                        "apiKey": 87,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "88": {
+                        "apiKey": 88,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "89": {
+                        "apiKey": 89,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "90": {
+                        "apiKey": 90,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "91": {
+                        "apiKey": 91,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "92": {
+                        "apiKey": 92,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "93": {
+                        "apiKey": 93,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "94": {
+                        "apiKey": 94,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    }
+                },
+                "throttleTimeMs": 0,
+                "supportedFeatures": {
+                    "group.version": {
+                        "name": "group.version",
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "kraft.version": {
+                        "name": "kraft.version",
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "metadata.version": {
+                        "name": "metadata.version",
+                        "minVersion": 7,
+                        "maxVersion": 33
+                    },
+                    "share.version": {
+                        "name": "share.version",
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "streams.version": {
+                        "name": "streams.version",
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "transaction.version": {
+                        "name": "transaction.version",
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "eligible.leader.replicas.version": {
+                        "name": "eligible.leader.replicas.version",
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    }
+                },
+                "finalizedFeaturesEpoch": 13720,
+                "finalizedFeatures": {
+                    "group.version": {
+                        "name": "group.version",
+                        "maxVersionLevel": 1,
+                        "minVersionLevel": 1
+                    },
+                    "kraft.version": {
+                        "name": "kraft.version",
+                        "maxVersionLevel": 1,
+                        "minVersionLevel": 1
+                    },
+                    "share.version": {
+                        "name": "share.version",
+                        "maxVersionLevel": 2,
+                        "minVersionLevel": 2
+                    },
+                    "metadata.version": {
+                        "name": "metadata.version",
+                        "maxVersionLevel": 33,
+                        "minVersionLevel": 33
+                    },
+                    "streams.version": {
+                        "name": "streams.version",
+                        "maxVersionLevel": 1,
+                        "minVersionLevel": 1
+                    },
+                    "transaction.version": {
+                        "name": "transaction.version",
+                        "maxVersionLevel": 2,
+                        "minVersionLevel": 2
+                    },
+                    "eligible.leader.replicas.version": {
+                        "name": "eligible.leader.replicas.version",
+                        "maxVersionLevel": 1,
+                        "minVersionLevel": 1
+                    }
+                }
+            }
+        },
+        {
+            "id": "apiversions.request.v5.no-ids",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The same request of a client that knows neither id: the null cluster id (`00`) and the node id -1. The node does not check it and answers the full table, like a v4.",
+            "hex": "0000003f001200050000113100126b61666b612d636c69656e742d74312d343400186c6973616368656e6b6f2d6b61666b612d636c69656e7404342e3400ffffffff00",
+            "fields": {
+                "messageSize": 63,
+                "apiKey": 18,
+                "apiVersion": 5,
+                "correlationId": 4401,
+                "clientId": "kafka-client-t1-44",
+                "headerTaggedFields": [],
+                "clientSoftwareName": "lisachenko-kafka-client",
+                "clientSoftwareVersion": "4.4",
+                "clusterId": null,
+                "nodeId": -1
+            }
+        },
+        {
+            "id": "apiversions.request.v5.foreign-cluster",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "A v5 request that names the node id 1 of a cluster `AAAAAAAAAAAAAAAAAAAAAA` the node does not belong to - the metadata of another cluster, as a stale cache or a reused address would give it.",
+            "hex": "00000055001200050000113200126b61666b612d636c69656e742d74312d343400186c6973616368656e6b6f2d6b61666b612d636c69656e7404342e3417414141414141414141414141414141414141414141410000000100",
+            "fields": {
+                "messageSize": 85,
+                "apiKey": 18,
+                "apiVersion": 5,
+                "correlationId": 4402,
+                "clientId": "kafka-client-t1-44",
+                "headerTaggedFields": [],
+                "clientSoftwareName": "lisachenko-kafka-client",
+                "clientSoftwareVersion": "4.4",
+                "clusterId": "AAAAAAAAAAAAAAAAAAAAAA",
+                "nodeId": 1
+            }
+        },
+        {
+            "id": "apiversions.response.v5.foreign-cluster",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer: the error code **129** `REBOOTSTRAP_REQUIRED`, an empty api array, the throttle time and an empty tag section - `ApiVersionsRequest.getErrorResponse()` in the layout of the version asked for, not the v0 layout of a 35. The connection stays open.",
+            "hex": "0000000c000011320081010000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 4402,
+                "errorCode": 129,
+                "apiVersions": [],
+                "throttleTimeMs": 0,
+                "supportedFeatures": [],
+                "finalizedFeaturesEpoch": -1,
+                "finalizedFeatures": []
+            }
+        },
+        {
+            "id": "apiversions.request.v5.wrong-node",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The right cluster id with the node id 2: the cluster is right, the broker at the address is not the node the client means.",
+            "hex": "00000055001200050000113300126b61666b612d636c69656e742d74312d343400186c6973616368656e6b6f2d6b61666b612d636c69656e7404342e34175672534b637436645365714b4e6d4f7430556c624c670000000200",
+            "fields": {
+                "messageSize": 85,
+                "apiKey": 18,
+                "apiVersion": 5,
+                "correlationId": 4403,
+                "clientId": "kafka-client-t1-44",
+                "headerTaggedFields": [],
+                "clientSoftwareName": "lisachenko-kafka-client",
+                "clientSoftwareVersion": "4.4",
+                "clusterId": "VrSKct6dSeqKNmOt0UlbLg",
+                "nodeId": 2
+            }
+        },
+        {
+            "id": "apiversions.response.v5.wrong-node",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The same 129 for it: `KafkaApis.handleApiVersionsRequest` @ 4.4.0 refuses a cluster id that is not its own and a node id that is not its `broker.id` alike.",
+            "hex": "0000000c000011330081010000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 4403,
+                "errorCode": 129,
+                "apiVersions": [],
+                "throttleTimeMs": 0,
+                "supportedFeatures": [],
+                "finalizedFeaturesEpoch": -1,
+                "finalizedFeatures": []
+            }
+        },
+        {
+            "id": "apiversions.request.v5.half-pair",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "Half a pair: the right cluster id next to the node id -1, which `ApiVersionsRequest.isValid()` @ 4.4.0 refuses before any id is compared (\"Either cluster ID and node ID are both specified, or neither is\").",
+            "hex": "00000055001200050000113400126b61666b612d636c69656e742d74312d343400186c6973616368656e6b6f2d6b61666b612d636c69656e7404342e34175672534b637436645365714b4e6d4f7430556c624c67ffffffff00",
+            "fields": {
+                "messageSize": 85,
+                "apiKey": 18,
+                "apiVersion": 5,
+                "correlationId": 4404,
+                "clientId": "kafka-client-t1-44",
+                "headerTaggedFields": [],
+                "clientSoftwareName": "lisachenko-kafka-client",
+                "clientSoftwareVersion": "4.4",
+                "clusterId": "VrSKct6dSeqKNmOt0UlbLg",
+                "nodeId": -1
+            }
+        },
+        {
+            "id": "apiversions.response.v5.half-pair",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer: the error code **42** `InvalidRequest` of the KIP-511 pattern check, empty, in the v5 layout. A node id next to the null cluster id is answered the same 42.",
+            "hex": "0000000c00001134002a010000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 4404,
+                "errorCode": 42,
+                "apiVersions": [],
+                "throttleTimeMs": 0,
+                "supportedFeatures": [],
+                "finalizedFeaturesEpoch": -1,
+                "finalizedFeatures": []
+            }
         }
     ]
 }
