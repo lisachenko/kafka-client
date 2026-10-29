@@ -33,7 +33,11 @@ use Protocol\Kafka\Protocol\Data\ShareAcknowledgementBatch;
  *   processed; its acquisition lock starts over, and the next {@see KafkaShareConsumer::poll()} returns it again to be
  *   acknowledged once more.
  *
+ * A record that REJECT or the delivery count limit archived lands in the dead-letter queue of the group as well when
+ * the group config `errors.deadletterqueue.topic.name` names one (Kafka 4.4, KIP-1191, `share.version` 2).
+ *
  * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/4.4.md, section "The dead-letter queue of KIP-1191 (share.version 2)"
  */
 enum AcknowledgeType: int
 {
