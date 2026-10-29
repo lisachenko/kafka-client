@@ -330,10 +330,10 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
      * The node finalizes its seven features, and says so through the tagged fields of the ApiVersions answer
      *
      * A ZooKeeper-backed 2.8.2 cluster finalized nothing at all, and the 3.9.2 node of the 3.x line finalized
-     * `metadata.version` alone. The 4.3.1 node of this line was formatted `--standalone` with the defaults of the
+     * `metadata.version` alone. The 4.4.0 node of this line was formatted `--standalone` with the defaults of the
      * release, and the **ApiVersions v4** this client sends carries every feature it supports and every feature it
-     * finalized: `metadata.version` from the level 7 (`3.3-IV3`, the lowest a 4.x node accepts) to 30 (`4.3-IV0`),
-     * finalized at 30, and six features finalized above 0 - `kraft.version` 1 among them, the dynamic quorum of
+     * finalized: `metadata.version` from the level 7 (`3.3-IV3`, the lowest a 4.x node accepts) to 33 (`4.4-IV2`),
+     * finalized at 33 (30, `4.3-IV0`, on the 4.3.1 node), and six features finalized above 0 - `kraft.version` 1 among them, the dynamic quorum of
      * KIP-853, which is why it is in the finalized map now and was not on the static quorum of 3.9.2. The epoch is
      * the **offset of the metadata log** at which the agreement was written, so it grows with every write the
      * cluster does and can only be asserted to be positive.
@@ -345,8 +345,8 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
             'eligible.leader.replicas.version' => [0, 1, 1],
             'group.version'                    => [0, 1, 1],
             'kraft.version'                    => [0, 1, 1],
-            'metadata.version'                 => [7, 30, 30],
-            'share.version'                    => [0, 1, 1],
+            'metadata.version'                 => [7, 33, 33],
+            'share.version'                    => [0, 2, 2],
             'streams.version'                  => [0, 1, 1],
             'transaction.version'              => [0, 2, 2],
         ];
@@ -409,13 +409,13 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
 
         self::assertSame(
             $prefix . 'Invalid update version 99 for feature metadata.version. Local controller 1 only supports'
-            . ' versions 7-30',
+            . ' versions 7-33',
             $refusal(new FeatureUpdate('metadata.version', 99))->getContext()['error']
         );
 
         self::assertSame(
             $prefix . 'Invalid update version 1 for feature metadata.version. Local controller 1 only supports'
-            . ' versions 7-30',
+            . ' versions 7-33',
             $refusal(new FeatureUpdate('metadata.version', 1))->getContext()['error'],
             'the level 1 of 3.9.2 is below the range of a 4.x controller, which starts at 3.3-IV3'
         );
