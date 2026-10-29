@@ -1,8 +1,8 @@
 {
     "api": "txn-offset-commit",
     "apiKey": 28,
-    "section": "TxnOffsetCommit API (key 28, v0 to v5)",
-    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v5), replayed by tests/Compliance.",
+    "section": "TxnOffsetCommit API (key 28, v0 to v6)",
+    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v6), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "txnoffsetcommit.request.v0",
@@ -609,7 +609,7 @@
         {
             "id": "txnoffsetcommit.request.v5",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV5",
             "version": 5,
             "source": "broker",
             "description": "TxnOffsetCommit request v5 (Kafka 4.0, KIP-890 part 2): the very same commit a moment later, byte for byte the frame above but for the version field and the correlation id. \"Version 5 is the same as version 4\" (`TxnOffsetCommitRequest.json` @ 4.0.0) - and it is the switch of the protocol v2: a version above 4 is `addPartition`, the group coordinator enrols the offsets partition into the transaction itself.",
@@ -646,7 +646,7 @@
         {
             "id": "txnoffsetcommit.response.v5",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV5",
             "version": 5,
             "source": "broker",
             "description": "TxnOffsetCommit answer v5: the code **0** for the commit the version 4 was refused the 120 for. The offsets partition is now part of the transaction, which this request has started - no AddOffsetsToTxn and no AddPartitionsToTxn went to the transaction coordinator at all.",

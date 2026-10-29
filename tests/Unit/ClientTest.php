@@ -23,6 +23,7 @@ use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
 use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
+use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
@@ -35,6 +36,7 @@ use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
+use Protocol\Kafka\Common\Errors\StaleMemberEpochException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
@@ -49,12 +51,14 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\Internals\FetchSessionHandler;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
+use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
@@ -1767,6 +1771,133 @@ final class ClientTest extends TestCase
 
         $this->expectException(KafkaException::class);
         $client->commitGroupOffsets($coordinator, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
+    }
+
+    /**
+     * TxnOffsetCommit v6 (Kafka 4.4, KIP-1319) names the topics by id inside a transaction of the protocol v2, the
+     * version 5 names a topic the cluster has no id for, and the protocol v1 stays at the version 4
+     */
+    public function testATransactionalCommitPicksItsVersionByTheProtocolAndTheTopicIds(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => 0]]),
+            ResponseFrame::offsetCommitV9(1, ['t7-unknown' => [0 => 0]]),
+            ResponseFrame::offsetCommitV9(2, [self::TOPIC => [0 => 0]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata(), $this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client     = $this->client();
+        $node       = $client->getGroupCoordinator('t7-group');
+        $idAndEpoch = new ProducerIdAndEpoch(42, 3);
+
+        $client->txnOffsetCommit($node, 't7-tx', 't7-group', $idAndEpoch, [self::TOPIC => [0 => 21]], null, true);
+        $client->txnOffsetCommit($node, 't7-tx', 't7-group', $idAndEpoch, ['t7-unknown' => [0 => 21]], null, true);
+        $client->txnOffsetCommit($node, 't7-tx', 't7-group', $idAndEpoch, [self::TOPIC => [0 => 21]]);
+
+        [$byId, $byName, $protocolOne] = $coordinator->getReceivedFrames();
+
+        self::assertSame(ApiKeys::TXN_OFFSET_COMMIT, $this->apiKeyOf($byId));
+        self::assertSame(6, $this->apiVersionOf($byId), 'the version 6 of Kafka 4.4 for a topic with an id');
+        self::assertStringContainsString(bin2hex(ResponseFrame::topicIdOf(self::TOPIC)), bin2hex($byId));
+        self::assertStringNotContainsString(bin2hex(self::TOPIC), bin2hex($byId), 'the id, and no name');
+        self::assertSame(5, $this->apiVersionOf($byName), 'the version 5 names a topic without an id');
+        self::assertStringContainsString(bin2hex('t7-unknown'), bin2hex($byName));
+        self::assertSame(4, $this->apiVersionOf($protocolOne), 'the protocol v1 is capped at the version 4');
+        self::assertStringContainsString(bin2hex(self::TOPIC), bin2hex($protocolOne));
+    }
+
+    /**
+     * The 100 of an id that went stale reloads the metadata, and the retry names the topic by its current id
+     */
+    public function testAStaleTopicIdOfATransactionalCommitIsRetriedAfterTheMetadataIsReloaded(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => KafkaException::UNKNOWN_TOPIC_ID]]),
+            ResponseFrame::offsetCommit(1, [self::TOPIC => [0 => 0]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata(), $this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client([ClientConfig::RETRIES => 1]);
+        $node   = $client->getGroupCoordinator('t7-group');
+
+        $client->txnOffsetCommit(
+            $node,
+            't7-tx',
+            't7-group',
+            new ProducerIdAndEpoch(42, 3),
+            [self::TOPIC => [0 => 21]],
+            null,
+            true
+        );
+
+        self::assertCount(2, $coordinator->getReceivedFrames(), 'the 100 is retried');
+
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata(), $this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, new BrokerConnection(
+                ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => KafkaException::UNKNOWN_TOPIC_ID]])
+            ))
+            ->install();
+        $client = $this->client();
+
+        $this->expectException(UnknownTopicIdException::class);
+        $client->txnOffsetCommit(
+            $client->getGroupCoordinator('t7-group'),
+            't7-tx',
+            't7-group',
+            new ProducerIdAndEpoch(42, 3),
+            [self::TOPIC => [0 => 21]],
+            null,
+            true
+        );
+    }
+
+    /**
+     * The 69 of an unknown group and the 113 of a stale member epoch are what the version 6 answers instead of the 22
+     */
+    public function testTheMembershipCodesOfTheVersionSixAreReportedAsTheirExceptions(): void
+    {
+        $answers = [
+            KafkaException::GROUP_ID_NOT_FOUND => GroupIdNotFoundException::class,
+            KafkaException::STALE_MEMBER_EPOCH => StaleMemberEpochException::class,
+        ];
+        foreach ($answers as $errorCode => $exceptionClass) {
+            $this->brokers
+                ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+                ->on(self::FIRST_LEADER, new BrokerConnection(
+                    ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)
+                ))
+                ->on(self::SECOND_LEADER, new BrokerConnection(
+                    ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => $errorCode]])
+                ))
+                ->install();
+            $client = $this->client();
+
+            try {
+                $client->txnOffsetCommit(
+                    $client->getGroupCoordinator('t7-group'),
+                    't7-tx',
+                    't7-group',
+                    new ProducerIdAndEpoch(42, 3),
+                    [self::TOPIC => [0 => 21]],
+                    new ConsumerGroupMetadata('t7-group', 5, 'member-1'),
+                    true
+                );
+                self::fail("The code {$errorCode} is expected to be reported");
+            } catch (KafkaException $exception) {
+                self::assertInstanceOf($exceptionClass, $exception);
+                self::assertSame($errorCode, $exception->getCode());
+            }
+        }
     }
 
     public function testEveryCommittedOffsetOfAGroupIsFetchedWithTheNullTopicArray(): void

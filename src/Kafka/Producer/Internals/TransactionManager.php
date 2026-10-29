@@ -119,7 +119,8 @@ use Throwable;
  *
  * * the partitions of a transaction are **not** enrolled with an `AddPartitionsToTxn` any more - the Produce
  *   request of version 12 and above enrols them itself - and the offsets of a group not with an
- *   `AddOffsetsToTxn`: the TxnOffsetCommit **v5** enrols the `__consumer_offsets` partition of the group;
+ *   `AddOffsetsToTxn`: the TxnOffsetCommit **v5** enrols the `__consumer_offsets` partition of the group - the
+ *   **v6** of Kafka 4.4 (KIP-1319), which names the topics by id, whenever the cluster knows the id of every topic;
  * * every transaction ends with an EndTxn **v5**, and the coordinator **bumps the epoch** of the producer with it
  *   and answers the producer id and epoch of the next transaction, which this class takes over together with a
  *   fresh start of every sequence at 0;
@@ -969,7 +970,12 @@ class TransactionManager
      *
      * **In a transaction of the protocol v2** (Kafka 4.0, {@see self::isTransactionV2Enabled()}) it takes one
      * request: the `TxnOffsetCommit` goes out as the version **5**, which enrols the `__consumer_offsets` partition
-     * of the group itself, and the `AddOffsetsToTxn` is gone - `sendOffsetsToTransaction()` @ 4.0.0.
+     * of the group itself, and the `AddOffsetsToTxn` is gone - `sendOffsetsToTransaction()` @ 4.0.0. The version is
+     * the **6** of Kafka 4.4 (KIP-1319) whenever the cluster knows the id of every topic of the offsets, which names
+     * the topics by id and answers the 69 `GroupIdNotFound` and the 113 `StaleMemberEpoch` the version 5 folds into
+     * the 22 - both of which, like the 22 and the 25, leave this producer in an abortable error, as the
+     * `TxnOffsetCommitHandler` of the Java `TransactionManager` @ 4.4.0 aborts on all four; the 100 of a stale topic id
+     * reloads the metadata ({@see \Protocol\Kafka\Client::txnOffsetCommit()}).
      *
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit, as
      *        topic => partition => offset
@@ -1004,7 +1010,7 @@ class TransactionManager
         $transactionalId = $this->requireTransactionalId();
         $transactionV2   = $this->transactionV2;
 
-        // The protocol v2 of KIP-890 part 2 has no AddOffsetsToTxn: the TxnOffsetCommit v5 enrols the offsets
+        // The protocol v2 of KIP-890 part 2 has no AddOffsetsToTxn: the TxnOffsetCommit v5 or v6 enrols the offsets
         // partition of the group itself (`sendOffsetsToTransaction()` @ 4.0.0)
         if (!$transactionV2) {
             $this->transactionalRequest(fn(): mixed => $this->onTransactionCoordinator(

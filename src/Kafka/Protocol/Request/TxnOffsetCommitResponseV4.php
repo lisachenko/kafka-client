@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * one error code per partition. At the version 4 a commit whose `__consumer_offsets` partition the transaction does
  * not hold is answered the **120** `TransactionAbortable`; the version 5 enrols that partition instead.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
  */
 final class TxnOffsetCommitResponseV4 extends TxnOffsetCommitResponse
 {
