@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * tagged-field section, which {@see DeleteGroupsRequest} sends.
  *
  * @see docs/protocol/4.4.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 final class DeleteGroupsRequestV1 extends DeleteGroupsRequest
 {

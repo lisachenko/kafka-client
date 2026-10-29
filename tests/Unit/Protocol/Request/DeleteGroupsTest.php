@@ -19,35 +19,43 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
+use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroupV2;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequestV0;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequestV1;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsRequestV2;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponseV0;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponseV1;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsResponseV2;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV3;
 
 /**
- * Byte-exact tests for the DeleteGroups API of Kafka 1.1 (api key 42, v0, KIP-229).
+ * Byte-exact tests for the DeleteGroups API of Kafka 1.1 (api key 42, v0, KIP-229), up to the version 3 of Kafka 4.4
+ * (KIP-1331), whose group entries end with an error message.
  *
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 #[CoversClass(DeleteGroupsRequest::class)]
 #[CoversClass(DeleteGroupsRequestV0::class)]
 #[CoversClass(DeleteGroupsRequestV1::class)]
+#[CoversClass(DeleteGroupsRequestV2::class)]
 #[CoversClass(DeleteGroupsResponse::class)]
 #[CoversClass(DeleteGroupsResponseV0::class)]
 #[CoversClass(DeleteGroupsResponseV1::class)]
+#[CoversClass(DeleteGroupsResponseV2::class)]
 #[CoversClass(DeleteGroupsResponseGroup::class)]
+#[CoversClass(DeleteGroupsResponseGroupV2::class)]
 final class DeleteGroupsTest extends TestCase
 {
     /**
-     * DeleteGroups request v2 (Kafka 2.4, KIP-482) for two groups, the flexible frame this client sends.
+     * DeleteGroups request v3 (Kafka 4.4, KIP-1331) for two groups, the frame this client sends: the flexible frame
+     * of the version 2 with a higher version field.
      *
      *   Size          => 00 00 00 21 (33 bytes)
      *   ApiKey        => 00 2a (42)
-     *   ApiVersion    => 00 02
+     *   ApiVersion    => 00 03
      *   CorrelationId => 00 00 00 09
      *   ClientId      => 00 04 "test" (never compact)
      *   TAG_BUFFER    => 00 (of the request header v2)
@@ -56,7 +64,7 @@ final class DeleteGroupsTest extends TestCase
      */
     private const string REQUEST_HEX = '00000021'
         . '002a'
-        . '0002'
+        . '0003'
         . '00000009'
         . '0004' . '74657374'
         . '00'
@@ -102,15 +110,94 @@ final class DeleteGroupsTest extends TestCase
         . '0007' . '67726f75702d62' . '0044'
         . '0007' . '67726f75702d63' . '0045';
 
+    /**
+     * DeleteGroups response v3 (Kafka 4.4, KIP-1331): every entry ends with a compact nullable error message.
+     *
+     *   Size            => 00 00 00 69 (105 bytes)
+     *   CorrelationId   => 00 00 00 09
+     *   TAG_BUFFER      => 00 (of the response header v1)
+     *   ThrottleTimeMs  => 00 00 00 0c (12)
+     *   Results         => 04 (compact: 3 + 1)
+     *     08 "group-a", 00 00 (0), 00 (null message), 00
+     *     08 "group-b", 00 86 (134, GroupDeletionFailed), 3b (58 + 1) "Topology description plugin failed to delete
+     *       the topology.", 00
+     *     08 "group-c", 00 45 (69, GroupIdNotFound), 00 (null message), 00
+     *   TAG_BUFFER      => 00 (of the body)
+     *
+     * The message is the fixed one of `StreamsGroupTopologyDescriptionManager.toFailureEntry` @ 4.4.0; the node of
+     * this line has no topology description plugin, so this frame is constructed (the vector
+     * `deletegroups.response.v3` is the answer the node sends: null messages throughout).
+     */
+    private const string RESPONSE_V3_HEX = '00000069'
+        . '00000009'
+        . '00'
+        . '0000000c'
+        . '04'
+        . '08' . '67726f75702d61' . '0000' . '00' . '00'
+        . '08' . '67726f75702d62' . '0086'
+        . '3b' . '546f706f6c6f6779206465736372697074696f6e20706c7567696e206661696c656420746f2064656c657465207468'
+        . '6520746f706f6c6f67792e' . '00'
+        . '08' . '67726f75702d63' . '0045' . '00' . '00'
+        . '00';
+
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
         $request = new DeleteGroupsRequest(['group-a', 'group-b'], 'test', 9);
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DELETE_GROUPS, $request->getApiKey());
-        self::assertSame(2, $request->getApiVersion(), 'KIP-482 makes the version this client sends 2');
+        self::assertSame(3, $request->getApiVersion(), 'KIP-1331 makes the version this client sends 3');
         self::assertSame(['group-a', 'group-b'], $request->getGroups());
         self::assertTrue(DeleteGroupsRequest::isFlexible());
+    }
+
+    public function testTheVersionTwoRequestIsTheSameFrameWithTheVersionOfKafkaTwoFour(): void
+    {
+        $request = new DeleteGroupsRequestV2(['group-a', 'group-b'], 'test', 9);
+
+        self::assertSame(2, $request->getApiVersion());
+        self::assertTrue(DeleteGroupsRequestV2::isFlexible());
+        self::assertSame(
+            substr(self::REQUEST_HEX, 0, 12) . '0002' . substr(self::REQUEST_HEX, 16),
+            bin2hex((string) $request),
+            '"The request body shape is unchanged at version 3" of DeleteGroupsRequest.json @ 4.4.0'
+        );
+    }
+
+    public function testTheVersionThreeAnswerEndsEveryEntryWithItsErrorMessage(): void
+    {
+        $response = DeleteGroupsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V3_HEX)));
+
+        self::assertSame(9, $response->getCorrelationId());
+        self::assertSame(12, $response->throttleTimeMs);
+        self::assertSame(['group-a', 'group-b', 'group-c'], array_keys($response->groups));
+        self::assertNotInstanceOf(DeleteGroupsResponseGroupV2::class, $response->groups['group-b']);
+
+        self::assertSame(KafkaException::NO_ERROR, $response->groups['group-a']->errorCode);
+        self::assertNull($response->groups['group-a']->errorMessage, 'a deleted group carries the null of the default');
+        self::assertSame(KafkaException::GROUP_DELETION_FAILED, $response->groups['group-b']->errorCode);
+        self::assertSame(
+            'Topology description plugin failed to delete the topology.',
+            $response->groups['group-b']->errorMessage,
+            'the cause of the 134, for which KIP-1331 added the field'
+        );
+        self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $response->groups['group-c']->errorCode);
+        self::assertNull($response->groups['group-c']->errorMessage);
+        self::assertSame(self::RESPONSE_V3_HEX, bin2hex((string) $response), 'the answer survives the round trip');
+    }
+
+    public function testEveryVersionBelowThreeReadsTheEntryWithoutAMessage(): void
+    {
+        foreach ([DeleteGroupsResponseV0::class, DeleteGroupsResponseV1::class, DeleteGroupsResponseV2::class] as $class) {
+            self::assertSame(
+                ['groupId' => DeleteGroupsResponseGroupV2::class],
+                $class::getScheme()['groups'],
+                "{$class} decodes the entry of the versions 0 to 2"
+            );
+        }
+        self::assertSame(['groupId' => DeleteGroupsResponseGroup::class], DeleteGroupsResponse::getScheme()['groups']);
+        self::assertArrayNotHasKey('errorMessage', DeleteGroupsResponseGroupV2::getScheme());
+        self::assertArrayHasKey('errorMessage', DeleteGroupsResponseGroup::getScheme());
     }
 
     public function testTheVersionOneRequestIsThePlainEncodingOfTheSameGroups(): void
@@ -206,7 +293,9 @@ final class DeleteGroupsTest extends TestCase
     }
 
     /**
-     * The version 2 answer is the same entries compactly, each closed by its own tagged-field section
+     * The version 2 answer is the same entries compactly, each closed by its own tagged-field section, and without the
+     * error message of the version 3: read with the class of the version 3, the tag buffer of an entry would be taken
+     * for its message
      */
     public function testTheVersionTwoAnswerIsTheFlexibleEncodingOfTheSameEntries(): void
     {
@@ -220,11 +309,13 @@ final class DeleteGroupsTest extends TestCase
             . '08' . '67726f75702d63' . '0045' . '00'
             . '00';
 
-        $response = DeleteGroupsResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = DeleteGroupsResponseV2::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(12, $response->throttleTimeMs);
         self::assertSame(['group-a', 'group-b', 'group-c'], array_keys($response->groups));
+        self::assertInstanceOf(DeleteGroupsResponseGroupV2::class, $response->groups['group-b']);
         self::assertSame(KafkaException::NON_EMPTY_GROUP, $response->groups['group-b']->errorCode);
+        self::assertNull($response->groups['group-b']->errorMessage);
         self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
     }
 }

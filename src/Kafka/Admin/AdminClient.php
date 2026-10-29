@@ -1877,6 +1877,13 @@ class AdminClient
      * refused - one group of a call says nothing about the others - and an empty list is answered with an empty
      * result without a single request.
      *
+     * The request goes out as **version 3**, the version Kafka 4.4 added (KIP-1331): every group entry of its answer
+     * carries an `error_message` behind its code, which lands in the context of the exception of the group as
+     * `error` - the context is `['groupId' => …]` alone while the broker sends the null of the default. The message is
+     * there for the new code **134** {@see \Protocol\Kafka\Common\Errors\GroupDeletionFailedException}, which a streams
+     * group answers when the topology description plugin of the broker could not drop its stored description - the
+     * group is kept, and calling this method again is safe. The 68 and the 69 come without a message.
+     *
      * @param list<string> $groupIds Names of the groups to delete, duplicates are collapsed
      *
      * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If a coordinator could not be
@@ -1914,7 +1921,7 @@ class AdminClient
                     ? new UnknownErrorException(
                         ['groupId' => $groupId, 'error' => 'The coordinator sent no result for this group']
                     )
-                    : self::groupError($groupId, $result->errorCode);
+                    : self::groupError($groupId, $result->errorCode, $result->errorMessage);
             }
         }
 
@@ -2621,12 +2628,15 @@ class AdminClient
 
     /**
      * Turns the error code of one group of a DeleteGroups answer into the exception of the caller
+     *
+     * The `error_message` of DeleteGroups v3 (KIP-1331) goes into the context as `error`, as every other admin method
+     * reports the message a flexible answer carries next to its code.
      */
-    private static function groupError(string $groupId, int $errorCode): ?KafkaException
+    private static function groupError(string $groupId, int $errorCode, ?string $errorMessage = null): ?KafkaException
     {
         return $errorCode === KafkaException::NO_ERROR
             ? null
-            : KafkaException::fromCode($errorCode, ['groupId' => $groupId]);
+            : KafkaException::fromCode($errorCode, ['groupId' => $groupId] + self::errorMessageContext($errorMessage));
     }
 
     /**
@@ -4643,7 +4653,8 @@ class AdminClient
      * one request per coordinator, and every requested group gets an entry, `null` when it was deleted and the
      * exception of its code otherwise. A share group is deleted with its state once it has **no member**; one with a
      * member is answered the **68** `NonEmptyGroup`, and a group the coordinator does not know the **69**
-     * `GroupIdNotFound`.
+     * `GroupIdNotFound`. The request is DeleteGroups **v3** (Kafka 4.4, KIP-1331), whose `error_message` lands in the
+     * context of the exception of a group as `error`; a share group is refused without one on the 4.4.0 node.
      *
      * **DeleteGroups does not know which type of group its caller meant**: an empty classic or KIP-848 group named
      * here is deleted as well, with the code 0, as it is by the Java admin client. `kafka-share-groups.sh --delete`

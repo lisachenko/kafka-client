@@ -28,7 +28,9 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsRequestV2;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsResponseV2;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV5;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
@@ -51,7 +53,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * groups of this class and never about the whole answer.
  *
  * @see docs/protocol/4.4.md, sections "DescribeGroups API (key 15, v0 to v6)", "ListGroups API (key 16, v0 to v5)"
- *      and "DeleteGroups API (key 42, v0 to v2)"
+ *      and "DeleteGroups API (key 42, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeGroupsRequest::class)]
@@ -63,6 +65,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(ListGroupResponseProtocol::class)]
 #[CoversClass(DeleteGroupsRequest::class)]
 #[CoversClass(DeleteGroupsResponse::class)]
+#[CoversClass(DeleteGroupsRequestV2::class)]
+#[CoversClass(DeleteGroupsResponseV2::class)]
 final class AdminGroupApiTest extends IntegrationTestCase
 {
     /**
@@ -338,6 +342,11 @@ final class AdminGroupApiTest extends IntegrationTestCase
             'the offsets of a group whose consumers are running are never thrown away'
         );
         self::assertSame(
+            ['groupId' => $groupId],
+            $result[$groupId]->getContext(),
+            'DeleteGroups v3 answers the 68 with the null message of the default, which adds nothing to the context'
+        );
+        self::assertSame(
             DescribeGroupResponseMetadata::STATE_STABLE,
             $this->admin->describeGroup($groupId)->state,
             'and the group is untouched'
@@ -387,6 +396,49 @@ final class AdminGroupApiTest extends IntegrationTestCase
         $result = $this->admin->deleteConsumerGroups([$groupId]);
 
         self::assertInstanceOf(GroupIdNotFoundException::class, $result[$groupId]);
+    }
+
+    /**
+     * DeleteGroups v3 (Kafka 4.4, KIP-1331): every group entry ends with an error message, and the node writes the
+     * null of the default for every code it can answer
+     *
+     * The message is there for the 134 of a streams group whose topology description plugin failed, which the node
+     * cannot produce - it has no plugin. `GroupCoordinatorShard.deleteGroups` @ 4.4.0 sets the code of a refusal
+     * alone, so the 68, the 69 and the 0 carry no message. The empty group id is a 69 on the 4.x coordinator, which
+     * keeps the 24 for a null id.
+     */
+    public function testTheVersionThreeAnswerCarriesANullMessageForEveryCodeTheNodeAnswers(): void
+    {
+        $deletable = $this->emptyGroupWithACommittedOffset();
+        $held      = $this->uniqueGroupId();
+        $unknown   = $this->uniqueGroupId();
+        $this->joinGroup($held, 't4-delete-v3');
+
+        // One node: the coordinator of every group, the empty id included
+        $stream = $this->admin->findCoordinator($held)->getConnection($this->configuration());
+        new DeleteGroupsRequest([$deletable, $held, $unknown, ''], 't4-admin', 44)->writeTo($stream);
+        $answer = DeleteGroupsResponse::unpack($stream);
+
+        self::assertSame(44, $answer->getCorrelationId());
+        self::assertEqualsCanonicalizing([$deletable, $held, $unknown, ''], array_keys($answer->groups));
+        self::assertSame(KafkaException::NO_ERROR, $answer->groups[$deletable]->errorCode);
+        self::assertSame(KafkaException::NON_EMPTY_GROUP, $answer->groups[$held]->errorCode);
+        self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $answer->groups[$unknown]->errorCode);
+        self::assertSame(
+            KafkaException::GROUP_ID_NOT_FOUND,
+            $answer->groups['']->errorCode,
+            'the empty group id is looked up like any other id on a 4.x node, and not found'
+        );
+        foreach ($answer->groups as $groupId => $group) {
+            self::assertNull($group->errorMessage, "the entry of '{$groupId}' carries the null of the default");
+        }
+
+        // The version 2 answers the same codes, without the field
+        new DeleteGroupsRequestV2([$held, $unknown], 't4-admin', 45)->writeTo($stream);
+        $answer = DeleteGroupsResponseV2::unpack($stream);
+
+        self::assertSame(KafkaException::NON_EMPTY_GROUP, $answer->groups[$held]->errorCode);
+        self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $answer->groups[$unknown]->errorCode);
     }
 
     public function testDeletingNoGroupAtAllIsAnsweredWithAnEmptyResult(): void

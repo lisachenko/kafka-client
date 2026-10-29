@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 2 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding, see {@see DeleteGroupsResponse}.
  *
  * @see docs/protocol/4.4.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 final class DeleteGroupsResponseV1 extends DeleteGroupsResponse
 {
