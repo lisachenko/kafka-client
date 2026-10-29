@@ -22,10 +22,14 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\StaleMemberEpochException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\TransactionAbortableException;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
+use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\Internals\TransactionState;
@@ -37,8 +41,10 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV5;
 
 /**
  * The transaction protocol v2 of KIP-890 part 2 (Kafka 4.0) on the 4.3.1 node, which finalizes it.
@@ -72,6 +78,8 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
 #[CoversClass(TxnOffsetCommitRequestV4::class)]
 #[CoversClass(TxnOffsetCommitResponse::class)]
 #[CoversClass(TxnOffsetCommitResponseV4::class)]
+#[CoversClass(TxnOffsetCommitRequestV5::class)]
+#[CoversClass(TxnOffsetCommitResponseV5::class)]
 final class TransactionProtocolV2Test extends IntegrationTestCase
 {
     private const string CLIENT_ID = 'kafka-client-t4-40';
@@ -173,7 +181,7 @@ final class TransactionProtocolV2Test extends IntegrationTestCase
         );
 
         $atVersionFive = $this->exchange(
-            new TxnOffsetCommitRequest(
+            new TxnOffsetCommitRequestV5(
                 $transactionalId,
                 $group,
                 $idAndEpoch->producerId,
@@ -183,7 +191,7 @@ final class TransactionProtocolV2Test extends IntegrationTestCase
                 self::CLIENT_ID,
                 4041
             ),
-            TxnOffsetCommitResponse::class
+            TxnOffsetCommitResponseV5::class
         );
 
         self::assertSame(
@@ -201,6 +209,280 @@ final class TransactionProtocolV2Test extends IntegrationTestCase
 
         self::assertEquals(new ProducerIdAndEpoch($idAndEpoch->producerId, $idAndEpoch->epoch + 1), $next);
         self::assertSame(7, $this->awaitCommittedOffset($group, $topic), 'the transaction it started is committed');
+    }
+
+    /**
+     * TxnOffsetCommit v6 (Kafka 4.4, KIP-1319) names the topic by its id and enrols the offsets as the version 5 does
+     */
+    public function testTheVersionSixOfTxnOffsetCommitNamesTheTopicByIdAndEnrolsTheOffsets(): void
+    {
+        $topic           = $this->topic('by-id');
+        $topicId         = self::topicIdOf($topic);
+        $group           = $this->group('by-id');
+        $transactionalId = $this->transactionalId('by-id');
+        $idAndEpoch      = $this->client->initProducerId($transactionalId, 60000);
+
+        $answer = $this->exchange(
+            new TxnOffsetCommitRequest(
+                $transactionalId,
+                $group,
+                $idAndEpoch->producerId,
+                $idAndEpoch->epoch,
+                [$topic => [0 => 7]],
+                null,
+                self::CLIENT_ID,
+                4440,
+                [$topic => $topicId]
+            ),
+            TxnOffsetCommitResponse::class
+        );
+
+        self::assertCount(1, $answer->topics);
+        self::assertSame($topicId, $answer->topics[0]->topicId, 'the answer names the topic by the same id');
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $answer->topicsByName([$topic => $topicId])[$topic]->partitions[0]->errorCode,
+            'the version 6 enrols the offsets partition without an AddOffsetsToTxn, as the version 5'
+        );
+
+        $this->client->endTxnBumpingEpoch(
+            $this->client->getTransactionCoordinator($transactionalId),
+            $transactionalId,
+            $idAndEpoch,
+            EndTxnRequest::COMMIT
+        );
+
+        self::assertSame(7, $this->awaitCommittedOffset($group, $topic), 'the transaction it started is committed');
+    }
+
+    /**
+     * An id the node does not know is the 100 at version 6, a name it does not know the 3 at version 5
+     */
+    public function testAnUnknownTopicIdIsTheHundredAtVersionSixAndAnUnknownNameTheThreeAtVersionFive(): void
+    {
+        $topic           = $this->topic('unknown-id');
+        $group           = $this->group('unknown-id');
+        $transactionalId = $this->transactionalId('unknown-id');
+        $idAndEpoch      = $this->client->initProducerId($transactionalId, 60000);
+        $unknownId       = random_bytes(16);
+
+        $byId = $this->exchange(
+            new TxnOffsetCommitRequest(
+                $transactionalId,
+                $group,
+                $idAndEpoch->producerId,
+                $idAndEpoch->epoch,
+                [$topic => [0 => 8]],
+                null,
+                self::CLIENT_ID,
+                4441,
+                [$topic => $unknownId]
+            ),
+            TxnOffsetCommitResponse::class
+        );
+
+        self::assertSame($unknownId, $byId->topics[0]->topicId);
+        self::assertSame(KafkaException::UNKNOWN_TOPIC_ID, $byId->topics[0]->partitions[0]->errorCode);
+
+        $missing = $topic . '-missing';
+        $byName  = $this->exchange(
+            new TxnOffsetCommitRequestV5(
+                $transactionalId,
+                $group,
+                $idAndEpoch->producerId,
+                $idAndEpoch->epoch,
+                [$missing => [0 => 8]],
+                null,
+                self::CLIENT_ID,
+                4442
+            ),
+            TxnOffsetCommitResponseV5::class
+        );
+
+        self::assertSame(
+            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+            $byName->topics[$missing]->partitions[0]->errorCode,
+            'the node answers a name it does not have before it asks the group coordinator'
+        );
+    }
+
+    /**
+     * The client commits by the id it resolved; the 100 of a deleted topic reloads the metadata, and the next commit
+     * names the topic at version 5 and is answered the 3
+     */
+    public function testTheClientReloadsTheMetadataOnTheHundredOfADeletedTopic(): void
+    {
+        $topic           = $this->topic('deleted');
+        $group           = $this->group('deleted');
+        $transactionalId = $this->transactionalId('deleted');
+        $staleCluster    = Cluster::bootstrap($this->configuration());
+        $staleClient     = new Client($staleCluster, $this->configuration());
+
+        self::assertNotNull($staleCluster->topicIdOf($topic), 'the client knows the id of the topic');
+
+        $idAndEpoch = $staleClient->initProducerId($transactionalId, 60000);
+        $this->admin->deleteTopics([$topic]);
+        $this->createdTopics = [];
+        $deadline            = microtime(true) + self::TIMEOUT;
+        while ($this->cluster->topicIdOf($topic) !== null && microtime(true) < $deadline) {
+            usleep(250000);
+        }
+        // The metadata cache of the group coordinator forgets the topic a moment after the controller deleted it
+        usleep(500000);
+
+        try {
+            $staleClient->txnOffsetCommit(
+                $staleClient->getGroupCoordinator($group),
+                $transactionalId,
+                $group,
+                $idAndEpoch,
+                [$topic => [0 => 9]],
+                null,
+                true
+            );
+            self::fail('The id of a deleted topic is expected to be refused');
+        } catch (UnknownTopicIdException $refused) {
+            self::assertSame(KafkaException::UNKNOWN_TOPIC_ID, $refused->getCode());
+        }
+
+        $this->expectException(UnknownTopicOrPartitionException::class);
+        $staleClient->txnOffsetCommit(
+            $staleClient->getGroupCoordinator($group),
+            $transactionalId,
+            $group,
+            $idAndEpoch,
+            [$topic => [0 => 9]],
+            null,
+            true
+        );
+    }
+
+    /**
+     * A group the coordinator does not know is the 69 at version 6 and the 22 at version 5 (KIP-1319)
+     */
+    public function testAnUnknownGroupIsTheSixtyNineAtVersionSixAndTheTwentyTwoAtVersionFive(): void
+    {
+        $topic           = $this->topic('unknown-group');
+        $topicId         = self::topicIdOf($topic);
+        $group           = 't4-44-v2-no-such-group-' . bin2hex(random_bytes(6));
+        $transactionalId = $this->transactionalId('unknown-group');
+        $idAndEpoch      = $this->client->initProducerId($transactionalId, 60000);
+        $stranger        = new ConsumerGroupMetadata($group, 5, 't4-44-no-such-member');
+
+        $atVersionSix = $this->exchange(
+            new TxnOffsetCommitRequest(
+                $transactionalId,
+                $group,
+                $idAndEpoch->producerId,
+                $idAndEpoch->epoch,
+                [$topic => [0 => 9]],
+                $stranger,
+                self::CLIENT_ID,
+                4443,
+                [$topic => $topicId]
+            ),
+            TxnOffsetCommitResponse::class
+        );
+        $atVersionFive = $this->exchange(
+            new TxnOffsetCommitRequestV5(
+                $transactionalId,
+                $group,
+                $idAndEpoch->producerId,
+                $idAndEpoch->epoch,
+                [$topic => [0 => 9]],
+                $stranger,
+                self::CLIENT_ID,
+                4444
+            ),
+            TxnOffsetCommitResponseV5::class
+        );
+        $this->abortQuietly($transactionalId, $idAndEpoch);
+
+        self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $atVersionSix->topics[0]->partitions[0]->errorCode);
+        self::assertSame(
+            KafkaException::ILLEGAL_GENERATION,
+            $atVersionFive->topics[$topic]->partitions[0]->errorCode,
+            'the legacy mapping of every version below 6'
+        );
+    }
+
+    /**
+     * The member epoch of a KIP-848 member travels in `generation_id_or_member_epoch`: its own epoch is accepted, an
+     * epoch above it is the 113 at version 6 and the 22 at version 5, and the client reports the 113 as its exception
+     */
+    public function testAMemberEpochAboveTheOneTheMemberHoldsIsTheStaleMemberEpochAtVersionSix(): void
+    {
+        $topic           = $this->topic('member-epoch');
+        $topicId         = self::topicIdOf($topic);
+        $group           = $this->group('member-epoch');
+        $transactionalId = $this->transactionalId('member-epoch');
+        $idAndEpoch      = $this->client->initProducerId($transactionalId, 60000);
+        $memberId        = 't4-44-' . bin2hex(random_bytes(8));
+        $coordinator     = $this->client->getGroupCoordinator($group);
+        $joined          = $this->client->joinConsumerGroup($coordinator, $group, $memberId, [$topic], 45000);
+
+        self::assertSame(KafkaException::NO_ERROR, $joined->errorCode);
+        $epoch = $this->client->consumerGroupHeartbeat($coordinator, $group, $memberId, $joined->memberEpoch)
+            ->memberEpoch;
+
+        try {
+            $answers = [];
+            foreach ([$epoch, $epoch + 100] as $memberEpoch) {
+                $membership = new ConsumerGroupMetadata($group, $memberEpoch, $memberId);
+                $answers[]  = $this->exchange(
+                    new TxnOffsetCommitRequest(
+                        $transactionalId,
+                        $group,
+                        $idAndEpoch->producerId,
+                        $idAndEpoch->epoch,
+                        [$topic => [0 => 10]],
+                        $membership,
+                        self::CLIENT_ID,
+                        4445,
+                        [$topic => $topicId]
+                    ),
+                    TxnOffsetCommitResponse::class
+                )->topics[0]->partitions[0]->errorCode;
+                $answers[] = $this->exchange(
+                    new TxnOffsetCommitRequestV5(
+                        $transactionalId,
+                        $group,
+                        $idAndEpoch->producerId,
+                        $idAndEpoch->epoch,
+                        [$topic => [0 => 10]],
+                        $membership,
+                        self::CLIENT_ID,
+                        4446
+                    ),
+                    TxnOffsetCommitResponseV5::class
+                )->topics[$topic]->partitions[0]->errorCode;
+            }
+
+            self::assertSame(
+                [
+                    KafkaException::NO_ERROR,
+                    KafkaException::NO_ERROR,
+                    KafkaException::STALE_MEMBER_EPOCH,
+                    KafkaException::ILLEGAL_GENERATION,
+                ],
+                $answers,
+                'the own epoch at v6 and v5, then the epoch above it at v6 and v5'
+            );
+
+            $this->expectException(StaleMemberEpochException::class);
+            $this->client->txnOffsetCommit(
+                $coordinator,
+                $transactionalId,
+                $group,
+                $idAndEpoch,
+                [$topic => [0 => 10]],
+                new ConsumerGroupMetadata($group, $epoch + 100, $memberId),
+                true
+            );
+        } finally {
+            $this->abortQuietly($transactionalId, $idAndEpoch);
+            $this->client->leaveConsumerGroup($coordinator, $group, $memberId);
+        }
     }
 
     public function testTheStateTableOfTheEndTxnVersionFive(): void
@@ -355,6 +637,18 @@ final class TransactionProtocolV2Test extends IntegrationTestCase
                 return true;
             }
         };
+    }
+
+    /**
+     * Aborts the transaction a test left open, whatever it holds
+     */
+    private function abortQuietly(string $transactionalId, ProducerIdAndEpoch $idAndEpoch): void
+    {
+        try {
+            $this->endTxnOnceTheMarkersAreWritten($transactionalId, $idAndEpoch, EndTxnRequest::ABORT, 4449);
+        } catch (KafkaException) {
+            // nothing to abort
+        }
     }
 
     private function endTxn(

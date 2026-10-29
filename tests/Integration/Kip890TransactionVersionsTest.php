@@ -48,6 +48,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
 
@@ -178,7 +179,8 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
         self::assertSame(4, EndTxnRequestV4::VERSION, 'the EndTxn of the protocol v1, Client::endTxn()');
         self::assertSame(4, TxnOffsetCommitRequestV4::VERSION, 'the TxnOffsetCommit of the protocol v1');
         self::assertSame(5, EndTxnRequest::VERSION, 'the version 5 of Kafka 4.0, TransactionProtocolV2Test');
-        self::assertSame(5, TxnOffsetCommitRequest::VERSION, 'the version 5 of Kafka 4.0');
+        self::assertSame(5, TxnOffsetCommitRequestV5::VERSION, 'the version 5 of Kafka 4.0, by topic name');
+        self::assertSame(6, TxnOffsetCommitRequest::VERSION, 'the version 6 of Kafka 4.4, by topic id (KIP-1319)');
         self::assertSame(5, AddPartitionsToTxnRequest::VERSION, 'built, but never sent');
         self::assertSame(3, AddPartitionsToTxnRequestV3::VERSION, 'the version Client::addPartitionsToTxn() sends');
     }
