@@ -27,6 +27,7 @@ use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
+use Protocol\Kafka\Common\Errors\RebootstrapRequiredException;
 use Protocol\Kafka\Common\Errors\ThrottlingQuotaExceededException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
@@ -221,34 +222,74 @@ class AdminClient
      * instead of being reported with an empty range, and the KRaft apis of the controller listener (52-55, 58, 59,
      * 62-64) never appear on a ZooKeeper-backed broker at all.
      *
-     * The request goes out as version 4 ({@see ApiVersionsRequest}), the frame of the first flexible version of
-     * the protocol with a 4 in its header (KAFKA-17011, Kafka 3.9), so the answer carries the trailing
-     * `throttleTimeMs` of KIP-124 and the features of KIP-584 as tagged fields - including the ones whose
-     * `min_version` is 0, which a request below the version 4 is not shown; only the whole
-     * {@see Client::apiVersions()} response exposes them, this method returns the api table alone.
+     * The request goes out as version 5 ({@see ApiVersionsRequest}, Kafka 4.4): the flexible frame of Kafka 2.4,
+     * so the answer carries the trailing `throttleTimeMs` of KIP-124 and the features of KIP-584 as tagged fields -
+     * including the ones whose `min_version` is 0 (KAFKA-17011, the version 4) - and the cluster id and node id the
+     * connection is meant to reach (KIP-1242), see {@see self::apiVersionsOf()}. Only the whole
+     * {@see Client::apiVersions()} response exposes the features, this method returns the api table alone.
      *
      * @param Node $node Broker to ask
      *
-     * @throws KafkaException If the broker answered the error code 35 (UnsupportedVersion), i.e. it is older than
-     *                        Kafka 3.9 and does not serve version 4 of this api
+     * @throws RebootstrapRequiredException If the broker is not that node of this cluster (the 129 of KIP-1242);
+     *                                      the cluster has been reloaded from its bootstrap servers by then
+     * @throws KafkaException If the broker answered another error code
      *
      * @return array<int, ApiVersionsResponseMetadata> Version range of each api, indexed by the api key
      */
     public function getApiVersions(Node $node): array
     {
-        /** @var ApiVersionsResponse $response */
-        $response = $this->sendTo(
-            $node->getConnection($this->configuration),
-            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest($this->clientId(), $correlationId),
-            ApiVersionsResponse::class,
-            ['node' => $node->nodeId]
-        );
-
+        $response = $this->apiVersionsOf($node);
         if ($response->errorCode !== KafkaException::NO_ERROR) {
             throw KafkaException::fromCode($response->errorCode, ['node' => $node->nodeId]);
         }
 
         return $response->apiVersions;
+    }
+
+    /**
+     * Asks one node for its ApiVersions, naming the cluster and the node the connection is meant to reach (KIP-1242)
+     *
+     * The version 5 request carries the id of the {@see Cluster} and the id of the node, both or - while the cluster
+     * knows no id or the node id is negative - neither ({@see ApiVersionsRequest::addressedTo()}). A broker that is
+     * not that node of that cluster answers the **129** `REBOOTSTRAP_REQUIRED`: the address of the metadata leads to
+     * another broker. The connection to that address is dropped, the cluster is reloaded from its bootstrap servers
+     * ({@see Cluster::rebootstrap()}) and the 129 is thrown, as {@see Client::apiVersions()} does; every other answer
+     * is returned with its error code.
+     *
+     * @throws RebootstrapRequiredException If the broker is not that node of this cluster
+     *
+     * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+     */
+    private function apiVersionsOf(Node $node): ApiVersionsResponse
+    {
+        $clusterId = $this->cluster->clusterId();
+        $stream    = $node->getConnection($this->configuration);
+
+        /** @var ApiVersionsResponse $response */
+        $response = $this->sendTo(
+            $stream,
+            fn(int $correlationId): ApiVersionsRequest => ApiVersionsRequest::addressedTo(
+                $clusterId,
+                $node->nodeId,
+                $this->clientId(),
+                $correlationId
+            ),
+            ApiVersionsResponse::class,
+            ['node' => $node->nodeId]
+        );
+        if ($response->errorCode === KafkaException::REBOOTSTRAP_REQUIRED) {
+            ConnectionFactory::closeStream($stream);
+            $this->cluster->rebootstrap();
+
+            throw new RebootstrapRequiredException([
+                'error'     => 'The broker is not the node the metadata names at its address (KIP-1242)',
+                'node'      => $node->nodeId,
+                'address'   => "{$node->host}:{$node->port}",
+                'clusterId' => $clusterId,
+            ]);
+        }
+
+        return $response;
     }
 
     /**
@@ -2257,18 +2298,39 @@ class AdminClient
      * A ZooKeeper-backed Kafka 2.8.2 cluster finalizes nothing: `supportedFeatures` names what the broker could
      * agree to, `finalizedFeatures` is empty and the epoch is `0`.
      *
+     * The nodes of the cluster are asked in turn until one answers, each with the ApiVersions v5 that names it
+     * ({@see self::apiVersionsOf()}): a node that answers the 129 of KIP-1242 ends the search, because the cluster
+     * has just been reloaded from its bootstrap servers and the nodes of the loop are those of the stale metadata.
+     *
+     * @throws RebootstrapRequiredException If the node asked is not the node the metadata names at its address
+     * @throws AllBrokersNotAvailableException If not a single node of the cluster answered
+     *
      * @return FeatureMetadata The features of the broker that answered
      */
     public function describeFeatures(): FeatureMetadata
     {
-        /** @var ApiVersionsResponse $response */
-        $response = $this->sendAnyNode(
-            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest($this->clientId(), $correlationId),
-            ApiVersionsResponse::class
-        );
+        $response      = null;
+        $lastException = null;
+        foreach ($this->cluster->nodes() as $node) {
+            try {
+                $response = $this->apiVersionsOf($node);
+                break;
+            } catch (RebootstrapRequiredException $misrouted) {
+                throw $misrouted;
+            } catch (Exception $exception) {
+                $lastException = $exception;
+            }
+        }
+        if ($response === null) {
+            throw new AllBrokersNotAvailableException(
+                ['response' => ApiVersionsResponse::class, 'error' => 'No broker of the cluster answered the request'],
+                KafkaException::UNKNOWN,
+                $lastException
+            );
+        }
 
         if ($response->errorCode !== KafkaException::NO_ERROR) {
-            throw KafkaException::fromCode($response->errorCode, ['error' => 'The broker refused an ApiVersions v3']);
+            throw KafkaException::fromCode($response->errorCode, ['error' => 'The broker refused an ApiVersions v5']);
         }
 
         $supported = [];

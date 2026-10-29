@@ -1,8 +1,8 @@
 {
     "api": "api-versions",
     "apiKey": 18,
-    "section": "ApiVersions API (key 18, v0 to v4)",
-    "description": "Wire vectors of the ApiVersions API (key 18, v0 to v4), replayed by tests/Compliance.",
+    "section": "ApiVersions API (key 18, v0 to v5)",
+    "description": "Wire vectors of the ApiVersions API (key 18, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "apiversions.request.v0",
@@ -1304,7 +1304,7 @@
         {
             "id": "apiversions.request.v4",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "ApiVersions request **v4**, the version this client sends since Kafka 3.9: the flexible v3 frame of KIP-511 with a **4** in its header and not one field more. \"Version 4 fixes KAFKA-17011, which blocked SupportedFeatures.MinVersion in the response from being 0\" is the whole comment of the bump in `ApiVersionsRequest.json` @ 3.9.2, so this frame and `apiversions.request.v3.kraft-node` differ in exactly one byte.",
@@ -1323,7 +1323,7 @@
         {
             "id": "apiversions.response.v4",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponseV4",
             "version": 4,
             "source": "broker",
             "description": "What the 3.9.2 KRaft node answers that request on its PLAINTEXT listener: the **61 keys** of its `broker` listener as a compact array, the trailing throttle time of KIP-124 and the three tagged fields of KIP-584. The reason the version exists is in the tagged field 0 - the node supports **two** features, `kraft.version` 0 to 1 and `metadata.version` 1 to 21, and the first of them is reported only from the version 4 on, because its minimum is 0 (`ApiVersionsResponse.maybeFilterSupportedFeatureKeys` @ 3.9.2). The finalized features name `metadata.version` at the level 21 (`3.9-IV0`) alone: a feature finalized at the level 0 is not finalized at all. The epoch is the offset of the metadata log the feature records stand at and moves with every write of the cluster.",
