@@ -410,6 +410,11 @@ final class ShareGroupAdminTest extends IntegrationTestCase
         self::assertInstanceOf(GroupIdNotFoundException::class, $result[$unknown]);
         self::assertInstanceOf(GroupNotEmptyException::class, $result[$member], 'a share group with a member stays');
         self::assertNull($result[$empty]);
+        self::assertSame(
+            ['groupId' => $member],
+            $result[$member]->getContext(),
+            'DeleteGroups v3 (Kafka 4.4) refuses a share group with the null error message of the default'
+        );
 
         self::assertSame(
             [$member],
