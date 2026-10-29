@@ -464,6 +464,14 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function unregisterControllerVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function initializeShareGroupStateVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -1213,6 +1221,15 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('removeRaftVoterVectors')]
     public function testRemoveRaftVoterApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('unregisterControllerVectors')]
+    public function testUnregisterControllerApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

@@ -1,0 +1,113 @@
+{
+    "api": "unregister-controller",
+    "apiKey": 94,
+    "section": "UnregisterController API (key 94, v0)",
+    "description": "Wire vectors of the UnregisterController API (key 94, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "unregistercontroller.request.v0.unknown",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UnregisterControllerRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "UnregisterController request v0 (Kafka 4.4, KIP-1312) on the PLAINTEXT listener, whose `User:ANONYMOUS` is a super user of the `StandardAuthorizer`: the controller id **4242**, which no controller of the node is registered under. The api is flexible from its first version - the request header v2 with its tag buffer, and one more behind the int32.",
+            "hex": "00000022005e00000000113a00126b61666b612d636c69656e742d74342d3434000000109200",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 94,
+                "apiVersion": 0,
+                "correlationId": 4410,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "controllerId": 4242
+            }
+        },
+        {
+            "id": "unregistercontroller.response.v0.unknown",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UnregisterControllerResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **136** `CONTROLLER_ID_NOT_REGISTERED` of Kafka 4.4 with the message of the `ControllerIdNotRegisteredException` of `ClusterControlManager.unregisterController` @ 4.4.0, \"Controller ID 4242 is not currently registered.\", a compact string of 47 bytes. The broker forwarded the request to the controller of the node, which answered it.",
+            "hex": "0000003c0000113a0000000000008830436f6e74726f6c6c65722049442034323432206973206e6f742063757272656e746c7920726567697374657265642e00",
+            "fields": {
+                "messageSize": 60,
+                "correlationId": 4410,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 136,
+                "errorMessage": "Controller ID 4242 is not currently registered."
+            }
+        },
+        {
+            "id": "unregistercontroller.request.v0.negative",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UnregisterControllerRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same request for the controller id **-1**.",
+            "hex": "00000022005e00000000113b00126b61666b612d636c69656e742d74342d343400ffffffff00",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 94,
+                "apiVersion": 0,
+                "correlationId": 4411,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "controllerId": -1
+            }
+        },
+        {
+            "id": "unregistercontroller.response.v0.negative",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UnregisterControllerResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **136** again, \"Controller ID -1 is not currently registered.\": the controller does not check the range of the id, it only looks the registration up.",
+            "hex": "0000003a0000113b000000000000882e436f6e74726f6c6c6572204944202d31206973206e6f742063757272656e746c7920726567697374657265642e00",
+            "fields": {
+                "messageSize": 58,
+                "correlationId": 4411,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 136,
+                "errorMessage": "Controller ID -1 is not currently registered."
+            }
+        },
+        {
+            "id": "unregistercontroller.request.v0.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UnregisterControllerRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The request for the id 4242 on the SASL_PLAINTEXT listener, authenticated as `acltest`, the one principal of the node that is not a super user and holds no acl on the cluster.",
+            "hex": "00000022005e00000000113c00126b61666b612d636c69656e742d74342d3434000000109200",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 94,
+                "apiVersion": 0,
+                "correlationId": 4412,
+                "clientId": "kafka-client-t4-44",
+                "headerTaggedFields": [],
+                "controllerId": 4242
+            }
+        },
+        {
+            "id": "unregistercontroller.response.v0.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UnregisterControllerResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **31** `CLUSTER_AUTHORIZATION_FAILED` of `ControllerApis.handleUnregisterController` @ 4.4.0, which authorizes `ALTER` on the cluster before it looks at the id. Its message is the `toString()` of the request as the controller received it - the forwarded request on the CONTROLLER listener, its connection id and session, and the envelope of the broker around it - followed by \"needs ALTER permission.\": 560 bytes, whose connection ids and session hashes change with every request.",
+            "hex": "0000023e0000113c0000000000001fb1045265717565737420526571756573742870726f636573736f723d302c20636f6e6e656374696f6e49643d3132372e302e302e313a393039362d3132372e302e302e313a35383437382d302d312c2073657373696f6e3d6f72672e6170616368652e6b61666b612e6e6574776f726b2e53657373696f6e4033383566323737352c206c697374656e65724e616d653d4c697374656e65724e616d6528434f4e54524f4c4c4552292c20736563757269747950726f746f636f6c3d504c41494e544558542c206275666665723d6a6176612e6e696f2e48656170427974654275666665725b706f733d3334206c696d3d3334206361703d35385d2c20656e76656c6f70653d4f7074696f6e616c5b526571756573742870726f636573736f723d302c20636f6e6e656374696f6e49643d3132372e302e302e313a393039362d3132372e302e302e313a35383437382d302d312c2073657373696f6e3d6f72672e6170616368652e6b61666b612e6e6574776f726b2e53657373696f6e4034626166643839622c206c697374656e65724e616d653d4c697374656e65724e616d6528434f4e54524f4c4c4552292c20736563757269747950726f746f636f6c3d504c41494e544558542c206275666665723d6a6176612e6e696f2e48656170427974654275666665725b706f733d3731206c696d3d3731206361703d37315d2c20656e76656c6f70653d4f7074696f6e616c2e656d707479295d29206e6565647320414c544552207065726d697373696f6e2e00",
+            "fields": {
+                "messageSize": 574,
+                "correlationId": 4412,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 31,
+                "errorMessage": "Request Request(processor=0, connectionId=127.0.0.1:9096-127.0.0.1:58478-0-1, session=org.apache.kafka.network.Session@385f2775, listenerName=ListenerName(CONTROLLER), securityProtocol=PLAINTEXT, buffer=java.nio.HeapByteBuffer[pos=34 lim=34 cap=58], envelope=Optional[Request(processor=0, connectionId=127.0.0.1:9096-127.0.0.1:58478-0-1, session=org.apache.kafka.network.Session@4bafd89b, listenerName=ListenerName(CONTROLLER), securityProtocol=PLAINTEXT, buffer=java.nio.HeapByteBuffer[pos=71 lim=71 cap=71], envelope=Optional.empty)]) needs ALTER permission."
+            }
+        }
+    ]
+}

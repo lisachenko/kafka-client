@@ -146,6 +146,8 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\ShareGroupDescribeRequest;
 use Protocol\Kafka\Protocol\Request\ShareGroupDescribeResponse;
+use Protocol\Kafka\Protocol\Request\UnregisterControllerRequest;
+use Protocol\Kafka\Protocol\Request\UnregisterControllerResponse;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequest;
 use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
 use UnexpectedValueException;
@@ -3948,6 +3950,49 @@ class AdminClient
             throw KafkaException::fromCode(
                 $response->errorCode,
                 ['voterId' => $voterId, 'voterDirectoryId' => $directoryId]
+                    + ($response->errorMessage !== null && $response->errorMessage !== ''
+                        ? ['error' => $response->errorMessage]
+                        : [])
+            );
+        }
+    }
+
+    /**
+     * Removes the registration of a controller from the cluster metadata (ApiKey 94, Kafka 4.4, KIP-1312)
+     *
+     * `Admin.unregisterController(controllerId, options)` of the Java client @ 4.4.0, the controller counterpart of
+     * `unregisterBroker()`: the last step of decommissioning a controller that left the metadata quorum for good
+     * ({@see self::removeRaftVoter()}). `KafkaAdminClient` @ 4.4.0 sends the request to the least loaded broker - a
+     * broker forwards it to the active controller - and fails the call with the exception of the code and the message
+     * of the answer, every code but 0 and the 7 `RequestTimedOut` it sends again; this method sends the request with
+     * {@see self::sendAnyNode()} and throws the exception of every code but 0. The controller needs `ALTER` on the
+     * cluster (**31** `ClusterAuthorizationFailed` otherwise), a `metadata.version` of 4.4-IV2 or above (**35**) and a
+     * registration of that id (**136** `ControllerIdNotRegistered`, "Controller ID 4242 is not currently
+     * registered."), and it checks **nothing else**: it does not refuse the id of a controller that is still a voter
+     * of the quorum, nor its own - unregister a controller only once it is gone.
+     *
+     * @param int $controllerId Id of the controller whose registration is removed
+     *
+     * @throws KafkaException If the controller refused the request
+     *
+     * @see docs/protocol/4.4.md, section "UnregisterController API (key 94, v0)"
+     */
+    public function unregisterController(int $controllerId): void
+    {
+        /** @var UnregisterControllerResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): UnregisterControllerRequest => new UnregisterControllerRequest(
+                $controllerId,
+                $this->clientId(),
+                $correlationId
+            ),
+            UnregisterControllerResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['controllerId' => $controllerId]
                     + ($response->errorMessage !== null && $response->errorMessage !== ''
                         ? ['error' => $response->errorMessage]
                         : [])
