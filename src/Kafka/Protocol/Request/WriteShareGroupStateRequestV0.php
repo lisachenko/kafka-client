@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see \Protocol\Kafka\Protocol\Data\WriteShareGroupStateRequestTopicV0}s, into which the constructor converts the
  * topics it is given, so the count of a partition never reaches the wire.
  *
- * @see docs/protocol/4.3.md, section "WriteShareGroupState API (key 85, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 final class WriteShareGroupStateRequestV0 extends WriteShareGroupStateRequest
 {

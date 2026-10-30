@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * ({@see DescribeShareGroupOffsetsResponsePartition}); this is the entry below it. Its
  * {@see DescribeShareGroupOffsetsResponsePartition::$lag} stays at the -1 of an unknown lag.
  *
- * @see docs/protocol/4.3.md, section "The share-partition lag of KIP-1226 (v1)"
+ * @see docs/protocol/4.4.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 final class DescribeShareGroupOffsetsResponsePartitionV0 extends DescribeShareGroupOffsetsResponsePartition
 {

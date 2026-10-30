@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `MetadataResponse.json` @ 4.0.0 appends the top-level `error_code` of KIP-1102 behind it, see
  * {@see MetadataResponse::$errorCode}.
  *
- * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)" and "Metadata by topic id (v12, KIP-516)"
+ * @see docs/protocol/4.4.md, sections "Metadata API (key 3, v0 to v13)" and "Metadata by topic id (v12, KIP-516)"
  */
 final class MetadataResponseV12 extends MetadataResponse
 {

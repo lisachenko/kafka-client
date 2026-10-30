@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * entries name their topic by **name**. `ProduceResponse.json` @ 4.1.0 replaced that name with the `topic_id` in
  * version 13 (KIP-516), see {@see ProduceResponse}.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
+ * @see docs/protocol/4.4.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
  *      part 2 (v12)"
  */
 final class ProduceResponseV12 extends ProduceResponse

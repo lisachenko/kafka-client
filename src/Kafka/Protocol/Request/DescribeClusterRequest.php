@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * belongs to the broker listener alone: the Java admin client refuses it towards the controllers ("Cannot request
  * fenced brokers from controller endpoint"). {@see DescribeClusterRequestV1} is the frame below it.
  *
- * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
+ * @see docs/protocol/4.4.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
  *      (v1)" and "The fenced brokers of KIP-1073 (v2)"
  */
 class DescribeClusterRequest extends AbstractRequest

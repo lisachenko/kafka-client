@@ -13,17 +13,30 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV2;
 
 /**
- * TxnOffsetCommit, version 5: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
+ * TxnOffsetCommit, version 6: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
  *
  * <pre>
+ *   TxnOffsetCommit Request (Version: 6) => transactional_id consumer_group_id producer_id producer_epoch
+ *                                           generation_id_or_member_epoch member_id group_instance_id [topics]
+ *     topics => topic_id [partitions]      -- the topic id of KIP-1319 in place of the name
+ *       topic_id => UUID
+ *
+ *   TxnOffsetCommit Request (Version: 3 to 5) => ... generation_id member_id group_instance_id [topics]
+ *     generation_id     => INT32
+ *     member_id         => STRING
+ *     group_instance_id => NULLABLE_STRING
+ *
  *   TxnOffsetCommit Request (Version: 2) => transactional_id consumer_group_id producer_id producer_epoch [topics]
  *     transactional_id  => STRING
  *     consumer_group_id => STRING
@@ -64,8 +77,8 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
  * **Kafka 2.1 added version 2** (KIP-320), the first version of this api whose frame really changed: every
  * partition of it carries a `committed_leader_epoch` between the offset and the metadata
  * ({@see \Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestPartition}), so that the coordinator stores the
- * epoch of the leader the offset was read from next to the offset itself. It is the version this client sends;
- * {@see TxnOffsetCommitRequestV1} is the frame without that field, with the version of Kafka 2.0.
+ * epoch of the leader the offset was read from next to the offset itself. {@see TxnOffsetCommitRequestV1} is the
+ * frame without that field, with the version of Kafka 2.0.
  *
  * **Kafka 2.5 added the version 3** (KIP-447), whose request carries **who the consumer is**: a `generation_id`,
  * a `member_id` and a nullable `group_instance_id` between the producer epoch and the topics. Until then the
@@ -92,7 +105,26 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
  * 4` unless the cluster finalizes `transaction.version` 2; {@see TxnOffsetCommitRequestV4} is that frame, with the
  * version field of Kafka 3.8, and the one that still has an AddOffsetsToTxn in front of it.
  *
- * @see docs/protocol/4.3.md, section "TxnOffsetCommit API (key 28, v0 to v5)"
+ * **Kafka 4.4 added the version 6** (KIP-1319), and this class is version 6: *"Version 6 adds support for topic IDs
+ * and removes support for topic names"* (`TxnOffsetCommitRequest.json` @ 4.4.0) - the `Name` of a topic entry is
+ * `"versions": "0-5"`, the new `TopicId` `"6+"` - the TxnOffsetCommit counterpart of what OffsetCommit v10 did in
+ * Kafka 4.2. So a client can not commit for a topic whose id it does not know: the `$topicIds` of the constructor are
+ * where it states them ({@see \Protocol\Kafka\Common\Cluster::topicIdsOf()} is where it learns them), and a version
+ * 6 request without the id of one of its topics is refused before it is built, with {@see UnknownTopicIdException},
+ * as the Java `TxnOffsetCommitRequest.Builder.build()` @ 4.4.0 refuses it with an `UnsupportedVersionException`. The
+ * node answers a topic id it does not know with the **100** `UNKNOWN_TOPIC_ID` on every partition of it. The same
+ * release renamed `generation_id` to `generation_id_or_member_epoch` - "the generation of the group if using the
+ * classic group protocol or the member epoch if using the consumer protocol" - the same four bytes, so
+ * {@see self::$generationId} keeps its published name. And the answer of the version 6 reports the **69**
+ * `GroupIdNotFound` of a group the coordinator does not know and the **113** `StaleMemberEpoch` of a KIP-848 member
+ * that commits with an epoch the coordinator does not accept, which `OffsetMetadataManager` @ 4.4.0 folds into the
+ * **22** `IllegalGeneration` for every version below it. The version belongs to the transaction protocol **v2**, as
+ * the version 5 does: the Java `Builder.forTopicIdsOrNames()` @ 4.4.0 caps it at 4 without `transaction.version` 2.
+ * {@see TxnOffsetCommitRequestV5} keeps the version that names the topics, which a client sends for a topic whose id
+ * it does not know (`Builder.forTopicNames()` @ 4.4.0).
+ *
+ * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {
@@ -104,7 +136,7 @@ class TxnOffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * @inheritdoc
@@ -112,14 +144,32 @@ class TxnOffsetCommitRequest extends AbstractRequest
     public const int FLEXIBLE_VERSION = 3;
 
     /**
-     * Offsets to commit, indexed by the topic name
+     * The first version that names a topic by its id, and by nothing else (Kafka 4.4, KIP-1319)
+     */
+    public const int MIN_TOPIC_ID_VERSION = 6;
+
+    /**
+     * Offsets to commit, indexed by the topic name - a list from version 6 on, whose entries carry no name on the wire
      *
-     * @var array<string, TxnOffsetCommitRequestTopic>
+     * @var array<array-key, TxnOffsetCommitRequestTopic>
      */
     protected readonly array $topics;
 
     /**
+     * Id of every topic this request names, as topic name => the 16 raw bytes of its uuid (KIP-1319)
+     *
+     * Version 6 names every topic by its id and by nothing else; every version below it ignores the map.
+     *
+     * @var array<string, string>
+     */
+    protected readonly array $topicIds;
+
+    /**
      * Generation of the consumer group the offsets belong to, -1 for a producer that is not a member
+     *
+     * `generation_id_or_member_epoch` from Kafka 4.4 on (KIP-1319): the generation of a classic member, the member
+     * epoch of a member of the consumer protocol of KIP-848 - which is what
+     * {@see \Protocol\Kafka\Consumer\KafkaConsumer::groupMetadata()} puts into it for one, as the Java consumer does.
      *
      * @since Version 3 of protocol
      */
@@ -150,6 +200,10 @@ class TxnOffsetCommitRequest extends AbstractRequest
      *        `null` is the "not a member" form, the generation -1 with an empty member id
      * @param string $clientId        A user specified identifier for the client making the request
      * @param int    $correlationId   A user-supplied value that the broker passes back unmodified
+     * @param array<string, string> $topicIds Id of every topic, as name => the 16 raw bytes of its uuid; **version 6
+     *        needs one per topic** (KIP-1319), every lower version ignores the map
+     *
+     * @throws UnknownTopicIdException If a version 6 request names a topic whose id the caller did not state
      */
     public function __construct(
         /**
@@ -176,14 +230,36 @@ class TxnOffsetCommitRequest extends AbstractRequest
          */
         protected readonly ?ConsumerGroupMetadata $groupMetadata = null,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        array $topicIds = []
     ) {
-        $topicClass   = static::topicClass();
-        $packedTopics = [];
+        $this->topicIds = $topicIds;
+        $topicClass     = static::topicClass();
+        $packedTopics   = [];
         foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
-            $packedTopics[$topic] = $partitionOffsets instanceof TxnOffsetCommitRequestTopic
-                ? $partitionOffsets
-                : new $topicClass((string) $topic, $partitionOffsets);
+            $topic = $partitionOffsets instanceof TxnOffsetCommitRequestTopic
+                ? $partitionOffsets->topic
+                : (string) $topic;
+            if (static::VERSION >= self::MIN_TOPIC_ID_VERSION) {
+                // A version 6 entry carries no name at all, so the list it travels in is the only honest shape
+                $packedTopics[] = new $topicClass(
+                    $topic,
+                    $partitionOffsets instanceof TxnOffsetCommitRequestTopic
+                        ? $partitionOffsets->partitions
+                        : $partitionOffsets,
+                    self::idOf($topicIds, $topic, $partitionOffsets)
+                );
+                continue;
+            }
+            $packedTopics[$topic] = match (true) {
+                $partitionOffsets instanceof $topicClass => $partitionOffsets,
+                // An entry built for another version is repacked; its partitions are kept as they are
+                $partitionOffsets instanceof TxnOffsetCommitRequestTopic => new $topicClass(
+                    $topic,
+                    $partitionOffsets->partitions
+                ),
+                default => new $topicClass($topic, $partitionOffsets),
+            };
         }
         $this->topics = $packedTopics;
 
@@ -214,9 +290,52 @@ class TxnOffsetCommitRequest extends AbstractRequest
             $body['memberId']        = BinarySchema::TYPE_STRING;
             $body['groupInstanceId'] = BinarySchema::TYPE_NULLABLE_STRING;
         }
-        $body['topics'] = ['topic' => static::topicClass()];
+        // From version 6 the entries carry no name, so there is no field to index the array by
+        $body['topics'] = static::VERSION >= self::MIN_TOPIC_ID_VERSION
+            ? [static::topicClass()]
+            : ['topic' => static::topicClass()];
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the id of every topic this request names, as topic name => the 16 raw bytes of its uuid
+     *
+     * @return array<string, string>
+     */
+    public function getTopicIds(): array
+    {
+        return $this->topicIds;
+    }
+
+    /**
+     * Returns the id of a topic from the map of the caller, or from a ready-made entry that carries one
+     *
+     * A version below 6 names its topics by name and never looks at the map; a version 6 frame can not name a topic
+     * at all without its id, and a client that does not know it sends the version 5 instead of guessing.
+     *
+     * @param array<string, string> $topicIds Id of every topic, as name => the 16 raw bytes of its uuid
+     * @param mixed                 $entry    What the caller gave for the topic
+     *
+     * @throws UnknownTopicIdException If the id of the topic is not known
+     */
+    private static function idOf(array $topicIds, string $topic, mixed $entry): string
+    {
+        $topicId = $topicIds[$topic] ?? Uuid::ZERO;
+        if (Uuid::isZero($topicId) && $entry instanceof TxnOffsetCommitRequestTopic) {
+            $topicId = $entry->topicId;
+        }
+        if (Uuid::isZero($topicId)) {
+            throw new UnknownTopicIdException(
+                [
+                    'error' => 'A TxnOffsetCommit request of version 6 names its topics by id (KIP-1319), and this'
+                        . ' client does not know the id of this one',
+                    'topic' => $topic,
+                ]
+            );
+        }
+
+        return $topicId;
     }
 
     /**
@@ -226,6 +345,10 @@ class TxnOffsetCommitRequest extends AbstractRequest
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 2 ? TxnOffsetCommitRequestTopic::class : TxnOffsetCommitRequestTopicV0::class;
+        return match (true) {
+            static::VERSION >= self::MIN_TOPIC_ID_VERSION => TxnOffsetCommitRequestTopic::class,
+            static::VERSION >= 2                          => TxnOffsetCommitRequestTopicV2::class,
+            default                                       => TxnOffsetCommitRequestTopicV0::class,
+        };
     }
 }

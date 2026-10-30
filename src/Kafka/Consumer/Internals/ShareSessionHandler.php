@@ -38,8 +38,8 @@ use Protocol\Kafka\Protocol\Request\ShareFetchRequest;
  * the next epoch would be the 123. The 4.3.1 node answers an epoch 0 of a member whose session it still holds by
  * replacing the session, and the records the member holds stay acquired to it.
  *
- * @see docs/protocol/4.3.md, section "The share consumer (KIP-932)"
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareSessionHandler
 {

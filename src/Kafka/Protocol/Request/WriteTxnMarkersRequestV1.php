@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * appended the `transaction_version`, and this is the request below it, whose markers are encoded as
  * {@see \Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarkerV1} entries.
  *
- * @see docs/protocol/4.3.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
+ * @see docs/protocol/4.4.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 final class WriteTxnMarkersRequestV1 extends WriteTxnMarkersRequest
 {

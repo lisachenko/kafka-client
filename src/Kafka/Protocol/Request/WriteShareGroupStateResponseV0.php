@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * replayed through the class of version 0, and a caller that sends a {@see WriteShareGroupStateRequestV0} reads its
  * answer with it.
  *
- * @see docs/protocol/4.3.md, section "WriteShareGroupState API (key 85, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 final class WriteShareGroupStateResponseV0 extends WriteShareGroupStateResponse
 {

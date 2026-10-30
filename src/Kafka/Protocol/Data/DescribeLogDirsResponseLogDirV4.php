@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * sizes and leaves {@see DescribeLogDirsResponseLogDir::$isCordoned} at the `false` of the default.
  * {@see DescribeLogDirsResponseLogDirV3} is the entry without the two sizes either.
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class DescribeLogDirsResponseLogDirV4 extends DescribeLogDirsResponseLogDir
 {

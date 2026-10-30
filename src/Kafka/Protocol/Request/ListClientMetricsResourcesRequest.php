@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * {@see \Protocol\Kafka\Admin\ConfigResource}, whose group is the 3 of `ResourceType` where a config resource of a
  * group is the **32**.
  *
- * @see docs/protocol/4.3.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config resources
+ * @see docs/protocol/4.4.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config resources
  *      of KIP-1142 (v1)"
  */
 class ListClientMetricsResourcesRequest extends AbstractRequest

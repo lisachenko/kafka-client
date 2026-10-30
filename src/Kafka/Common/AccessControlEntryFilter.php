@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * and a deny acl. Unlike the pattern half, the two names are matched **literally** - there is no prefix logic
  * here, and a principal filter either is the whole `User:name` string of the acl or matches nothing.
  *
- * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.4.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 class AccessControlEntryFilter implements BinarySchemaInterface
 {
@@ -44,6 +44,9 @@ class AccessControlEntryFilter implements BinarySchemaInterface
 
     /**
      * Host to match, or null for every host
+     *
+     * The filter compares the host string of an acl: the filter `10.0.0.0/8` finds the acl of that CIDR block
+     * (KIP-1276, Kafka 4.4), the address `10.1.2.3` inside it does not.
      */
     public ?string $host;
 

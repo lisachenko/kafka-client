@@ -20,10 +20,10 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsSupportedFeature;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * The api keys and versions one broker serves, version 4 (key 18)
+ * The api keys and versions one broker serves, version 5 (key 18)
  *
  * <pre>
- *   ApiVersions Response (Version: 3 to 4) => error_code [api_versions] throttle_time_ms TAG_BUFFER
+ *   ApiVersions Response (Version: 3 to 5) => error_code [api_versions] throttle_time_ms TAG_BUFFER
  *     error_code    => INT16
  *     api_versions  => api_key min_version max_version TAG_BUFFER   (COMPACT_ARRAY)
  *       api_key     => INT16
@@ -89,14 +89,24 @@ use Protocol\Kafka\Protocol\TaggedField;
  * the same in both, because a feature finalized at the level 0 is not finalized at all.
  * {@see ApiVersionsResponseV3} reads the answer one version below.
  *
- * @see docs/protocol/4.3.md, section "ApiVersions API (key 18, v0 to v4)"
+ * **Version 5 (Kafka 4.4, KIP-1242) adds no field either, and one error code.** The request names the cluster and
+ * the node it means to reach ({@see ApiVersionsRequest}), and a broker that is not that node of that cluster answers
+ * **129** `REBOOTSTRAP_REQUIRED` - "Client metadata is stale. The client should rebootstrap to obtain new metadata"
+ * (`Errors.java` @ 4.4.0) - through `ApiVersionsRequest.getErrorResponse`: an **empty** api array, the throttle time
+ * and an empty tag section, in the layout of the version **asked for**. Unlike the 35 of an unknown version, which
+ * the broker writes in the version 0 layout because it never parsed the request, the 129 comes from a request the
+ * broker did parse, so this class reads it like any other answer: `00 81 01 00 00 00 00 00` behind the correlation
+ * id, measured on the 4.4.0 node. {@see ApiVersionsResponseV4} reads the answer one version below, which is the same
+ * frame.
+ *
+ * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 class ApiVersionsResponse extends AbstractResponse
 {
     /**
      * Version of the ApiVersions API that this class decodes the answer of
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * @inheritdoc
@@ -104,7 +114,8 @@ class ApiVersionsResponse extends AbstractResponse
     public const int FLEXIBLE_VERSION = 3;
 
     /**
-     * Error code of the whole request, 0 or 35 (UnsupportedVersion)
+     * Error code of the whole request: 0, 35 (UnsupportedVersion), 42 (InvalidRequest) or, from version 5 on, 129
+     * (RebootstrapRequired, KIP-1242)
      */
     public int $errorCode = 0;
 

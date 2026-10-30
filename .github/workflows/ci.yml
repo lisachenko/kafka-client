@@ -102,7 +102,7 @@ jobs:
           php-version: ${{ matrix.php }}
           coverage: ${{ env.COVERAGE == 'true' && 'pcov' || 'none' }}
       - run: composer install --prefer-dist --no-progress
-      - name: Start Kafka 4.3.1 (KRaft)
+      - name: Start Kafka 4.4.0 (KRaft)
         run: docker compose up -d --wait
       - name: Run the integration suite
         env:

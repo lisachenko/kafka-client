@@ -57,7 +57,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`InvalidRegularExpression`) of Kafka 4.0, the one error the answer gained with it. It is the fourth filter, ANDed with the others. {@see ListTransactionsRequestV1} is the frame
  * below it.
  *
- * @see docs/protocol/4.3.md, sections "ListTransactions API (key 66, v0 to v2)" and "The transactional id pattern
+ * @see docs/protocol/4.4.md, sections "ListTransactions API (key 66, v0 to v2)" and "The transactional id pattern
  *      of KIP-1152 (v2)"
  */
 class ListTransactionsRequest extends AbstractRequest

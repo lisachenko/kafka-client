@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
  * {@see Client::produce()}. Version 13 (Kafka 4.1, KIP-516) only names the topics by their ids, so it is sent wherever
  * version 12 was, and the cap of the protocol v1 stays at 11.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
+ * @see docs/protocol/4.4.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
  *      part 2 (v12)"
  */
 #[CoversClass(Client::class)]

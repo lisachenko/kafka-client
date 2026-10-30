@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * ({@see UpdateFeaturesResponseV1}) when the controller accepts the whole request; a refusal is the top-level error
  * of the answer at every version on a 4.x controller.
  *
- * @see docs/protocol/4.3.md, sections "The upgrade type and the dry run of KIP-778 (v1)" and "The answer without
+ * @see docs/protocol/4.4.md, sections "The upgrade type and the dry run of KIP-778 (v1)" and "The answer without
  *      results (v2, Kafka 4.0)"
  */
 final class UpdateFeaturesRequestV1 extends UpdateFeaturesRequest

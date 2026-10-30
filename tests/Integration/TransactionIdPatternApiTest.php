@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Request\ListTransactionsResponseV1;
  * `InitProducerId` each, which leaves them `Empty` - and asks for them by pattern; the coordinator expires them with
  * `transactional.id.expiration.ms`, so there is nothing to clean up.
  *
- * @see docs/protocol/4.3.md, section "The transactional id pattern of KIP-1152 (v2)"
+ * @see docs/protocol/4.4.md, section "The transactional id pattern of KIP-1152 (v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ListTransactionsRequest::class)]

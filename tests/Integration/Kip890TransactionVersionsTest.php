@@ -48,6 +48,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
 
@@ -76,7 +77,7 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
  * Every transaction of this class is opened with the version 3 the client sends and ended in the teardown, and
  * every topic it creates is deleted again.
  *
- * @see docs/protocol/4.3.md, sections "The transaction protocol v2 of KIP-890 (Kafka 3.8), and what a client reaches on this node", "InitProducerId API (key 22, v0 to v5)", "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)", "EndTxn API (key 26, v0 to v5)" and "TxnOffsetCommit API (key 28, v0 to v5)"
+ * @see docs/protocol/4.4.md, sections "The transaction protocol v2 of KIP-890 (Kafka 3.8), and what a client reaches on this node", "InitProducerId API (key 22, v0 to v5)", "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)", "EndTxn API (key 26, v0 to v5)" and "TxnOffsetCommit API (key 28, v0 to v6)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
 #[CoversClass(InitProducerIdRequestV4::class)]
@@ -178,7 +179,8 @@ final class Kip890TransactionVersionsTest extends IntegrationTestCase
         self::assertSame(4, EndTxnRequestV4::VERSION, 'the EndTxn of the protocol v1, Client::endTxn()');
         self::assertSame(4, TxnOffsetCommitRequestV4::VERSION, 'the TxnOffsetCommit of the protocol v1');
         self::assertSame(5, EndTxnRequest::VERSION, 'the version 5 of Kafka 4.0, TransactionProtocolV2Test');
-        self::assertSame(5, TxnOffsetCommitRequest::VERSION, 'the version 5 of Kafka 4.0');
+        self::assertSame(5, TxnOffsetCommitRequestV5::VERSION, 'the version 5 of Kafka 4.0, by topic name');
+        self::assertSame(6, TxnOffsetCommitRequest::VERSION, 'the version 6 of Kafka 4.4, by topic id (KIP-1319)');
         self::assertSame(5, AddPartitionsToTxnRequest::VERSION, 'built, but never sent');
         self::assertSame(3, AddPartitionsToTxnRequestV3::VERSION, 'the version Client::addPartitionsToTxn() sends');
     }

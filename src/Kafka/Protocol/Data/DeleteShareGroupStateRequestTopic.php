@@ -22,7 +22,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `DeleteShareGroupStateRequestData.DeleteStateData` @ 4.1.0: the topic id and the partitions of the share group
  * whose state is deleted.
  *
- * @see docs/protocol/4.3.md, section "DeleteShareGroupState API (key 86, v0)"
+ * @see docs/protocol/4.4.md, section "DeleteShareGroupState API (key 86, v0)"
  */
 class DeleteShareGroupStateRequestTopic implements BinarySchemaInterface
 {

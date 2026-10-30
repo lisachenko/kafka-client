@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `include_fenced_brokers`, and this is the request below it. Its answer lists the brokers that are not fenced, and
  * the {@see DescribeClusterRequest::$includeFencedBrokers} of an instance of this class never reaches the wire.
  *
- * @see docs/protocol/4.3.md, sections "The endpoint type of KIP-919 (v1)" and "The fenced brokers of KIP-1073 (v2)"
+ * @see docs/protocol/4.4.md, sections "The endpoint type of KIP-919 (v1)" and "The fenced brokers of KIP-1073 (v2)"
  */
 final class DescribeClusterRequestV1 extends DescribeClusterRequest
 {

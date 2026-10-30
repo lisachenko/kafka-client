@@ -146,7 +146,7 @@ final class Cluster
      *
      * @throws AllBrokersNotAvailableException If the cluster did not advertise a single broker in time
      *
-     * @see docs/protocol/4.3.md, section "Cluster readiness"
+     * @see docs/protocol/4.4.md, section "Cluster readiness"
      */
     public static function bootstrap(array $configuration, ?string $topic = null): Cluster
     {
@@ -314,7 +314,7 @@ final class Cluster
      * name a topic by that id. A topic the cluster does not know yet, and a topic whose answer carried the zero
      * id, are both `null` here - the caller reloads the metadata and asks again, it never falls back to the name.
      *
-     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.4.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     public function topicIdOf(string $topic): ?string
     {
@@ -360,7 +360,7 @@ final class Cluster
      *
      * @param string $topicId The 16 raw bytes of the topic id
      *
-     * @see docs/protocol/4.3.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/4.4.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     public function topicNameById(string $topicId): ?string
     {
@@ -594,6 +594,23 @@ final class Cluster
         $this->refreshIfStale();
 
         return $this->clusterId;
+    }
+
+    /**
+     * Starts again from the bootstrap servers after a broker said that the metadata of this client is stale
+     *
+     * The answer to the 129 `REBOOTSTRAP_REQUIRED` of an ApiVersions v5 (Kafka 4.4, KIP-1242): the request named the
+     * cluster id of this metadata and the id of the node it meant to reach, and the broker at the address the
+     * metadata gave for that node is another node or belongs to another cluster. `NetworkClient` @ 4.4.0 closes its
+     * connections and calls `rebootstrap()` on its metadata; here that is a {@see self::reload()}, which always asks
+     * the `bootstrap.servers` and never a broker of the stale metadata. A reload that no bootstrap server answers
+     * keeps the metadata there was, like the periodic refresh: the caller reports the 129 either way.
+     *
+     * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+     */
+    public function rebootstrap(): void
+    {
+        $this->reloadQuietly();
     }
 
     /**

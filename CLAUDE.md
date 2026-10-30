@@ -3,7 +3,7 @@
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` → `0.9.x` → `0.10.x` → `0.11.x` → `1.x` (the archived lines
 below 2.0, see "Maintenance" below) → `2.x` (Kafka **2.8.2**, **complete**, **protected**) → `3.x` (Kafka **3.9.2**,
-**complete**, **protected**) → `main` (the **4.x line**, Kafka **4.3.1**, **complete**).
+**complete**, **protected**) → `main` (the **4.x line**, Kafka **4.4.0**, **complete**).
 `main` stays the 4.x line until a Kafka 5.x line starts: no `4.x` branch is cut before then (the owner's decision).
 The lines are **major** lines: one branch per Kafka major version, covering every minor release inside it (`2.x`
 speaks 2.8.2 and with it everything 2.0 to 2.8 added; `3.x` speaks 3.9.2 and with it everything 3.0 to 3.9 added plus
@@ -15,11 +15,13 @@ from). The records of the archived lines live on their own branches. `main` and 
 the 4.x line, so the line started on `main` without branching anything off; its foundation brought the node of the
 line (**Kafka 4.3.1**, `docker/kafka-4.3.1`), renamed the grammar to `docs/protocol/4.3.md` and declared what Kafka
 4.x adds (the api keys 88–92, the error codes 128–133), and the milestones 4.0 to 4.3 and the KIP-932 share consumer
-completed it (epic #213, PR #219).
+completed it (epic #213, PR #219). **Kafka 4.4.0** came out after that (2026-10-13), and the **4.4 milestone** moved the
+line onto it: the node `docker/kafka-4.4.0`, the grammar renamed to `docs/protocol/4.4.md`, the api keys 93 and 94,
+the error codes 134–136 and the five versions 4.4 added (see "What 4.4.0 adds to the 4.3.1 protocol" there).
 
 ## Maintenance
 
-**The two latest major lines are maintained**: today `main` (4.x, Kafka 4.3.1) and `3.x` (Kafka 3.9.2). They take
+**The two latest major lines are maintained**: today `main` (4.x, Kafka 4.4.0) and `3.x` (Kafka 3.9.2). They take
 fixes and run the full CI matrix. When a Kafka 5.x line starts on `main`, `4.x` is branched off and `3.x` leaves
 maintenance. `2.x` is out of maintenance: it stays buildable on the PHP versions CI covers, but takes no further
 work unless the owner asks for it. The lines below 2.0 (`0.8.x`, `0.9.x`, `0.10.x`, `0.11.x`, `1.x`) are
@@ -37,8 +39,9 @@ versions** of KIP-482 (compact strings, bytes and arrays, tagged fields, request
 Kafka 2.4), the **leader epochs** of KIP-320 (2.1), the **zstd** codec of KIP-110 (2.1), the api keys 43 to 64 and
 the error codes 72-104.
 
-**The 4.x line started from `main` as it stood at the end of 3.x** and speaks **Kafka 4.3.1**, the last 4.x
-release available when the line started (epic #213) — Kafka 4.x is **KRaft only**, and 4.0 is the first release that
+**The 4.x line started from `main` as it stood at the end of 3.x** and speaks **Kafka 4.4.0**: it was built on
+Kafka 4.3.1, the last 4.x release available when the line started (epic #213), and moved onto 4.4.0 by the 4.4
+milestone (PR #250) — Kafka 4.x is **KRaft only**, and 4.0 is the first release that
 stops serving protocol versions a 3.9.2 node still answers (KIP-896), so the lower-line frames the compliance suite
 replays are no longer frames a 4.x node accepts. What Kafka 4.x adds over 3.9.2 api by api is derived from the message specs at the release tags by
 the foundation ticket, on the plan in `docs/handoff/main.md`. For this line rule 4 means "start from the 3.9.2 class of
@@ -115,7 +118,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 
 - `docker compose up -d --wait` starts the broker of this branch's Kafka version
   (`docker/kafka-<version>/`, advertised as 127.0.0.1:9092). On `main` (the 4.x line) that is
-  **`docker/kafka-4.3.1`**, the container `kafka-4-3-1`: a **KRaft** node (`process.roles=broker,controller`, no
+  **`docker/kafka-4.4.0`**, the container `kafka-4-4-0`: a **KRaft** node (`process.roles=broker,controller`, no
   ZooKeeper, a CONTROLLER listener on 9096 inside the container, a dynamic quorum formatted `--standalone`); on
   `3.x` it is `docker/kafka-3.9.2` (`kafka-3-9-2`, KRaft with a static quorum), on `2.x` `docker/kafka-2.8.2`
   (`kafka-2-8-2`, ZooKeeper bundled). Either way it has the four listeners PLAINTEXT 9092, SSL 9093,
@@ -151,17 +154,19 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   principal the ACLs apply to. The KIP-848 coordinator is on (`group.coordinator.rebalance.protocols=classic,consumer`).
   Metadata answers brokers before any topic exists; a fresh topic still answers 5/6 for a moment. The node has
   **two log directories** (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2` — a partition lands in either, find it with
-  `docker exec kafka-4-3-1 ls /tmp/kafka-logs /tmp/kafka-logs-2`), a delegation-token secret key (without it the
+  `docker exec kafka-4-4-0 ls /tmp/kafka-logs /tmp/kafka-logs-2`), a delegation-token secret key (without it the
   token apis 38–41 answer 61) and `transaction.state.log.replication.factor=1`/`.min.isr=1` (without them
   `__transaction_state` cannot be created and every transactional request ends in the error code 15).
-- **4.3 specifics (KRaft, the node of `main`).** Everything of the 3.9 paragraph above holds except what follows.
+- **4.4 specifics (KRaft, the node of `main`, Kafka 4.4.0; the 4.x line was built on 4.3.1 before it).** Everything
+  of the 3.9 paragraph above holds except what follows.
   The distribution keeps its configuration in `config/server.properties` (no `config/kraft/`) and `start.sh`
   writes it from scratch. The quorum is **dynamic** (KIP-853): `controller.quorum.bootstrap.servers` and
   `kafka-storage.sh format --standalone`, as the release formats a combined node, so every feature is finalized at
-  its default: `metadata.version` 4.3-IV0 (30), `kraft.version` 1, `transaction.version` 2, `group.version` 1,
-  `share.version` 1, `streams.version` 1, `eligible.leader.replicas.version` 1 (`kafka-features.sh
-  --bootstrap-server localhost:9092 describe`). The node lists **75 keys** on its client listeners (0–3, 8–51, 55,
-  57, 60, 61, 64–66, 68, 69, 74–81, 83–92): 4–7 have no version at all, the controller-only apis live on 9096,
+  its default: `metadata.version` 4.4-IV2 (33; 4.3.1 finalized 4.3-IV0, 30), `kraft.version` 1, `transaction.version`
+  2, `group.version` 1, `share.version` 2 (the share-group dead-letter queue of KIP-1191; 1 on 4.3.1), `streams.version`
+  1, `eligible.leader.replicas.version` 1 (`kafka-features.sh --bootstrap-server localhost:9092 describe`). The node
+  lists **77 keys** on its client listeners (0–3, 8–51, 55, 57, 60, 61, 64–66, 68, 69, 74–81, 83–94): 4–7 have no
+  version at all, the controller-only apis live on 9096,
   71/72 are hidden without a client-telemetry plugin. **KIP-896**: eighteen rows start above 0 (nineteen apis of the client listener lost versions) and every frame of a
   removed version closes the connection — Produce v0–v2 too, although the answer still lists them (KAFKA-18659);
   the message formats v0/v1 cannot be produced any more, and the topic config `message.downconversion.enable` is
@@ -169,10 +174,12 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   `share.version`; the single-node share state topic needs `share.coordinator.state.topic.replication.factor=1`
   and `.min.isr=1`. AddRaftVoter/RemoveRaftVoter are answered (126 for the node's own id 1, 127 for an unknown one)
   — **never send a RemoveRaftVoter of voter 1 or an AddRaftVoter of a reachable node**: the quorum has one voter.
+  UnregisterController (94, Kafka 4.4) answers 136 for an unknown controller id — **never unregister controller 1**,
+  the node's own registration, for the same reason.
 - Useful in-container tools (the `--zookeeper` forms are those of the ZooKeeper broker of `2.x`): `docker exec
   <container> /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list`,
   `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-dump-log.sh` (`kafka-run-class.sh
-  kafka.tools.DumpLogSegments` up to 3.x: the class is gone from 4.3.1),
+  kafka.tools.DumpLogSegments` up to 3.x: the class is gone from 4.3.1 and 4.4.0),
   `kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list|--describe --group G`, `kafka-configs.sh`
   (`--bootstrap-server … --entity-type brokers|topics|clients`) and `kafka-delegation-tokens.sh`.
 

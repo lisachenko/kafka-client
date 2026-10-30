@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (Kafka 4.2, KIP-1226) put the `lag` behind the leader epoch, and this is the answer below it, whose groups are
  * {@see \Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponseGroupV0} entries.
  *
- * @see docs/protocol/4.3.md, section "The share-partition lag of KIP-1226 (v1)"
+ * @see docs/protocol/4.4.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 final class DescribeShareGroupOffsetsResponseV0 extends DescribeShareGroupOffsetsResponse
 {

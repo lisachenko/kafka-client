@@ -40,8 +40,8 @@ use Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatResponseV0;
  * not change. The frames the node answered are the vectors of `consumer-group-heartbeat.json` and
  * `consumer-group-describe.json`; this class pins the layout of the classes themselves.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 #[CoversClass(ConsumerGroupHeartbeatRequest::class)]
 #[CoversClass(ConsumerGroupHeartbeatRequestV0::class)]

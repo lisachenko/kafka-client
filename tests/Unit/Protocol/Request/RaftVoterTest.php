@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Request\RemoveRaftVoterResponse;
  * `ReplicaKey(id=1, directoryId=7QxpXGVBQTWaHmiG7IDrEQ)` - for the two requests that can never change it: an add
  * of the voter id 1, which is the 126, and a remove of the voter 4242, which is the 127.
  *
- * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "RemoveRaftVoter API (key 81, v0)"
+ * @see docs/protocol/4.4.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "RemoveRaftVoter API (key 81, v0)"
  */
 #[CoversClass(AddRaftVoterRequest::class)]
 #[CoversClass(AddRaftVoterResponse::class)]

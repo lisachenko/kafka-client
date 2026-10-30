@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  *
  * Each vector is a frame that a Kafka broker really sent or really accepted - 0.10.2.2 for everything the 0.10 line
  * added, 0.9.0.1 and 0.8.2.2 for the api versions whose frames the later lines do not change - stored as hex in
- * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/4.3.md`. For every one of them
+ * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/4.4.md`. For every one of them
  * this suite checks four things:
  *
  * 1. the frame decodes into the class that the vector names;
@@ -457,6 +457,14 @@ final class ProtocolVectorTest extends TestCase
      * @return iterable<string, array{0: array<string, mixed>}>
      */
     public static function removeRaftVoterVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function unregisterControllerVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
     }
@@ -1213,6 +1221,15 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('removeRaftVoterVectors')]
     public function testRemoveRaftVoterApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('unregisterControllerVectors')]
+    public function testUnregisterControllerApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

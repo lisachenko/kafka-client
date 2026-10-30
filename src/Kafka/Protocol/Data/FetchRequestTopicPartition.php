@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * `Long.MAX_VALUE`, "the feature is not supported", so a consumer entry of version 18 is again the entry of version
  * 17 byte for byte; {@see FetchRequestTopicPartitionV17} keeps that entry. This class is the entry of version 18.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)", "The leader epoch (KIP-320)",
+ * @see docs/protocol/4.4.md, sections "Fetch API (key 1, v0 to v18)", "The leader epoch (KIP-320)",
  *      "Epoch validation in the fetch itself (v12, KIP-595)", "The replica directory id of KIP-853 (v17)" and
  *      "The high watermark of a follower, KIP-1166 (v18)"
  */

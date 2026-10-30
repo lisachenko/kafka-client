@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Data\ShareAcknowledgementBatch;
  * - the node that acquired the records is remembered, because an acknowledgement has to reach the share session it
  *   was acquired in.
  *
- * @see docs/protocol/4.3.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
  */
 final class ShareInFlightBatch
 {

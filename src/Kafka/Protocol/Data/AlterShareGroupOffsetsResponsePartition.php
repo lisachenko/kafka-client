@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     ErrorMessage   => COMPACT_NULLABLE_STRING
  * </pre>
  *
- * @see docs/protocol/4.3.md, section "AlterShareGroupOffsets API (key 91, v0)"
+ * @see docs/protocol/4.4.md, section "AlterShareGroupOffsets API (key 91, v0)"
  */
 final class AlterShareGroupOffsetsResponsePartition implements BinarySchemaInterface
 {

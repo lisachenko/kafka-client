@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
  * The three ACL apis (keys 29, 30 and 31) at the version 3 of Kafka 3.3, against the `StandardAuthorizer` of the node.
  *
  * This is the first line of the repository that implements them, and the only reason it can is the authorizer of
- * `docker/kafka-4.3.1`: `authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer` with
+ * `docker/kafka-4.4.0`: `authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer` with
  * `super.users=User:ANONYMOUS;User:admin;User:kafkatest` and `allow.everyone.if.no.acl.found=false`. The PLAINTEXT
  * listener every other suite uses is therefore a super user, and the SASL user `acltest` is the one principal an
  * acl can be written for - which is what makes the last test of this class possible: an acl that really changes
@@ -58,8 +58,9 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
  * **The node is shared, so this class leaves no acl behind.** Every test writes acls of its own resources
  * (`t4-33-*`) and the tear down removes every acl that names them, whatever the test did with them.
  *
- * @see docs/protocol/4.3.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/4.4.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
  *      and "DeleteAcls API (key 31, v0 to v3)"
+ * @see docs/protocol/4.4.md, section "CIDR host patterns (KIP-1276, metadata.version 4.4-IV1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeAclsRequest::class)]
@@ -360,6 +361,193 @@ final class AclApiTest extends IntegrationTestCase
             'and with the acl the same principal is answered the topic'
         );
         self::assertNotSame([], $allowed->topics[$topic]->partitions, 'with its partitions');
+    }
+
+    /**
+     * KIP-1276 (`metadata.version` 4.4-IV1): an IPv4 or IPv6 CIDR block is a host of an acl, and is kept verbatim
+     *
+     * `AclControlManager.validateHostPattern` @ 4.4.0 parses a host with a `/` as a CIDR block and stores the string
+     * as it was written - `10.0.0.1/24` is not normalized to its network address -, and a host filter of
+     * DescribeAcls compares the string, so the filter `10.0.0.0/8` finds the acl and an address inside the block
+     * does not.
+     */
+    public function testACidrBlockIsTheHostOfAnAclAndIsDescribedBackVerbatim(): void
+    {
+        $topic = self::uniqueTopicName(self::PREFIX . '-cidr');
+        $hosts = ['10.0.0.0/8', '2001:db8::/32', '10.0.0.1/24'];
+
+        self::assertSame(
+            [null, null, null],
+            $this->admin->createAcls(array_map(
+                static fn(string $host): AclBinding => AclBinding::allow(
+                    ResourceType::TOPIC,
+                    $topic,
+                    self::PRINCIPAL,
+                    AclOperation::READ,
+                    PatternType::LITERAL,
+                    $host
+                ),
+                $hosts
+            )),
+            'an IPv4 block, an IPv6 block and a block written with a host address in it'
+        );
+
+        $written = $this->awaitAcls(AclBindingFilter::matching(ResourceType::TOPIC, $topic), 3);
+        $described = array_map(static fn(AclBinding $acl): string => $acl->entry->host, $written);
+        sort($described);
+        $expected = $hosts;
+        sort($expected);
+
+        self::assertSame($expected, $described, 'every block comes back as the string it was written as');
+
+        $byHost = static fn(string $host): AclBindingFilter => new AclBindingFilter(
+            new ResourcePatternFilter(ResourceType::TOPIC, $topic, PatternType::LITERAL),
+            new AccessControlEntryFilter(self::PRINCIPAL, $host)
+        );
+        self::assertCount(1, $this->admin->describeAcls($byHost('10.0.0.0/8')), 'the filter compares the string');
+        self::assertCount(0, $this->admin->describeAcls($byHost('10.1.2.3')), 'and does not match an address in it');
+    }
+
+    /**
+     * A host with a `/` that is no CIDR block is the 42 of the creation, with the message of the controller
+     */
+    public function testAnInvalidCidrBlockIsRefusedWithTheMessageOfTheController(): void
+    {
+        $topic    = self::uniqueTopicName(self::PREFIX . '-cidr-invalid');
+        $creation = static fn(string $host): AclBinding => AclBinding::allow(
+            ResourceType::TOPIC,
+            $topic,
+            self::PRINCIPAL,
+            AclOperation::READ,
+            PatternType::LITERAL,
+            $host
+        );
+
+        $result = $this->admin->createAcls([
+            $creation('10.0.0.0/33'),
+            $creation('2001:db8::/129'),
+            $creation('300.0.0.0/8'),
+            $creation('10.0.0.0/24'),
+        ]);
+
+        $messages = [];
+        foreach (array_slice($result, 0, 3) as $refused) {
+            self::assertInstanceOf(InvalidRequestException::class, $refused);
+            self::assertSame(KafkaException::INVALID_REQUEST, $refused->getCode());
+            $messages[] = $refused->getContext()['error'];
+        }
+        self::assertSame(
+            [
+                "Invalid CIDR notation '10.0.0.0/33': Value [33] not in range [0,32]",
+                "Invalid CIDR notation '2001:db8::/129': Could not parse [2001:db8::/129] - prefix length must be"
+                    . ' between 0 and 128',
+                "Invalid CIDR notation '300.0.0.0/8': Value [300] not in range [0,255]",
+            ],
+            $messages
+        );
+        self::assertNull($result[3], 'the valid block of the same request was written');
+        self::assertCount(1, $this->awaitAcls(AclBindingFilter::matching(ResourceType::TOPIC, $topic), 1));
+    }
+
+    /**
+     * The authorizer matches the address the node sees for the client against the block of the acl
+     *
+     * The node sees a client of the host through the gateway of its Docker network, not as 127.0.0.1: the address is
+     * read from the authorizer log of the node, which names the host of every refusal. An ALLOW on a block without
+     * that address changes nothing, an ALLOW on its /24 opens the topic, and a DENY on its /32 closes it again - a
+     * DENY wins over an ALLOW, CIDR or not (`StandardAuthorizerData.findResult` @ 4.4.0, `CidrUtils.isInRange`).
+     */
+    public function testTheAuthorizationOfThePrincipalFollowsTheBlockOfItsAddress(): void
+    {
+        $topic = self::uniqueTopicName(self::PREFIX . '-cidr-auth');
+        $this->createTopic($topic);
+
+        try {
+            self::assertSame(KafkaException::TOPIC_AUTHORIZATION_FAILED, $this->unprivilegedMetadataCode($topic, 6110));
+            $address = $this->addressTheNodeSeesFor($topic);
+
+            self::assertNotFalse(ip2long($address), "the node sees the client as the IPv4 address {$address}");
+            $network = long2ip(ip2long($address) & 0xFFFFFF00) . '/24';
+            self::assertStringStartsNotWith('192.0.2.', $address, 'TEST-NET-1 is never the address of a client');
+
+            $describe = fn(string $host, bool $allow): ?KafkaException => $this->admin->createAcls([
+                $allow
+                    ? AclBinding::allow(ResourceType::TOPIC, $topic, self::PRINCIPAL, AclOperation::DESCRIBE, PatternType::LITERAL, $host)
+                    : AclBinding::deny(ResourceType::TOPIC, $topic, self::PRINCIPAL, AclOperation::DESCRIBE, PatternType::LITERAL, $host),
+            ])[0];
+
+            self::assertNull($describe('192.0.2.0/24', true));
+            $this->awaitAcls(AclBindingFilter::matching(ResourceType::TOPIC, $topic), 1);
+            self::assertSame(
+                KafkaException::TOPIC_AUTHORIZATION_FAILED,
+                $this->unprivilegedMetadataCode($topic, 6111),
+                'an ALLOW on a block without the address of the client changes nothing'
+            );
+
+            self::assertNull($describe($network, true));
+            $this->awaitAcls(AclBindingFilter::matching(ResourceType::TOPIC, $topic), 2);
+            self::assertSame(
+                KafkaException::NO_ERROR,
+                $this->awaitMetadata($topic)->topics[$topic]->topicErrorCode,
+                "an ALLOW on {$network} opens the topic to the client at {$address}"
+            );
+
+            self::assertNull($describe($address . '/32', false));
+            $this->awaitAcls(AclBindingFilter::matching(ResourceType::TOPIC, $topic), 3);
+            self::assertSame(
+                KafkaException::TOPIC_AUTHORIZATION_FAILED,
+                $this->unprivilegedMetadataCode($topic, 6112),
+                "a DENY on {$address}/32 closes it again"
+            );
+        } finally {
+            $this->admin->deleteTopics([$topic]);
+        }
+    }
+
+    /**
+     * Asks for the metadata of a topic as the unprivileged principal and returns the error code of the topic
+     */
+    private function unprivilegedMetadataCode(string $topic, int $correlationId): int
+    {
+        $stream = $this->unprivilegedStream();
+        new MetadataRequest([$topic], false, self::CLIENT_ID, $correlationId)->writeTo($stream);
+
+        return MetadataResponse::unpack($stream)->topics[$topic]->topicErrorCode;
+    }
+
+    /**
+     * Reads the address the node saw for the refused request on a topic out of the authorizer log of the node
+     *
+     * `kafka.authorizer.logger` writes every refusal as "Principal = User:acltest is Denied operation = DESCRIBE
+     * from host = 172.18.0.1 on resource = Topic:LITERAL:<topic> …" into `logs/kafka-authorizer.log`.
+     */
+    private function addressTheNodeSeesFor(string $topic): string
+    {
+        $container = getenv('KAFKA_CONTAINER');
+        $container = $container === false || trim($container) === '' ? 'kafka-4-4-0' : trim($container);
+        $pattern   = '/Principal = ' . preg_quote(self::PRINCIPAL, '/') . ' is Denied operation = DESCRIBE from host = (\S+)'
+            . ' on resource = Topic:LITERAL:' . preg_quote($topic, '/') . ' /';
+
+        $deadline = microtime(true) + 15.0;
+        do {
+            $output = [];
+            exec(
+                sprintf(
+                    'docker exec %s grep -hF %s /opt/kafka/logs/kafka-authorizer.log 2>&1',
+                    escapeshellarg($container),
+                    escapeshellarg('resource = Topic:LITERAL:' . $topic . ' ')
+                ),
+                $output
+            );
+            foreach ($output as $line) {
+                if (preg_match($pattern, $line, $match) === 1) {
+                    return $match[1];
+                }
+            }
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("The authorizer log of {$container} names no refusal of {$topic}: " . implode("\n", $output));
     }
 
     /**

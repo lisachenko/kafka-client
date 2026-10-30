@@ -18,6 +18,7 @@ use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\FencedMemberEpochException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\StaleMemberEpochException;
@@ -84,7 +85,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * OffsetCommit **v9** and an OffsetFetch **v9** of this member send in the field a classic member fills with its
  * generation id; the call sites of {@see \Protocol\Kafka\Consumer\KafkaConsumer} need no change for it.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  * @see \Protocol\Kafka\Consumer\ConsumerConfig::GROUP_PROTOCOL
  */
 final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInterface
@@ -448,6 +449,13 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
      *
      * The `reason` of KIP-800 has no field in this api and is ignored.
      *
+     * A coordinator that has already forgotten the member is no error: the 25 and the fencing codes say so of the
+     * member, and the **69** `GroupIdNotFound` of the whole group - "Group <id> not found." is what the 4.4.0 node
+     * answers a leave (-1 and -2 alike) of a group it does not know, e.g. one that was deleted after the member had
+     * been dropped. The `GROUP_ID_NOT_FOUND` case of `AbstractHeartbeatRequestManager.onErrorResponse` @ 4.4.0
+     * ignores it the same way: "the leave is effectively complete". A 69 of an ordinary heartbeat reaches the caller,
+     * which is the fatal error of the Java consumer.
+     *
      * @inheritdoc
      */
     public function leaveGroup(?string $reason = null): void
@@ -468,8 +476,13 @@ final class ConsumerGroupHeartbeatCoordinator implements ConsumerCoordinatorInte
                 $rejoining,
                 $this->groupInstanceId
             );
-        } catch (UnknownMemberIdException | FencedMemberEpochException | StaleMemberEpochException) {
-            // The coordinator has already forgotten this member, which is exactly what was asked for
+        } catch (
+            UnknownMemberIdException
+            | FencedMemberEpochException
+            | StaleMemberEpochException
+            | GroupIdNotFoundException
+        ) {
+            // The coordinator has already forgotten this member, or the whole group: exactly what was asked for
         }
     }
 

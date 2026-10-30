@@ -49,8 +49,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group of this class carries the `t3-41-sg-` prefix, every member of it leaves with the epoch -1 in
  * {@see self::tearDownAfterClass()} at the latest, and every group is deleted there.
  *
- * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
- * @see docs/protocol/4.3.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]
@@ -217,6 +217,36 @@ final class ShareGroupApiTest extends IntegrationTestCase
 
         $this->expectException(UnknownMemberIdException::class);
         $this->client()->shareGroupHeartbeat($node, $groupId, ConsumerGroupHeartbeatCoordinator::newMemberId(), 1);
+    }
+
+    /**
+     * The messages of the 69 on the 4.4.0 node: "Share group <id> not found." for a heartbeat, "Group <id> not found."
+     * for a leave
+     *
+     * `ShareGroupHeartbeatResponse.json` @ 4.4.0 lists the 69 among the supported errors for the first time - a
+     * comment of the specification alone, the node answered the same frames with it on 4.3.1.
+     * {@see \Protocol\Kafka\Consumer\Internals\ShareMembershipManager} joins again with the epoch 0 after the first
+     * and takes the second for a completed leave.
+     */
+    public function testTheSixtyNineOfAnUnknownShareGroupNamesTheGroup(): void
+    {
+        $groupId = $this->uniqueGroupName();
+        $node    = $this->coordinator($groupId);
+        $member  = ConsumerGroupHeartbeatCoordinator::newMemberId();
+
+        try {
+            $this->client()->shareGroupHeartbeat($node, $groupId, $member, 1);
+            self::fail('only the epoch 0 creates a share group');
+        } catch (GroupIdNotFoundException $exception) {
+            self::assertSame("Share group {$groupId} not found.", $exception->getContext()['error'] ?? null);
+        }
+
+        try {
+            $this->client()->leaveShareGroup($node, $groupId, $member);
+            self::fail('a leave of a group the coordinator does not know is the 69 as well');
+        } catch (GroupIdNotFoundException $exception) {
+            self::assertSame("Group {$groupId} not found.", $exception->getContext()['error'] ?? null);
+        }
     }
 
     /**

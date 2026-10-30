@@ -37,6 +37,7 @@ use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
+use Protocol\Kafka\Common\Errors\RebootstrapRequiredException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
@@ -175,8 +176,10 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV4;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV5;
 use Throwable;
 
 /**
@@ -215,7 +218,7 @@ use Throwable;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/4.3.md
+ * @see docs/protocol/4.4.md
  */
 class Client
 {
@@ -280,53 +283,69 @@ class Client
      * Asks one broker which api keys and versions it serves (ApiKey 18, Kafka 0.10.0 and later)
      *
      * This is the answer to "what does the broker on the other side speak": the 0.8 and 0.9 lines of this client had
-     * to probe it by sending a request of every key and version, because the api did not exist yet. A 2.8.2 broker
-     * reports the **56** keys 0 to 51, 56, 57, 60 and 61 with the version ranges of the api-key table of the
-     * protocol document, and answers before any authentication has happened on a SASL listener.
+     * to probe it by sending a request of every key and version, because the api did not exist yet. The answer lists
+     * every api of the listener the request arrived on with its version range - the 77 keys of the api-key table of
+     * the protocol document on a client listener of the 4.4.0 node - and the features of KIP-584 in its tagged
+     * fields, and a broker gives it before any authentication has happened on a SASL listener.
      *
-     * The request goes out as **version 3**, the first flexible version of the protocol (Kafka 2.4): its frame
-     * carries the request header v2 with a tag buffer and the compact `client_software_name` and
-     * `client_software_version` of KIP-511 - `lisachenko-kafka-client` and the Kafka line this branch speaks - and
-     * its answer is compact as well, with the features of KIP-584 as tagged fields behind the `throttleTimeMs`
-     * that version 1 added. The version 2 below it is the KIP-219 bump of Kafka 2.0, which says that this client
-     * honours a throttle time itself because a broker answers a throttled request of a bumped version **before** it
-     * mutes the channel; the versions 3 and 4 inherit that promise.
-     *
-     * **The version this client sends is the 4** (Kafka 3.9), which declares no field of its own: it is the v3
-     * frame with a 4 in its header, and what it buys is in the answer - a supported feature whose `min_version` is
-     * **0** is only reported to a client that asks for it (KAFKA-17011), and on a KRaft node that is
-     * `kraft.version`. {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3} asks a peer of Kafka 2.4 to 3.8
-     * the same question.
+     * The request goes out as **version 5** (Kafka 4.4, KIP-1242): the flexible frame of Kafka 2.4 with the compact
+     * `client_software_name` and `client_software_version` of KIP-511, the promise of the version 4 (KAFKA-17011)
+     * that a supported feature with the minimum version 0 can be read, and the **cluster id and node id the
+     * connection is meant to reach** - the id of the {@see Cluster} and {@see Node::$nodeId} of the given node, both
+     * of them or, while the cluster knows no id or the node id is negative, neither
+     * ({@see ApiVersionsRequest::addressedTo()}). A broker that is not that node of that cluster answers the
+     * **129** `REBOOTSTRAP_REQUIRED`: the address the metadata gave for the node leads somewhere else, so the
+     * metadata is stale. Like `NetworkClient.handleApiVersionsResponse` @ 4.4.0 the client then drops the
+     * connection to that address and rebootstraps ({@see Cluster::rebootstrap()}), and the 129 is thrown; the next
+     * call asks the node at the address of the new metadata.
      *
      * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
      * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
-     * talking to, and the material a later line can build a negotiation on.
+     * talking to, and what the client reads when a decision depends on the peer (the Produce versions a legacy
+     * message format needs, the `transaction.version` of a transaction coordinator). It is **not** a handshake: the
+     * client does not send it on every new connection, which is why a misrouted connection is only noticed here.
      *
-     * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
-     * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion), since
-     * Kafka 2.4 with the single api row of ApiVersions itself (KIP-511) and before it with an empty array. That
-     * answer always arrives in the **version 0** layout, without the throttle time, so a peer older than Kafka 3.9
-     * has to be asked with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3},
-     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2},
-     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1} or
-     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and read with the response class of the same
-     * version; this line speaks to a 3.9.2 node, which serves v0 to v4.
+     * Every other error code is returned in the answer. A peer older than Kafka 4.4 answers the version 5 with the
+     * 35 in the **version 0** layout, which this response class cannot read; such a peer has to be asked with an
+     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV4} (Kafka 3.9 to 4.3) or a lower version class and
+     * read with the response class of the same version.
      *
      * @param Node $node Broker to ask; every broker of a cluster answers for itself
      *
      * @throws NetworkException If the connection to the broker dropped
+     * @throws RebootstrapRequiredException If the broker is not the node `$node` names, of the cluster of this
+     *         client (the 129 of KIP-1242); the cluster has been reloaded from its bootstrap servers by then
+     *
+     * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
      */
     public function apiVersions(Node $node): ApiVersionsResponse
     {
-        return $this->coordinatorRequest(
+        $clusterId = $this->cluster->clusterId();
+        $response  = $this->coordinatorRequest(
             $node,
-            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest(
+            fn(int $correlationId): ApiVersionsRequest => ApiVersionsRequest::addressedTo(
+                $clusterId,
+                $node->nodeId,
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
             ApiVersionsResponse::class,
             static fn(ApiVersionsResponse $response): ApiVersionsResponse => $response
         );
+        if ($response->errorCode === KafkaException::REBOOTSTRAP_REQUIRED) {
+            // KIP-1242: the address leads to another broker than the metadata says, so the metadata is stale
+            ConnectionFactory::closeStream($node->getConnection($this->configuration));
+            $this->cluster->rebootstrap();
+
+            throw new RebootstrapRequiredException([
+                'error'     => 'The broker is not the node the metadata names at its address (KIP-1242)',
+                'node'      => $node->nodeId,
+                'address'   => "{$node->host}:{$node->port}",
+                'clusterId' => $clusterId,
+            ]);
+        }
+
+        return $response;
     }
 
     /**
@@ -657,7 +676,7 @@ class Client
             );
         }
 
-        // The wire format carries one opaque record set per topic-partition, see docs/protocol/4.3.md
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/4.4.md
         $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
@@ -1411,7 +1430,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws UnknownTopicIdException If a topic id stayed stale after every retry (100, version 10)
      *
-     * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+     * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
      */
     public function commitGroupOffsets(
         Node $coordinatorNode,
@@ -3529,6 +3548,17 @@ class Client
      * the Java `TxnOffsetCommitRequest.Builder` @ 4.0.0 caps the version at 4 unless the transaction protocol v2 is
      * enabled - hence the default.
      *
+     * **With `$transactionV2` and a known id for every topic the version sent is the 6 of Kafka 4.4** (KIP-1319),
+     * which names every topic by its **id**: the ids are resolved through the cluster ({@see Cluster::topicIdsOf()}),
+     * and a commit that names a topic whose id the cluster does not know goes out as the version 5 instead, as the Java
+     * `TransactionManager` @ 4.4.0 does (`TxnOffsetCommitRequest.Builder.forTopicNames()` unless every topic has an
+     * id). A partition answered with the **100** `UnknownTopicId` - an id that went stale - reloads the metadata before
+     * the error is thrown, so that the retry of {@see RetryPolicy} names the topic anew; the answer is read back by
+     * name. The version 6 also tells apart what the version 5 reports as the 22 `IllegalGeneration`: the **69**
+     * `GroupIdNotFound` of a group the coordinator does not know and the **113** `StaleMemberEpoch` of a member of
+     * the consumer protocol of KIP-848 whose epoch it does not accept - the `generation_id_or_member_epoch` of the
+     * request carries the member epoch of such a member ({@see ConsumerGroupMetadata::$generationId}).
+     *
      * @param Node               $coordinatorNode    **Group** coordinator of `$groupId`
      * @param string             $transactionalId    `transactional.id` of the producer
      * @param string             $groupId            Consumer group whose offsets are committed
@@ -3537,9 +3567,12 @@ class Client
      * @param ConsumerGroupMetadata|null $groupMetadata Who the consumer is inside the group (KIP-447, version 3);
      *        `null` is the "not a member" commit of every version below 3
      * @param bool $transactionV2 Whether the transaction runs the protocol v2 of KIP-890 part 2 (Kafka 4.0), whose
-     *        version 5 enrols the offsets partition itself; `false` sends the version 4 of the protocol v1
+     *        versions 5 and 6 enrol the offsets partition themselves; `false` sends the version 4 of the protocol v1
      *
      * @throws KafkaException The error code of the first partition that was refused
+     * @throws UnknownTopicIdException If a topic id stayed stale after every retry (100, version 6)
+     *
+     * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
      */
     public function txnOffsetCommit(
         Node $coordinatorNode,
@@ -3550,27 +3583,55 @@ class Client
         ?ConsumerGroupMetadata $groupMetadata = null,
         bool $transactionV2 = false
     ): void {
-        $requestClass  = $transactionV2 ? TxnOffsetCommitRequest::class : TxnOffsetCommitRequestV4::class;
-        $responseClass = $transactionV2 ? TxnOffsetCommitResponse::class : TxnOffsetCommitResponseV4::class;
+        // The protocol v1 stops at the version 4; the protocol v2 names its topics by id when it knows every id
+        [$topicIds, $useTopicIds] = $transactionV2
+            ? $this->offsetTopicIdsOf(array_keys($topicPartitionOffsets))
+            : [[], false];
+        [$requestClass, $responseClass] = match (true) {
+            !$transactionV2 => [TxnOffsetCommitRequestV4::class, TxnOffsetCommitResponseV4::class],
+            $useTopicIds    => [TxnOffsetCommitRequest::class, TxnOffsetCommitResponse::class],
+            default         => [TxnOffsetCommitRequestV5::class, TxnOffsetCommitResponseV5::class],
+        };
 
         $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): TxnOffsetCommitRequest => new $requestClass(
+            function (int $correlationId) use (
+                &$topicIds,
+                $useTopicIds,
+                $requestClass,
                 $transactionalId,
                 $groupId,
-                $producerIdAndEpoch->producerId,
-                $producerIdAndEpoch->epoch,
+                $producerIdAndEpoch,
                 $topicPartitionOffsets,
-                $groupMetadata,
-                $this->configuration[ClientConfig::CLIENT_ID],
-                $correlationId
-            ),
+                $groupMetadata
+            ): TxnOffsetCommitRequest {
+                if ($useTopicIds) {
+                    // Every round names the ids the cluster holds now: a retry after a 100 has reloaded it
+                    $topicIds = $this->cluster->topicIdsOf(array_keys($topicIds)) + $topicIds;
+                }
+
+                return new $requestClass(
+                    $transactionalId,
+                    $groupId,
+                    $producerIdAndEpoch->producerId,
+                    $producerIdAndEpoch->epoch,
+                    $topicPartitionOffsets,
+                    $groupMetadata,
+                    $this->configuration[ClientConfig::CLIENT_ID],
+                    $correlationId,
+                    $topicIds
+                );
+            },
             $responseClass,
-            static function (TxnOffsetCommitResponse $response) use ($transactionalId, $groupId): void {
-                foreach ($response->topics as $topic => $topicResult) {
+            function (TxnOffsetCommitResponse $response) use ($transactionalId, $groupId, &$topicIds): void {
+                foreach ($response->topicsByName($topicIds) as $topic => $topicResult) {
                     /** @var TxnOffsetCommitResponsePartition $partitionResult */
                     foreach ($topicResult->partitions as $partitionId => $partitionResult) {
                         if ($partitionResult->errorCode !== KafkaException::NO_ERROR) {
+                            if ($partitionResult->errorCode === KafkaException::UNKNOWN_TOPIC_ID) {
+                                $this->reloadCluster();
+                            }
+
                             throw KafkaException::fromCode($partitionResult->errorCode, [
                                 'transactionalId' => $transactionalId,
                                 'groupId'         => $groupId,
@@ -3692,7 +3753,7 @@ class Client
      *
      * @return array<string, int|string>
      *
-     * @see docs/protocol/4.3.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
+     * @see docs/protocol/4.4.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
      *      KIP-951 (v16)"
      */
     private static function leaderHintOf(
@@ -3753,7 +3814,7 @@ class Client
      * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a (re-)join
      * @throws Common\Errors\InvalidRegularExpressionException If the coordinator cannot compile the regex (128)
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function joinConsumerGroup(
         Node $coordinatorNode,
@@ -3816,7 +3877,7 @@ class Client
      * @throws Common\Errors\GroupAuthorizationFailedException
      * @throws Common\Errors\InvalidRegularExpressionException If the coordinator cannot compile the regex (128)
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function consumerGroupHeartbeat(
         Node $coordinatorNode,
@@ -3869,7 +3930,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function leaveConsumerGroup(
         Node $coordinatorNode,
@@ -4172,7 +4233,7 @@ class Client
      * @throws Common\Errors\GroupMaxSizeReachedException If the group is full (`group.share.max.size`)
      * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a join
      *
-     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function joinShareGroup(
         Node $coordinatorNode,
@@ -4218,7 +4279,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function shareGroupHeartbeat(
         Node $coordinatorNode,
@@ -4263,7 +4324,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function leaveShareGroup(Node $coordinatorNode, string $groupId, string $memberId): ShareGroupHeartbeatResponse
     {
@@ -4331,8 +4392,8 @@ class Client
      * The request is the **version 2** of the api (Kafka 4.2, KIP-1206 and KIP-1222); a Renew renews the acquisition
      * lock of the records it names for another `acquisitionLockTimeoutMs`.
      *
-     * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
-     * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+     * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
+     * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public function shareFetch(
         Node $leaderNode,
@@ -4415,8 +4476,8 @@ class Client
      * @throws Common\Errors\InvalidRequestException If the frame breaks a rule of the api (42)
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.3.md, section "ShareAcknowledge API (key 79, v1 and v2)"
-     * @see docs/protocol/4.3.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+     * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+     * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public function shareAcknowledge(
         Node $leaderNode,

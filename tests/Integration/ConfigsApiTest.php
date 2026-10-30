@@ -69,7 +69,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV2;
  * touch `log.cleaner.backoff.ms` alone - a log-cleaner back-off nothing here depends on - and put the documented
  * default back in a `finally`, explicitly and not by removing the entry, see the quirk in the AlterConfigs section.
  *
- * @see docs/protocol/4.3.md, sections "DescribeConfigs API (key 32, v0 to v4)" and "AlterConfigs API (key 33, v0 to v2)"
+ * @see docs/protocol/4.4.md, sections "DescribeConfigs API (key 32, v0 to v4)" and "AlterConfigs API (key 33, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Config::class)]
@@ -890,11 +890,14 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertNotNull($entry->documentation, 'the request asked for it');
         // The prose was rewritten and moved: `LogConfig.CleanupPolicyDoc` @ 2.8.2 said "A string that is either
         // "delete" or "compact" or both", `TopicConfig.CLEANUP_POLICY_DOC` @ 3.9.2 - where the topic options of
-        // the Java client live now - describes the two policies one at a time
+        // the Java client live now - describes the two policies one at a time, and 4.4.0 made the anchor of the
+        // link absolute (`https://kafka.apache.org/documentation/#compaction`, where 3.9.2 and 4.3.1 wrote
+        // `#compaction`)
         self::assertStringContainsString(
-            'The "compact" policy will enable <a href="#compaction">log compaction</a>',
+            'The "compact" policy will enable <a href="https://kafka.apache.org/documentation/#compaction">log'
+            . ' compaction</a>',
             (string) $entry->documentation,
-            'the documentation of `TopicConfig` @ 3.9.2'
+            'the documentation of `TopicConfig` @ 4.4.0'
         );
 
         // The very same request without the flag: the type is still filled, the documentation is not

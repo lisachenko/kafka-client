@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The `TopicPartitions` common struct of `ShareGroupDescribeResponse.json` @ 4.1.0, which names the topic by its id
  * AND by its name, as the describe api of the consumer protocol does.
  *
- * @see docs/protocol/4.3.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 final class ShareGroupDescribeTopicPartitions implements BinarySchemaInterface
 {

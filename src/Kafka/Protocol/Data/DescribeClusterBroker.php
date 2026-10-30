@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `include_fenced_brokers`, because an answer without that flag lists no fenced broker at all.
  * {@see DescribeClusterBrokerV1} is the entry of the versions 0 and 1.
  *
- * @see docs/protocol/4.3.md, sections "DescribeCluster API (key 60, v0 to v2)" and "The fenced brokers of KIP-1073
+ * @see docs/protocol/4.4.md, sections "DescribeCluster API (key 60, v0 to v2)" and "The fenced brokers of KIP-1073
  *      (v2)"
  */
 class DescribeClusterBroker implements BinarySchemaInterface

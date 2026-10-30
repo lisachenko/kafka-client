@@ -68,8 +68,8 @@ use UnexpectedValueException;
  * The request of v5 is still the body of v2. Version 8 (Kafka 3.0) batches the groups, version 9 (Kafka 3.7, KIP-848)
  * names a member in every group entry, and version 10 (Kafka 4.2, KIP-848) names every topic of an entry by its id.
  *
- * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
+ * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]

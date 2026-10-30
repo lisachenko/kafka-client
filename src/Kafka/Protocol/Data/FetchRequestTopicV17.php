@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The entry named by its `topic_id` (KIP-516) whose partitions carry the `replica_directory_id` of KIP-853 and not
  * yet the `high_watermark` of KIP-1166 (version 18, Kafka 4.1), see {@see FetchRequestTopicPartitionV17}.
  *
- * @see docs/protocol/4.3.md, sections "Fetch API (key 1, v0 to v18)" and "The replica directory id of KIP-853 (v17)"
+ * @see docs/protocol/4.4.md, sections "Fetch API (key 1, v0 to v18)" and "The replica directory id of KIP-853 (v17)"
  */
 final class FetchRequestTopicV17 extends FetchRequestTopic
 {

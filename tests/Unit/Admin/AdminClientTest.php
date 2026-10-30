@@ -23,6 +23,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
+use Protocol\Kafka\Common\Errors\GroupDeletionFailedException;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
@@ -71,7 +72,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * disagree about what a broker says. The scripted connection echoes the correlation id of each request the way a
  * broker does, which is what the client validates the answer against.
  *
- * @see docs/protocol/4.3.md, section "Wire vectors"
+ * @see docs/protocol/4.4.md, section "Wire vectors"
  */
 #[CoversClass(AdminClient::class)]
 final class AdminClientTest extends TestCase
@@ -1141,6 +1142,34 @@ final class AdminClientTest extends TestCase
         self::assertSame(['groupId' => self::ADMIN_GROUP], $result[self::ADMIN_GROUP]->getContext());
     }
 
+    public function testDeleteConsumerGroupsCarriesTheErrorMessageOfVersionThreeIntoTheContext(): void
+    {
+        // KIP-1331: a streams group whose stored topology description the plugin could not drop is answered 134
+        // with the fixed message of StreamsGroupTopologyDescriptionManager @ 4.4.0, and kept
+        $message = 'Topology description plugin failed to delete the topology.';
+        $this->scriptBroker(
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            self::deleteGroupsResponse(
+                [
+                    self::ADMIN_GROUP   => KafkaException::GROUP_DELETION_FAILED,
+                    self::UNKNOWN_GROUP => KafkaException::GROUP_ID_NOT_FOUND,
+                ],
+                [self::ADMIN_GROUP => $message]
+            )
+        );
+
+        $result = $this->adminClient()->deleteConsumerGroups([self::ADMIN_GROUP, self::UNKNOWN_GROUP]);
+
+        self::assertInstanceOf(GroupDeletionFailedException::class, $result[self::ADMIN_GROUP]);
+        self::assertSame(['groupId' => self::ADMIN_GROUP, 'error' => $message], $result[self::ADMIN_GROUP]->getContext());
+        self::assertSame(
+            ['groupId' => self::UNKNOWN_GROUP],
+            $result[self::UNKNOWN_GROUP]->getContext(),
+            'the null message of the default adds nothing to the context'
+        );
+    }
+
     public function testDeleteConsumerGroupsLooksACoordinatorUpOnlyOncePerGroup(): void
     {
         $broker = $this->scriptBroker(
@@ -1314,17 +1343,20 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a DeleteGroups answer of version 2, the flexible one this client sends (KIP-482): the throttle time
-     * and one compact entry per group, every structure closed by its tagged-field section
+     * Builds a DeleteGroups answer of version 3, the one this client sends (Kafka 4.4, KIP-1331): the throttle time
+     * and one compact entry per group - its id, its code and its nullable error message - every structure closed by
+     * its tagged-field section
      *
-     * @param array<string, int> $groups Error code of every group
+     * @param array<string, int>    $groups   Error code of every group
+     * @param array<string, string> $messages Error message of the groups that carry one, null for every other
      */
-    private static function deleteGroupsResponse(array $groups): string
+    private static function deleteGroupsResponse(array $groups, array $messages = []): string
     {
         $body = pack('N', 0) . ResponseFrame::compactCount(count($groups));
         foreach ($groups as $groupId => $errorCode) {
             $body .= ResponseFrame::compactString((string) $groupId)
                 . pack('n', $errorCode)
+                . ResponseFrame::compactString($messages[$groupId] ?? null)
                 . ResponseFrame::tagBuffer();
         }
 

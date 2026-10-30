@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the frame of version 0, which has no field for a regex: a `$subscribedTopicRegex` given to it is not sent. A 4.3.1
  * node still serves the version, and still answers a version 0 join without a member id with one it generated.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 final class ConsumerGroupHeartbeatRequestV0 extends ConsumerGroupHeartbeatRequest
 {

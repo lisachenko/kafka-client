@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\Request\ListTransactionsResponseV1;
  * **Version 2 (Kafka 4.1, KIP-1152)** appends the nullable `transactional_id_pattern` and, again, leaves the answer
  * alone.
  *
- * @see docs/protocol/4.3.md, section "ListTransactions API (key 66, v0 to v2)"
+ * @see docs/protocol/4.4.md, section "ListTransactions API (key 66, v0 to v2)"
  */
 #[CoversClass(ListTransactionsRequest::class)]
 #[CoversClass(ListTransactionsRequestV0::class)]

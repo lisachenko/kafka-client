@@ -1,6 +1,8 @@
-Wire vectors of the Kafka 4.3.1 protocol
+Wire vectors of the Kafka 4.4.0 protocol
 ========================================
-The 4.x line has captured **286** vectors of its own so far, on the `kafka-4-3-1` node — the 8 frames of
+The 4.x line has captured **323** vectors of its own so far: the **37** of the 4.4 milestone on the `kafka-4-4-0` node —
+ApiVersions v5 (9), TxnOffsetCommit v6 (14), UnregisterController (6), the CIDR ACLs (6) and DeleteGroups v3 (2) —
+and **286** on the `kafka-4-3-1` node — the 8 frames of
 DescribeLogDirs v5 of Kafka 4.3 (the cordon flag of KIP-1066) in `describe-log-dirs.json`. And the 40 frames of Kafka 4.2
 on the offset and share-group apis: OffsetCommit v10 and OffsetFetch v10 by topic id (KIP-848), 10 each in
 `offset-commit.json` and `offset-fetch.json`, and ShareFetch v2 and ShareAcknowledge v2 (KIP-1206, KIP-1222), 10 each
@@ -111,7 +113,7 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1421** of them in **74** files: **8** are DescribeLogDirs v5 of Kafka 4.3 (the cordon flag of
+hex dumps. There are **1458** of them in **75** files: **37** were captured on the `kafka-4-4-0` node of the 4.4 milestone: the **9** of ApiVersions v5 (KIP-1242: the right ids, no ids, a foreign cluster id, a wrong node id and half a pair) in `api-versions.json`, the **14** of TxnOffsetCommit v6 (KIP-1319: topics by id, the 100, 69 and 113) in `txn-offset-commit.json`, the **6** of the new api UnregisterController (KIP-1312) in `unregister-controller.json`, the **6** of the CIDR host patterns of KIP-1276 in `create-acls.json` and `describe-acls.json`, and the **2** of DeleteGroups v3 (KIP-1331) in `delete-groups.json` - **8** are DescribeLogDirs v5 of Kafka 4.3 (the cordon flag of
 KIP-1066) in `describe-log-dirs.json`, captured on the `kafka-4-3-1` node with `/tmp/kafka-logs-2` cordoned and not -
 **40** are the offset and share-group apis of Kafka 4.2 (OffsetCommit
 and OffsetFetch v10, ShareFetch and ShareAcknowledge v2), captured on the `kafka-4-3-1` node - **8** are ListOffsets v11 of Kafka 4.2 (KIP-1023), captured on

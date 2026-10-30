@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * the check that stopped the request - 104, 42, 7, 35 or the **127** `VoterNotFound` of a key the voter set does
  * not hold, whose message lists the keys it does hold.
  *
- * @see docs/protocol/4.3.md, section "RemoveRaftVoter API (key 81, v0)"
+ * @see docs/protocol/4.4.md, section "RemoveRaftVoter API (key 81, v0)"
  */
 class RemoveRaftVoterResponse extends AbstractResponse
 {

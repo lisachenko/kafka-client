@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * below the version 5, for a broker whose finalized `metadata.version` is below `4.3-IV0`, and for an offline
  * directory.
  *
- * @see docs/protocol/4.3.md, section "DescribeLogDirs API (key 35, v0 to v5)"
+ * @see docs/protocol/4.4.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class LogDirInfo
 {

@@ -1,15 +1,15 @@
 #!/bin/bash
 #
-# Formats (once) and starts a single Apache Kafka 4.3.1 node in KRaft mode: broker and controller in one process,
+# Formats (once) and starts a single Apache Kafka 4.4.0 node in KRaft mode: broker and controller in one process,
 # no ZooKeeper (Kafka 4.0 removed it). The configuration is written from scratch into config/server.properties (the
 # 4.x distributions ship it there; the config/kraft/ directory of the 3.x distributions is gone).
 #
 # The node is formatted the way the release formats a combined node by default (the shipped server.properties and
-# the quickstart of 4.3.1): a *dynamic* quorum - `controller.quorum.bootstrap.servers` instead of the static
+# the quickstart of 4.4.0): a *dynamic* quorum - `controller.quorum.bootstrap.servers` instead of the static
 # `controller.quorum.voters` of the 3.9.2 image, and `kafka-storage.sh format --standalone` - which finalizes
 # `kraft.version` 1 (KIP-853), so that AddRaftVoter (80), RemoveRaftVoter (81) and UpdateRaftVoter (82) are answered
 # instead of refused. Every other feature is left at the default level of the release: `metadata.version`
-# 4.3-IV0, `transaction.version` 2 (KIP-890 part 2), `group.version` 1, `share.version` 1 (KIP-932 share groups),
+# 4.4-IV2, `transaction.version` 2 (KIP-890 part 2), `group.version` 1, `share.version` 2 (KIP-932 share groups with the dead-letter queue of KIP-1191),
 # `streams.version` 1 (KIP-1071) and `eligible.leader.replicas.version` 1 (KIP-966).
 #
 set -e
@@ -84,7 +84,7 @@ CONFIG=config/server.properties
     echo "group.min.session.timeout.ms=1000"
     echo "group.max.session.timeout.ms=60000"
     # The group coordinator serves the classic, consumer (KIP-848) and streams (KIP-1071) rebalance protocols by
-    # default in 4.3.1 (`group.coordinator.rebalance.protocols`); share groups (KIP-932) are enabled by the
+    # default in 4.4.0 (`group.coordinator.rebalance.protocols`); share groups (KIP-932) are enabled by the
     # finalized `share.version` feature. Nothing to set here.
     #
     # The ACL apis 29-31 need an authorizer to answer anything but 54. The StandardAuthorizer of KRaft keeps the

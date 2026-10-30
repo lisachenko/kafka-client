@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribedGroupV0;
  * of the consumer protocol and -1 for "unknown", the default. {@see ConsumerGroupDescribeResponseV0} decodes the
  * answer of version 0, whose members end with the target assignment.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 class ConsumerGroupDescribeResponse extends AbstractResponse
 {

@@ -66,9 +66,9 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * package, and the topic array keeps the name `topicPartitions` of
  * {@see \Protocol\Kafka\Protocol\Request\OffsetFetchRequest}, whose field it was until version 7.
  *
- * @see docs/protocol/4.3.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The member id and epoch of KIP-848 (v9)"
- * @see docs/protocol/4.3.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
+ * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.4.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 class OffsetFetchRequestGroup implements BinarySchemaInterface
 {

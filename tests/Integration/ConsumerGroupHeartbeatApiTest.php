@@ -61,7 +61,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see self::tearDownAfterClass()} - every member with a leave heartbeat of the epoch -1 first, because a group
  * that still holds one is not deletable.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(ConsumerGroupHeartbeatRequest::class)]
@@ -574,6 +574,43 @@ final class ConsumerGroupHeartbeatApiTest extends IntegrationTestCase
 
         self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CLASSIC, $members[$classic]->memberType);
         self::assertSame(ConsumerGroupDescribeMember::MEMBER_TYPE_CONSUMER, $members[$member]->memberType);
+    }
+
+    /**
+     * A group the coordinator does not know is the 69 of every frame but the join
+     *
+     * `ConsumerGroupHeartbeatResponse.json` @ 4.4.0 lists the 69 among the supported errors for the first time
+     * (KAFKA "Add missing GROUP_ID_NOT_FOUND", a comment of the specification alone): the coordinator answered these
+     * frames with it on 4.3.1 already. Only the epoch 0 creates a group; a heartbeat of any other epoch is "Consumer
+     * group <id> not found.", and a leave - dynamic or static - "Group <id> not found.", which
+     * {@see ConsumerGroupHeartbeatCoordinator::leaveGroup()} takes for a completed leave.
+     */
+    public function testAGroupTheCoordinatorDoesNotKnowIsTheSixtyNineOfEveryFrameButTheJoin(): void
+    {
+        $groupId = $this->uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+        $member  = ConsumerGroupHeartbeatCoordinator::newMemberId();
+
+        $heartbeat = $this->send($stream, ConsumerGroupHeartbeatRequest::forHeartbeat($groupId, $member, 1, clientId: self::CLIENT_ID));
+        self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $heartbeat->errorCode);
+        self::assertSame("Consumer group {$groupId} not found.", $heartbeat->errorMessage);
+        self::assertNull($heartbeat->memberId);
+        self::assertSame(0, $heartbeat->memberEpoch);
+
+        $leave = $this->send($stream, ConsumerGroupHeartbeatRequest::forLeave($groupId, $member, clientId: self::CLIENT_ID));
+        self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $leave->errorCode);
+        self::assertSame("Group {$groupId} not found.", $leave->errorMessage, 'another sentence for the leave');
+
+        $staticLeave = $this->send(
+            $stream,
+            ConsumerGroupHeartbeatRequest::forLeave($groupId, $member, true, 't3-44-instance', self::CLIENT_ID)
+        );
+        self::assertSame(KafkaException::GROUP_ID_NOT_FOUND, $staticLeave->errorCode);
+        self::assertSame("Group {$groupId} not found.", $staticLeave->errorMessage);
+
+        $this->expectException(GroupIdNotFoundException::class);
+
+        $this->client()->consumerGroupHeartbeat($this->coordinator($groupId), $groupId, $member, 1);
     }
 
     /**

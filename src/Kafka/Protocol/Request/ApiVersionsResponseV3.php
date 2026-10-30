@@ -20,15 +20,16 @@ namespace Protocol\Kafka\Protocol\Request;
  *   ApiVersions Response (Version: 3) => error_code compact_[api_versions] throttle_time_ms TAG_BUFFER
  * </pre>
  *
- * The first flexible answer of this api and, apart from one value, the answer of the version 4 that
- * {@see ApiVersionsResponse} reads: Kafka 3.9 declares no field for its bump. What it changes is a **filter** on
+ * The first flexible answer of this api and, apart from one value, the answer of the version 4
+ * ({@see ApiVersionsResponseV4}) and of the version 5 that {@see ApiVersionsResponse} reads: neither Kafka 3.9 nor
+ * Kafka 4.4 declares a field of the answer for its bump. What it changes is a **filter** on
  * the tagged field 0 - a broker drops every supported feature whose `min_version` is 0 from an answer below the
  * version 4 (KAFKA-17011) - so this class reads the same three tagged fields of KIP-584 and one supported feature
  * fewer on the KRaft node of this line, where `kraft.version` has the minimum 0.
  *
  * It is what a broker of Kafka 2.4 to 3.8 answers, and the class the version 3 wire vectors are replayed through.
  *
- * @see docs/protocol/4.3.md, section "ApiVersions API (key 18, v0 to v4)"
+ * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 final class ApiVersionsResponseV3 extends ApiVersionsResponse
 {

@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The very bytes of {@see ShareFetchResponse}: `ShareFetchResponse.json` @ 4.2.0 raised the versions to `1-2` and
  * added no field, so this class only lowers the version the answer of a {@see ShareFetchRequestV1} is read with.
  *
- * @see docs/protocol/4.3.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareFetchResponseV1 extends ShareFetchResponse
 {

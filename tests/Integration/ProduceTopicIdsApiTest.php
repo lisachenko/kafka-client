@@ -46,7 +46,7 @@ use Protocol\Kafka\Tests\Fixture\RemovedVersionProbe;
  * with the per-partition 100, and closes the connection instead when the request was sent with acks = 0.
  * `Client::produce()` resolves the ids through the cluster and reloads it for an id that went stale.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The topic ids of the produce path (v13,
+ * @see docs/protocol/4.4.md, sections "Produce API (key 0, v0 to v13)" and "The topic ids of the produce path (v13,
  *      KIP-516)"
  */
 #[CoversClass(ProduceRequest::class)]

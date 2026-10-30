@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * because a version is a class on this line even when its schema is identical: a frame recorded at version 0 is
  * replayed through the class of version 0.
  *
- * @see docs/protocol/4.3.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
  */
 final class ReadShareGroupStateSummaryRequestV0 extends ReadShareGroupStateSummaryRequest
 {

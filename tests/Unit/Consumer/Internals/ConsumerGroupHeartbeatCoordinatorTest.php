@@ -18,6 +18,7 @@ use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnsupportedAssignorException;
 use Protocol\Kafka\Consumer\ConsumerConfig;
@@ -46,7 +47,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  *
  * The frames the node really sent for each of these are the vectors of `consumer-group-heartbeat.json`.
  *
- * @see docs/protocol/4.3.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 #[CoversClass(ConsumerGroupHeartbeatCoordinator::class)]
 final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase
@@ -343,6 +344,56 @@ final class ConsumerGroupHeartbeatCoordinatorTest extends TestCase
         self::assertTrue($instance->isStaticMember());
         self::assertSame(ConsumerGroupHeartbeatRequest::STATIC_LEAVE_MEMBER_EPOCH, $staticLeave['memberEpoch']);
         self::assertSame('t3-848-one', $staticLeave['instanceId']);
+    }
+
+    /**
+     * The 69 of a leave is a group the coordinator has forgotten: the leave is complete, as for the Java consumer
+     *
+     * Measured on the 4.4.0 node: a leave, -1 or -2, of a group it does not know is the 69 "Group <id> not found.";
+     * a heartbeat of an ordinary epoch is the 69 "Consumer group <id> not found." and reaches the caller.
+     */
+    public function testALeaveAnsweredWithTheSixtyNineIsComplete(): void
+    {
+        $this->connect(new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::consumerGroupHeartbeat(0, assignment: []),
+            ResponseFrame::consumerGroupHeartbeat(
+                0,
+                KafkaException::GROUP_ID_NOT_FOUND,
+                memberEpoch: 0,
+                heartbeatIntervalMs: 0,
+                errorMessage: 'Group t3-848-group not found.'
+            )
+        ));
+
+        $membership = $this->membership();
+        $membership->ensureActiveGroup([self::TOPIC], static fn(array $topics): array => []);
+        $membership->leaveGroup();
+
+        self::assertFalse($membership->isMember(), 'nothing is thrown, and the membership is gone');
+    }
+
+    public function testTheSixtyNineOfAHeartbeatReachesTheCaller(): void
+    {
+        $this->connect(new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::consumerGroupHeartbeat(0, assignment: []),
+            ResponseFrame::consumerGroupHeartbeat(
+                0,
+                KafkaException::GROUP_ID_NOT_FOUND,
+                memberEpoch: 0,
+                heartbeatIntervalMs: 0,
+                errorMessage: 'Consumer group t3-848-group not found.'
+            )
+        ));
+
+        $membership = $this->membership();
+        $membership->ensureActiveGroup([self::TOPIC], static fn(array $topics): array => []);
+
+        $this->expectException(GroupIdNotFoundException::class);
+
+        // The fatal error of AbstractHeartbeatRequestManager @ 4.4.0: the group is gone under a member
+        $membership->maybeHeartbeat($this->nowMs() + 10000);
     }
 
     /**

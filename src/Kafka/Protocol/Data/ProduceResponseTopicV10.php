@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * tagged `current_leader`. Version 13 (Kafka 4.1, KIP-516) replaced the name with the `topic_id` of
  * {@see ProduceResponseTopic}; the partition entry did not change.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/4.4.md, sections "Produce API (key 0, v0 to v13)" and "The leader discovery of KIP-951 (v10)"
  */
 final class ProduceResponseTopicV10 extends ProduceResponseTopic
 {

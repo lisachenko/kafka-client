@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * `ReadShareGroupStateResponseData.ReadStateResult` @ 4.1.0.
  *
- * @see docs/protocol/4.3.md, section "ReadShareGroupState API (key 84, v0)"
+ * @see docs/protocol/4.4.md, section "ReadShareGroupState API (key 84, v0)"
  */
 class ReadShareGroupStateResponseTopic implements BinarySchemaInterface
 {

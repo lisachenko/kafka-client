@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesResponseV0;
  * one topic, which `tearDownAfterClass()` deletes again; the other agents of the node create and delete topics of
  * their own while it runs, so every assertion about topics is one about this class's topic alone.
  *
- * @see docs/protocol/4.3.md, section "The config resources of KIP-1142 (v1)"
+ * @see docs/protocol/4.4.md, section "The config resources of KIP-1142 (v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ListClientMetricsResourcesRequest::class)]
@@ -235,7 +235,7 @@ final class ConfigResourcesApiTest extends IntegrationTestCase
     private static function groupConfig(string $group, string $alteration): void
     {
         $container = getenv('KAFKA_CONTAINER');
-        $container = $container === false || trim($container) === '' ? 'kafka-4-3-1' : trim($container);
+        $container = $container === false || trim($container) === '' ? 'kafka-4-4-0' : trim($container);
 
         exec(
             sprintf(

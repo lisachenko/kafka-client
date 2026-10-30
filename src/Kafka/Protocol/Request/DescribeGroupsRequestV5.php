@@ -23,8 +23,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * `Dead` with the error code 0 at this version, and the **69** `GroupIdNotFound` with a message at version 6
  * (KIP-1043, Kafka 4.0), which {@see DescribeGroupsRequest} sends.
  *
- * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
- * @see docs/protocol/4.3.md, section "The 69 of an unknown group (v6, KIP-1043)"
+ * @see docs/protocol/4.4.md, section "DescribeGroups API (key 15, v0 to v6)"
+ * @see docs/protocol/4.4.md, section "The 69 of an unknown group (v6, KIP-1043)"
  */
 final class DescribeGroupsRequestV5 extends DescribeGroupsRequest
 {

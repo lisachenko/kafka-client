@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * UNKNOWN_TOPIC_ID error code" - see {@see ProduceRequest}; this class keeps the version for a caller that knows
  * the names of its topics and not their ids.
  *
- * @see docs/protocol/4.3.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
+ * @see docs/protocol/4.4.md, sections "Produce API (key 0, v0 to v13)" and "The transaction protocol v2 of KIP-890
  *      part 2 (v12)"
  */
 final class ProduceRequestV12 extends ProduceRequest

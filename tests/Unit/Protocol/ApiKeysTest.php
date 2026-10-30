@@ -19,7 +19,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use ReflectionClass;
 
 /**
- * Verifies that the api keys of this branch are exactly the ones of Kafka 4.3.1.
+ * Verifies that the api keys of this branch are exactly the ones of Kafka 4.4.0.
  *
  * The list mirrors `org.apache.kafka.common.protocol.ApiKeys` @ 4.3.1, which ends at key 92. The names are the
  * ones of the pre-schema `main` branch wherever the concept exists there: key 10 is GroupCoordinator here, although
@@ -32,11 +32,11 @@ use ReflectionClass;
 final class ApiKeysTest extends TestCase
 {
     /**
-     * Every api key of Kafka 4.3.1, in the order of org.apache.kafka.common.protocol.ApiKeys
+     * Every api key of Kafka 4.4.0, in the order of org.apache.kafka.common.protocol.ApiKeys
      *
      * @var array<string, int>
      */
-    private const array KEYS_OF_KAFKA_4_3_1 = [
+    private const array KEYS_OF_KAFKA_4_4_0 = [
         'PRODUCE'                 => 0,
         'FETCH'                   => 1,
         'OFFSETS'                 => 2,
@@ -130,14 +130,16 @@ final class ApiKeysTest extends TestCase
         'DESCRIBE_SHARE_GROUP_OFFSETS'    => 90,
         'ALTER_SHARE_GROUP_OFFSETS'       => 91,
         'DELETE_SHARE_GROUP_OFFSETS'      => 92,
+        'STREAMS_GROUP_TOPOLOGY_DESCRIPTION_UPDATE' => 93,
+        'UNREGISTER_CONTROLLER'           => 94,
     ];
 
-    public function testTheApiKeysAreExactlyTheOnesOfKafka431(): void
+    public function testTheApiKeysAreExactlyTheOnesOfKafka440(): void
     {
         self::assertSame(
-            self::KEYS_OF_KAFKA_4_3_1,
+            self::KEYS_OF_KAFKA_4_4_0,
             new ReflectionClass(ApiKeys::class)->getConstants(),
-            'The branch declares an api key that Kafka 4.3.1 does not have, or misses one that it has'
+            'The branch declares an api key that Kafka 4.4.0 does not have, or misses one that it has'
         );
     }
 
@@ -257,7 +259,17 @@ final class ApiKeysTest extends TestCase
     }
 
     /**
-     * `ApiKeys.java` @ 4.3.1 ends at DeleteShareGroupOffsets (92); a key of a later Kafka must not appear on this
+     * The keys 93 and 94 of `ApiKeys.java` @ 4.4.0: StreamsGroupTopologyDescriptionUpdate of the topology description
+     * plugin of KIP-1331 and UnregisterController of KIP-1312
+     */
+    public function testTheKeysOfKafka44AreDeclared(): void
+    {
+        self::assertSame(93, ApiKeys::STREAMS_GROUP_TOPOLOGY_DESCRIPTION_UPDATE);
+        self::assertSame(94, ApiKeys::UNREGISTER_CONTROLLER);
+    }
+
+    /**
+     * `ApiKeys.java` @ 4.4.0 ends at UnregisterController (94); a key of a later Kafka must not appear on this
      * branch. ElectPreferredLeaders is the 2.2 name of ElectLeaders (43), AlterIsr the published name of key 56 (the
      * Java client renamed it AlterPartition in 3.2), ListConfigResources the 4.1 name of key 74 (published here as
      * ListClientMetricsResources), and none is a key of its own
@@ -266,7 +278,7 @@ final class ApiKeysTest extends TestCase
     {
         $keys = new ReflectionClass(ApiKeys::class)->getConstants();
 
-        self::assertSame(range(0, 92), array_values($keys));
+        self::assertSame(range(0, 94), array_values($keys));
         self::assertNotContains('ELECT_PREFERRED_LEADERS', array_keys($keys));
         self::assertNotContains('ALTER_PARTITION', array_keys($keys));
         self::assertNotContains('LIST_CONFIG_RESOURCES', array_keys($keys));

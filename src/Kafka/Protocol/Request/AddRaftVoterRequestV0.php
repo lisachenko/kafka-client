@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * instance of this class never reaches the wire, and the controller answers once the new voter set is committed -
  * the `"default": "true"` of the field, which is the only behaviour a version 0 frame knows.
  *
- * @see docs/protocol/4.3.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
+ * @see docs/protocol/4.4.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
  *      Kafka 4.2 (v1)"
  */
 final class AddRaftVoterRequestV0 extends AddRaftVoterRequest

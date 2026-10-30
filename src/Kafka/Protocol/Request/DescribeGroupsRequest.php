@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * of the consumer protocol of KIP-848, which is not a classic group. {@see DescribeGroupsRequestV5} is the frame
  * of the version 5 below it.
  *
- * @see docs/protocol/4.3.md, section "DescribeGroups API (key 15, v0 to v6)"
+ * @see docs/protocol/4.4.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {

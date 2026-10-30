@@ -59,9 +59,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * it for a classic member, a member of a KIP-848 group, an id the node does not know and a topic deleted under
  * the group, next to the version 9 of the same questions.
  *
- * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+ * @see docs/protocol/4.4.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(OffsetCommitRequest::class)]

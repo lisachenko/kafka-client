@@ -54,7 +54,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * accepts. Every consumer is closed in {@see self::tearDown()} - which closes its share sessions and leaves the group
  * with the epoch -1 - and every group is deleted in {@see self::tearDownAfterClass()}.
  *
- * @see docs/protocol/4.3.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
  */
 #[CoversClass(KafkaShareConsumer::class)]
 #[CoversClass(ShareMembershipManager::class)]

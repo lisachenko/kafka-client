@@ -111,7 +111,7 @@ use Protocol\Kafka\Protocol\Data\MetadataRequestTopicV9;
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)", "Metadata by topic id (v12, KIP-516)" and
+ * @see docs/protocol/4.4.md, sections "Metadata API (key 3, v0 to v13)", "Metadata by topic id (v12, KIP-516)" and
  *      "The top-level error code of KIP-1102 (v13)"
  */
 class MetadataRequest extends AbstractRequest

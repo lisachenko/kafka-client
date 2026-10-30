@@ -30,14 +30,19 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * `org.apache.kafka.common.acl.AccessControlEntry` @ 3.9.2. The principal is the `<type>:<name>` **string** the
  * authorizer stores - `User:acltest`, the form {@see KafkaPrincipal::__toString()} produces - and not the two
- * fields the delegation-token apis carry a principal as; the host is an ip address or the literal
- * {@see self::ANY_HOST}, which is what an acl that names no host is stored with.
+ * fields the delegation-token apis carry a principal as; the host is an ip address, the literal
+ * {@see self::ANY_HOST}, which is what an acl that names no host is stored with, or - from `metadata.version`
+ * 4.4-IV1 on (Kafka 4.4, KIP-1276) - an IPv4 or IPv6 **CIDR block** such as `10.0.0.0/8` or `2001:db8::/32`, which
+ * the authorizer matches the address of a client against. The controller validates a host with a `/` as a block and
+ * refuses an invalid one with the 42 `InvalidRequest` ("Invalid CIDR notation '10.0.0.0/33': Value [33] not in range
+ * [0,32]"); it stores every host as the string it was written as.
  *
  * Inside the `acls` array of a DescribeAcls answer this is a real structure of the specification and ends in a
  * tagged-field section of its own; inside a created acl and inside a matching acl of a DeleteAcls answer its four
  * fields are fields of the structure around it, where an {@see \Protocol\Kafka\Protocol\InlineStruct} embeds it.
  *
- * @see docs/protocol/4.3.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.4.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/4.4.md, section "CIDR host patterns (KIP-1276, metadata.version 4.4-IV1)"
  */
 class AccessControlEntry implements BinarySchemaInterface
 {
@@ -52,7 +57,8 @@ class AccessControlEntry implements BinarySchemaInterface
     public string $principal;
 
     /**
-     * Host the acl applies to, {@see self::ANY_HOST} for every address
+     * Host the acl applies to: an ip address, {@see self::ANY_HOST} for every address, or a CIDR block of KIP-1276
+     * (Kafka 4.4, `metadata.version` 4.4-IV1) for every address inside it
      */
     public string $host;
 

@@ -122,7 +122,7 @@ final class ProtocolFramingTest extends IntegrationTestCase
      * header v0.
      *
      * The size of that compact array is the api table of the node, which
-     * {@see ApiVersionProbeTest::SERVED_APIS} pins key by key: **75 rows** on a client listener of the 4.3.1 KRaft
+     * {@see ApiVersionProbeTest::SERVED_APIS} pins key by key: **77 rows** on a client listener of the 4.4.0 KRaft
      * node, where the 3.9.2 KRaft node of the line below answered 61 and the ZooKeeper-backed 2.8.2 broker 56. The
      * count is asserted here, not the table - the table is that class's subject.
      *
@@ -140,8 +140,8 @@ final class ProtocolFramingTest extends IntegrationTestCase
         self::assertTrue(ApiVersionsRequest::isFlexible(), 'the client sends the flexible v3');
         self::assertSame(4246, $response->getCorrelationId());
         self::assertSame(0, $response->errorCode, 'the broker accepted the compact body and the two KIP-511 strings');
-        self::assertCount(75, $response->apiVersions, 'the compact array of the api table');
-        self::assertSame(4, $response->maxVersionOf(18), 'Kafka 3.9 added ApiVersions v4 (KIP-1043)');
+        self::assertCount(77, $response->apiVersions, 'the compact array of the api table');
+        self::assertSame(5, $response->maxVersionOf(18), 'Kafka 4.4 added ApiVersions v5 (KIP-1242)');
 
         // A KRaft node finalizes `metadata.version` and answers the **offset of its metadata log** in the tagged
         // field, which grows with every record the controller writes; the ZooKeeper-backed 2.8.2 broker of the
@@ -170,9 +170,10 @@ final class ProtocolFramingTest extends IntegrationTestCase
         $request = new ApiVersionsRequest('kafka-client-t1', 4248);
         $frame   = (string) $request;
 
-        // 4 size + 8 header + 2+15 client id + 1 header tag buffer + 24 name + 4 version + 1 body tag buffer
-        self::assertSame(59, strlen($frame));
-        self::assertSame('0012' . '0004', bin2hex(substr($frame, 4, 4)), 'the version of KAFKA-17011');
+        // 4 size + 8 header + 2+15 client id + 1 header tag buffer + 24 name + 4 version + 1 null cluster id
+        // + 4 node id -1 + 1 body tag buffer
+        self::assertSame(64, strlen($frame));
+        self::assertSame('0012' . '0005', bin2hex(substr($frame, 4, 4)), 'the version of KIP-1242');
         self::assertSame('000f', bin2hex(substr($frame, 12, 2)), 'the client id keeps its int16 length');
         self::assertSame('00', bin2hex(substr($frame, 29, 1)), 'the tag buffer of the request header v2');
         self::assertSame('18', bin2hex(substr($frame, 30, 1)), 'a compact string of 23 bytes announces 24');

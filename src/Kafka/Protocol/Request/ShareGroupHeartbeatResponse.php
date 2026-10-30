@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\NullableStruct;
  * code: the 42 of a frame that breaks a rule, the **25** of a member id the group does not hold, the 69 of a group
  * that is not a share group, the 30 of a principal that may not `READ` the group.
  *
- * @see docs/protocol/4.3.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
  */
 class ShareGroupHeartbeatResponse extends AbstractResponse
 {

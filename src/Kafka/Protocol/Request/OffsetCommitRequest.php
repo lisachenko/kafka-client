@@ -117,9 +117,9 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV6;
  * the partitions did not change, and a classic group accepts version 10 as well as a KIP-848 one.
  * {@see OffsetCommitRequestV9} keeps the version that names the topics.
  *
- * @see docs/protocol/4.3.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/4.3.md, section "OffsetCommit API (key 8, v0 to v10)"
- * @see docs/protocol/4.3.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+ * @see docs/protocol/4.4.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {

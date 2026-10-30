@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * so the version decides which answer the broker writes: {@see MetadataResponseV12}, which ends with the topic array,
  * where version 13 appends the `error_code` of KIP-1102 behind it, see {@see MetadataRequest}.
  *
- * @see docs/protocol/4.3.md, sections "Metadata API (key 3, v0 to v13)" and "Metadata by topic id (v12, KIP-516)"
+ * @see docs/protocol/4.4.md, sections "Metadata API (key 3, v0 to v13)" and "Metadata by topic id (v12, KIP-516)"
  */
 final class MetadataRequestV12 extends MetadataRequest
 {

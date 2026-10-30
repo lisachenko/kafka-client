@@ -20,7 +20,7 @@ use Protocol\Kafka\Consumer\Internals\ShareSessionHandler;
 /**
  * The share session of a share consumer on one leader (KIP-932): the epoch of the next request and what it names.
  *
- * @see docs/protocol/4.3.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
  */
 #[CoversClass(ShareSessionHandler::class)]
 final class ShareSessionHandlerTest extends TestCase

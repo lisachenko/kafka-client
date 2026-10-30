@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Data\InitializeShareGroupStateRequestTopic;
  * not a broker has no business sending it; the frames were captured for the grammar and never touch the state of a
  * share group another component owns.
  *
- * @see docs/protocol/4.3.md, section "InitializeShareGroupState API (key 83, v0)"
+ * @see docs/protocol/4.4.md, section "InitializeShareGroupState API (key 83, v0)"
  */
 class InitializeShareGroupStateRequest extends AbstractRequest
 {

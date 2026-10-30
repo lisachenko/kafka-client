@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponseV1;
  * version 2, whose request is the version 1 frame and whose answer drops the per-feature results
  * ({@see UpdateFeaturesRequestV1}, {@see UpdateFeaturesResponseV1}).
  *
- * @see docs/protocol/4.3.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
+ * @see docs/protocol/4.4.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
  *      of KIP-778 (v1)" and "The answer without results (v2, Kafka 4.0)"
  */
 #[CoversClass(UpdateFeaturesRequest::class)]
