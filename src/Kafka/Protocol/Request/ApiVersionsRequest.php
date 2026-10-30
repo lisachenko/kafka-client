@@ -73,7 +73,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * * It is answered on a SASL listener before the authentication has happened, so a client can learn the surface of
  *   the broker before it knows whether it may talk to it at all.
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 class ApiVersionsRequest extends AbstractRequest
 {

@@ -12,12 +12,14 @@ the KIP-848 consumer came as the last wave after the 3.9 milestone, and the whol
 one pull request. This file is the release record of the line; the plan it was built from is kept below, under
 "The 3.x line … — the plan" and "The original plan", exactly as [`docs/handoff/2.x.md`](2.x.md) was written.
 
-The grammar is [`docs/protocol/3.9.md`](../protocol/3.9.md), the machine-readable frames are in
+The grammar is [`docs/protocol/overview.md`](../protocol/overview.md), the machine-readable frames are in
 [`docs/protocol/vectors`](../protocol/vectors), and what a client cannot read out of the grammar is in that
 document's "The 3.9.2 KRaft node of the 3.x line" items and its "Broker quirks and observations" section. The line
 below this one is `2.x` (Kafka 2.8.2, [`docs/handoff/2.x.md`](2.x.md)), branched off at `bc5dec5`; there is no line
 above it yet — Kafka 4.0 is the first release that drops versions a 3.9.2 node still serves (see "What 3.9.2 adds
-to the 2.8.2 protocol" in the document).
+to the 2.8.2 protocol" in the document). The grammar was `docs/protocol/3.9.md` while the line was built and got
+its version-independent name after it was complete, so that a new release edits the file in place instead of
+renaming it with the ~1170 `@see` references of the sources.
 
 ## What was built, milestone by milestone
 
@@ -536,7 +538,8 @@ The milestone process, unchanged from 2.x and to be repeated verbatim in the epi
 1. `docs/handoff/main.md` → `docs/handoff/2.x.md`; this file → `docs/handoff/main.md`; `CLAUDE.md` says `2.x`
    complete and protected, `main` the 3.x line, and points at the record and the plan; `docs/CASCADE.md` already
    carries `2.x → main` (PR of the close-out of the 2.x line).
-2. `docs/protocol/3.9.md` → `docs/protocol/3.9.md`, with every `@see docs/protocol/…` reference and the api-key
+2. `docs/protocol/3.9.md` → `docs/protocol/3.9.md` (today `docs/protocol/overview.md`, edited in place and never
+   renamed), with every `@see docs/protocol/…` reference and the api-key
    table rebuilt from the ApiVersions answer of the new container (`DocumentationSyncTest` checks both); the
    vectors README and preamble keep their counts (318 inherited + the 351 of the 2.x line = 669, all of them still
    served by a 3.9.2 node, which the compliance replay proves).

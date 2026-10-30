@@ -279,7 +279,7 @@ abstract class IntegrationTestCase extends TestCase
      *
      * @throws \RuntimeException If the node had no id for that topic within the timeout
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/overview.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     final protected static function topicIdOf(string $topic, float $timeout = 30.0): string
     {
@@ -316,7 +316,7 @@ abstract class IntegrationTestCase extends TestCase
      *
      * @throws \RuntimeException If the answer holds no entry that can be this topic
      *
-     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     * @see docs/protocol/overview.md, section "The topic ids of the fetch path (v13, KIP-516)"
      */
     final protected static function fetchedTopic(FetchResponse $answer, string $topic): FetchResponseTopic
     {

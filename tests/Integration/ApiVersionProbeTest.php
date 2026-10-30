@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *
  * Kafka 0.10.0 added the api that answers that question - **ApiVersions**, key 18 - so this class no longer has to
  * guess it the way the `0.8.x` and `0.9.x` lines did. The first half of the suite asks the node with
- * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/3.9.md`: **61
+ * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/overview.md`: **61
  * keys**, the `broker` listener set of the JSON message specifications @ 3.9.2 minus the two telemetry apis and
  * the nine unstable ones ({@see self::SERVED_APIS}).
  *
@@ -88,7 +88,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * `validate_only`. Two apis of this node **do not answer an empty array at all** and are sent with one harmless
  * element instead ({@see self::body()}).
  *
- * @see docs/protocol/3.9.md, section "API keys"
+ * @see docs/protocol/overview.md, section "API keys"
  */
 #[CoversClass(ApiKeys::class)]
 #[CoversClass(ApiVersionsRequest::class)]
@@ -351,7 +351,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * `unstable.api.versions.enable` is off - which it is in the container - with the same closed connection as a
      * key of another listener: `Received request api key SHARE_FETCH with version 0 which is not enabled`.
      *
-     * @see docs/protocol/3.9.md, section "The raft-voter apis (keys 80 and 81) and the share groups — probe only"
+     * @see docs/protocol/overview.md, section "The raft-voter apis (keys 80 and 81) and the share groups — probe only"
      */
     private const array UNSTABLE_KEYS = [
         ApiKeys::SHARE_GROUP_HEARTBEAT,

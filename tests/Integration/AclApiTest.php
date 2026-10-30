@@ -58,7 +58,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
  * **The node is shared, so this class leaves no acl behind.** Every test writes acls of its own resources
  * (`t4-33-*`) and the tear down removes every acl that names them, whatever the test did with them.
  *
- * @see docs/protocol/3.9.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
+ * @see docs/protocol/overview.md, sections "DescribeAcls API (key 29, v0 to v3)", "CreateAcls API (key 30, v0 to v3)"
  *      and "DeleteAcls API (key 31, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]

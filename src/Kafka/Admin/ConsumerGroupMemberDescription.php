@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember;
  * a reconciliation: it has been told to give partitions up or to take partitions over and has not acknowledged
  * the change yet. {@see self::isReconciled()} is that question.
  *
- * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+ * @see docs/protocol/overview.md, section "ConsumerGroupDescribe API (key 69, v0)"
  */
 final class ConsumerGroupMemberDescription
 {
