@@ -120,7 +120,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/4.4.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
+ * @see docs/protocol/overview.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
  *      KIP-1075 (v10)", "The earliest pending upload offset of KIP-1023 (v11)", "Quotas and throttle time"
  *      and "The leader epoch (KIP-320)"
  */

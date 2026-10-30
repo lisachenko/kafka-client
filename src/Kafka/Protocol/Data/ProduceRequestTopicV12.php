@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The entry that names its topic by **name**: `ProduceRequest.json` @ 4.1.0 declares `Name` as `"versions": "0-12"`,
  * and version 13 (Kafka 4.1, KIP-516) replaced it with the `topic_id` of {@see ProduceRequestTopic}.
  *
- * @see docs/protocol/4.4.md, sections "Produce API (key 0, v0 to v13)" and "The topic ids of the produce path (v13,
+ * @see docs/protocol/overview.md, sections "Produce API (key 0, v0 to v13)" and "The topic ids of the produce path (v13,
  *      KIP-516)"
  */
 final class ProduceRequestTopicV12 extends ProduceRequestTopic

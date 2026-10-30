@@ -29,7 +29,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 /**
  * `AdminClient::unregisterController()` (key 94, Kafka 4.4, KIP-1312) against scripted brokers
  *
- * @see docs/protocol/4.4.md, section "UnregisterController API (key 94, v0)"
+ * @see docs/protocol/overview.md, section "UnregisterController API (key 94, v0)"
  */
 #[CoversClass(AdminClient::class)]
 final class UnregisterControllerAdminTest extends TestCase

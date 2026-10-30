@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The api deletes the state of **whole topics**: there is no partition list.
  *
- * @see docs/protocol/4.4.md, section "DeleteShareGroupOffsets API (key 92, v0)"
+ * @see docs/protocol/overview.md, section "DeleteShareGroupOffsets API (key 92, v0)"
  */
 final class DeleteShareGroupOffsetsRequestTopic implements BinarySchemaInterface
 {

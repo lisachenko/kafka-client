@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Admin;
  * `metadata.version` - 21, i.e. `3.9-IV0`, on the node of this line - and answers the offset of its metadata log
  * as the epoch, so neither array is empty there and the epoch grows with every write of the cluster.
  *
- * @see docs/protocol/4.4.md, sections "ApiVersions API (key 18, v0 to v5)" and "UpdateFeatures API (key 57, v0 to v2)"
+ * @see docs/protocol/overview.md, sections "ApiVersions API (key 18, v0 to v5)" and "UpdateFeatures API (key 57, v0 to v2)"
  */
 final class FeatureMetadata
 {

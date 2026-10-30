@@ -62,7 +62,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * index. The code stays in {@see KafkaException} and in the error table, it is simply not reachable from a client
  * of a 3.x broker.
  *
- * @see docs/protocol/4.4.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
+ * @see docs/protocol/overview.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset"
  *      and "The earliest pending upload offset of KIP-1023 (v11)"
  */
 #[CoversClass(Client::class)]

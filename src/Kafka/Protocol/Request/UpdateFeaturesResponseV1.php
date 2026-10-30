@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `"versions": "0-1"`. A 4.x controller fills them only when it accepted the whole request, and then every entry
  * carries the code 0; a refusal is the top-level error of the answer, with no result at all.
  *
- * @see docs/protocol/4.4.md, sections "The upgrade type and the dry run of KIP-778 (v1)" and "The answer without
+ * @see docs/protocol/overview.md, sections "The upgrade type and the dry run of KIP-778 (v1)" and "The answer without
  *      results (v2, Kafka 4.0)"
  */
 final class UpdateFeaturesResponseV1 extends UpdateFeaturesResponse

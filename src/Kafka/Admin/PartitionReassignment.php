@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Admin;
  * started from is `replicas` without `addingReplicas`; {@see self::getTargetReplicas()} and
  * {@see self::getOriginalReplicas()} do that arithmetic.
  *
- * @see docs/protocol/4.4.md, section "ListPartitionReassignments API (key 46, v0)"
+ * @see docs/protocol/overview.md, section "ListPartitionReassignments API (key 46, v0)"
  */
 final class PartitionReassignment
 {

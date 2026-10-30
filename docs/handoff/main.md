@@ -10,7 +10,7 @@ gated milestone commit, the KIP-932 share consumer came as the last wave after t
 is merged into `main` as one pull request. This file is the release record of the line; the plan it was built from is
 kept below, under "The 4.x line … — the plan", as [`docs/handoff/3.x.md`](3.x.md) was written.
 
-The grammar is [`docs/protocol/4.3.md`](../protocol/4.3.md) — its "What 4.3.1 adds to the 3.9.2 protocol" section
+The grammar is [`docs/protocol/overview.md`](../protocol/overview.md) — its "What 4.3.1 adds to the 3.9.2 protocol" section
 is the map of the line —, the machine-readable frames are in [`docs/protocol/vectors`](../protocol/vectors), and what
 a client cannot read out of the grammar is in that document's "Broker quirks and observations". The line below this
 one is `3.x` (Kafka 3.9.2, [`docs/handoff/3.x.md`](3.x.md)).
@@ -58,6 +58,13 @@ misconfigured dead-letter queue costs the client nothing, the record is archived
 empty group id with the 69; the share coordinator of 4.4 checks the leader epoch of a read before the partition.
 The milestone also lived through a container restart that cost the agents their uncommitted work — the briefs now ask
 for a commit after every step.
+
+After the milestone the protocol document got a **name that does not change with the release**:
+`docs/protocol/4.4.md` became [`docs/protocol/overview.md`](../protocol/overview.md), and the ~1400 `@see` references
+of the sources and tests with it. Every rename of the line had touched some 1250 files with a one-line change each; the
+next release is written into the same file (a "What X adds to the Y protocol" section, the api-key table, the quirks)
+and leaves the references alone. `DocumentationSyncTest` still rejects a reference that names another document,
+versioned names included, so a cascade merge from `3.x` (`docs/protocol/3.9.md`) cannot slip one in.
 
 ## How it was verified
 
@@ -270,7 +277,8 @@ authority, the tags are the attribution authority, memory is neither.
   opens its own.
 * **The foundation ticket first**, by the coordinator: the node image and `docker-compose.yml` (the 3.9.2 image is
   deleted), every fixture and example repointed, `docs/protocol/3.9.md` renamed to the version of the line with
-  every `@see` reference and the api-key table rebuilt from the ApiVersions answer of the node
+  every `@see` reference (since the 4.4 milestone the document is `docs/protocol/overview.md`, edited in place: the
+  next foundation rewrites its head and api-key table and renames nothing) and the api-key table rebuilt from the ApiVersions answer of the node
   (`DocumentationSyncTest` checks both), the new api keys and error codes with one exception class each,
   `ApiVersionProbeTest` at the new table, `ApiVersionsRequest::CLIENT_SOFTWARE_VERSION` at the line's version, the
   README and CHANGELOG heads, the baseline gate measured on the new node — and every failure of the inherited suite

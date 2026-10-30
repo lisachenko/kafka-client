@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version 0 is replayed through the class of version 0, and a caller that sends an {@see AddRaftVoterRequestV0}
  * reads its answer with it.
  *
- * @see docs/protocol/4.4.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
+ * @see docs/protocol/overview.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
  *      Kafka 4.2 (v1)"
  */
 final class AddRaftVoterResponseV0 extends AddRaftVoterResponse

@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * type it does not name. This class pins the same four rules on {@see ControlRecordType::parse()}, and the two keys
  * the 4.3.1 node wrote for a committed and an aborted transaction.
  *
- * @see docs/protocol/4.4.md, section "Control batches"
+ * @see docs/protocol/overview.md, section "Control batches"
  */
 #[CoversClass(ControlRecordType::class)]
 #[CoversClass(ControlRecordKey::class)]

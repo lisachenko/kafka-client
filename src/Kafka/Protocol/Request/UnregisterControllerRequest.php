@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * does not ask whether the id is still a voter of the quorum, or even its own - which is why this repository never
  * sends the id of the one controller of its node. The api is flexible from its first version.
  *
- * @see docs/protocol/4.4.md, section "UnregisterController API (key 94, v0)"
+ * @see docs/protocol/overview.md, section "UnregisterController API (key 94, v0)"
  */
 class UnregisterControllerRequest extends AbstractRequest
 {

@@ -36,11 +36,13 @@ are **protected** branches: no direct pushes, changes arrive by PR and leave by 
    in `docs/handoff/<to>.md`.
 6. **Gate.** The cascade PR must pass the full gate of the target line (cs, phpstan, unit,
    compliance, integration against the target line's broker) before it is merged with a merge commit.
-7. **Docs.** After the merge, `docs/protocol/<version>.md`, `README.md`, `CHANGELOG.md`, the Docker
+7. **Docs.** After the merge, `docs/protocol/overview.md`, `README.md`, `CHANGELOG.md`, the Docker
    broker and `docker-compose.yml` are updated to the target line's Kafka version as the first ticket
-   of that line. The document is *renamed* with the line and every `@see docs/protocol/<version>.md,
-   section "…"` moves with it — `Compliance\DocumentationSyncTest` checks both the file name and the
-   section headings, so a rename that misses a reference fails the gate.
+   of that line. The protocol document is **edited in place, never renamed**: every `@see
+   docs/protocol/overview.md, section "…"` of the sources stays as it is, and only a heading that is renamed
+   moves its references. `Compliance\DocumentationSyncTest` checks both the file name and the section
+   headings, so a reference that names another document — a versioned name of the time before
+   (`docs/protocol/2.8.md` on `2.x`), which a cascade merge can bring along — or a missing heading fails the gate.
 8. **A fix on a maintained major line** (`3.x`; `2.x` only when the owner asks for it — see "Maintenance" in
    `CLAUDE.md`) is made on a `t<n>-<slug>` branch off that line, gated against that line's broker (`docker compose up`
    on the line's own checkout builds its image, `docker/kafka-2.8.2` or `docker/kafka-3.9.2`), merged into the line

@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the `types_filter` of the request. {@see ListGroupResponseProtocolV4} is the entry of version 4, which has the
  * state and not the type.
  *
- * @see docs/protocol/4.4.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ListGroups API (key 16, v0 to v5)"
  */
 class ListGroupResponseProtocol implements BinarySchemaInterface
 {

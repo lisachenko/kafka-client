@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * timestamps ({@see DescribeDelegationTokenResponseToken}); this class is the entry of every version below 3, in
  * which the owner is the only principal of a token besides its renewers.
  *
- * @see docs/protocol/4.4.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
+ * @see docs/protocol/overview.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 final class DescribeDelegationTokenResponseTokenV2 extends DescribeDelegationTokenResponseToken
 {

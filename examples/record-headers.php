@@ -29,7 +29,7 @@ declare(strict_types=1);
  *   php examples/record-headers.php my-topic
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/record-headers.php
  *
- * @see docs/protocol/4.4.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/overview.md, section "RecordBatch (message format v2)"
  */
 
 use Protocol\Kafka\Common\ClientConfig;

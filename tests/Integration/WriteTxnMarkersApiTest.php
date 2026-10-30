@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV1;
  * aborts it afterwards; every topic of this class is deleted again. The transactional ids carry the `t4-42-wtm-`
  * prefix and a random suffix.
  *
- * @see docs/protocol/4.4.md, section "What Kafka 4.2 changed here (KIP-1228): the version 2"
+ * @see docs/protocol/overview.md, section "What Kafka 4.2 changed here (KIP-1228): the version 2"
  */
 #[CoversClass(WriteTxnMarkersRequest::class)]
 #[CoversClass(WriteTxnMarkersRequestV1::class)]

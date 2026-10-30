@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Common;
  * acls that match an operation and answers `DENIED` as soon as one of them denies it, which is why a deny acl
  * cannot be overruled by adding another allow one.
  *
- * @see docs/protocol/4.4.md, section "DescribeAcls API (key 29, v0 to v3)"
+ * @see docs/protocol/overview.md, section "DescribeAcls API (key 29, v0 to v3)"
  */
 final class AclPermissionType
 {

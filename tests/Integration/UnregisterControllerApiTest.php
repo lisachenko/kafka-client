@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Request\UnregisterControllerResponse;
  * is written. What is measured is everything around it - the 136 of an id the controller holds no registration
  * for, the absent range check of the id, and the 31 of a principal without `ALTER` on the cluster.
  *
- * @see docs/protocol/4.4.md, section "UnregisterController API (key 94, v0)"
+ * @see docs/protocol/overview.md, section "UnregisterController API (key 94, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(UnregisterControllerRequest::class)]

@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * generated classes with the same four fields: the records of a share partition from one offset to another that
  * share a delivery state and a delivery count. This package carries both as this one structure.
  *
- * @see docs/protocol/4.4.md, section "The share-group state apis (keys 83 to 87) — wire only"
+ * @see docs/protocol/overview.md, section "The share-group state apis (keys 83 to 87) — wire only"
  */
 class ShareGroupStateBatch implements BinarySchemaInterface
 {

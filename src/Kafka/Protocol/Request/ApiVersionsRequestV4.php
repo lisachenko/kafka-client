@@ -31,7 +31,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * It is what a client sends to a node of Kafka 3.9 to 4.3, and the class the version 4 wire vectors are replayed
  * through.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 final class ApiVersionsRequestV4 extends ApiVersionsRequest
 {

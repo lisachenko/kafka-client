@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Data\ShareAcknowledgementBatch;
  * modes and the state checks of the Java `ShareConsumerImpl` @ 4.3.1. The consumer below never connects anywhere -
  * the bootstrap address does not exist.
  *
- * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/overview.md, section "The share consumer (KIP-932)"
  */
 #[CoversClass(KafkaShareConsumer::class)]
 #[CoversClass(AcknowledgeType::class)]

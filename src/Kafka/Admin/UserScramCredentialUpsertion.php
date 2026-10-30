@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ScramCredentialUpsertion;
  * itself**: the constructor takes the password, the api takes `Hi(password, salt, iterations)`, and the broker
  * never sees the first of the two. A salt is generated when none is given.
  *
- * @see docs/protocol/4.4.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/overview.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 final class UserScramCredentialUpsertion implements UserScramCredentialAlteration
 {

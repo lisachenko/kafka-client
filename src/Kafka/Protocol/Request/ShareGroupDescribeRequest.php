@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * @ 4.1.0, the version 0 of the early access of Kafka 4.0 is gone. A group of another type is the **69** of its
  * entry. `AdminClient::describeShareGroups()` sends it.
  *
- * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/overview.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 class ShareGroupDescribeRequest extends AbstractRequest
 {

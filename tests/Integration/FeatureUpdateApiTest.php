@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponseV1;
  * changes, so every update here is a dry run, or one the controller refuses before it writes, and the levels are
  * read back afterwards.
  *
- * @see docs/protocol/4.4.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
+ * @see docs/protocol/overview.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
  *      of KIP-778 (v1)" and "The answer without results (v2, Kafka 4.0)"
  */
 #[CoversClass(AdminClient::class)]

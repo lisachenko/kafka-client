@@ -36,7 +36,7 @@ use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
  * producer keeps the protocol v1 of every line below. The client under the manager is a double; the node's side of
  * the same story is `tests/Integration/TransactionProtocolV2Test.php`.
  *
- * @see docs/protocol/4.4.md, section "The transaction protocol v2 on a node that finalizes it (Kafka 4.0)"
+ * @see docs/protocol/overview.md, section "The transaction protocol v2 on a node that finalizes it (Kafka 4.0)"
  */
 #[CoversClass(TransactionManager::class)]
 final class TransactionProtocolV2Test extends TestCase

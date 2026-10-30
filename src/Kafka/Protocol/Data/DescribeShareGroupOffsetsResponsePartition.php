@@ -37,8 +37,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * already done with, -1 when the node cannot compute it. {@see DescribeShareGroupOffsetsResponsePartitionV0} is the
  * entry of the version 0, without it.
  *
- * @see docs/protocol/4.4.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
- * @see docs/protocol/4.4.md, section "The share-partition lag of KIP-1226 (v1)"
+ * @see docs/protocol/overview.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
+ * @see docs/protocol/overview.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 class DescribeShareGroupOffsetsResponsePartition implements BinarySchemaInterface
 {

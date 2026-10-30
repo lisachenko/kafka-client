@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
  * `WriteTxnMarkersResponse.json` @ 4.2.0) changed no field of the answer; {@see WriteTxnMarkersResponseV1} keeps
  * the version 1.
  *
- * @see docs/protocol/4.4.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
+ * @see docs/protocol/overview.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 class WriteTxnMarkersResponse extends AbstractResponse
 {

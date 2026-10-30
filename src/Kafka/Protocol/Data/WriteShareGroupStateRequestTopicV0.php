@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * the array, a {@see WriteShareGroupStateRequestPartitionV0} without the `DeliveryCompleteCount` that version 1
  * (Kafka 4.2, KIP-1226) added. A partition of version 1 given to this class is converted into it.
  *
- * @see docs/protocol/4.4.md, section "WriteShareGroupState API (key 85, v0 and v1)"
+ * @see docs/protocol/overview.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 final class WriteShareGroupStateRequestTopicV0 extends WriteShareGroupStateRequestTopic
 {

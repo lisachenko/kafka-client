@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `GroupCoordinatorService.throwIfShareGroupHeartbeatRequestIsInvalid` @ 4.1.0 refuses an empty one with the 42, and a
  * join (epoch 0) without subscribed topic names with the 42 *"SubscribedTopicNames must be set in first request."*.
  *
- * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/overview.md, section "ShareGroupHeartbeat API (key 76, v1)"
  */
 class ShareGroupHeartbeatRequest extends AbstractRequest
 {

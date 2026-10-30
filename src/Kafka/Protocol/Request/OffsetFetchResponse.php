@@ -93,10 +93,10 @@ use UnexpectedValueException;
  * {@see OffsetFetchResponseGroup::nameTopics()} names them; {@see OffsetFetchResponseV9} decodes the answer that
  * names them itself.
  *
- * @see docs/protocol/4.4.md, sections "OffsetFetch API (key 9, v0 to v10)", "Stable offsets and the 88 of KIP-447
+ * @see docs/protocol/overview.md, sections "OffsetFetch API (key 9, v0 to v10)", "Stable offsets and the 88 of KIP-447
  *      (Kafka 2.5)" and "Quotas and throttle time"
- * @see docs/protocol/4.4.md, section "The member id and epoch of KIP-848 (v9)"
- * @see docs/protocol/4.4.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
+ * @see docs/protocol/overview.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/overview.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 class OffsetFetchResponse extends AbstractResponse
 {

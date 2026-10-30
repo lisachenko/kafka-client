@@ -56,8 +56,8 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopicV0;
  * maps the entries back to the names the request committed for. {@see OffsetCommitResponseV9} keeps the answer
  * that names its topics.
  *
- * @see docs/protocol/4.4.md, sections "OffsetCommit API (key 8, v0 to v10)" and "Quotas and throttle time"
- * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+ * @see docs/protocol/overview.md, sections "OffsetCommit API (key 8, v0 to v10)" and "Quotas and throttle time"
+ * @see docs/protocol/overview.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 class OffsetCommitResponse extends AbstractResponse
 {

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the version 4 is what a broker below Kafka 4.3 is asked with, and its answer carries no cordon flag per
  * directory ({@see DescribeLogDirsResponseV4}).
  *
- * @see docs/protocol/4.4.md, section "DescribeLogDirs API (key 35, v0 to v5)"
+ * @see docs/protocol/overview.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class DescribeLogDirsRequestV4 extends DescribeLogDirsRequest
 {

@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * offset is still uninitialized. {@see ReadShareGroupStateSummaryResponsePartitionV0} is the entry of the version 0,
  * which keeps the -1 of the default.
  *
- * @see docs/protocol/4.4.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
  */
 class ReadShareGroupStateSummaryResponsePartition implements BinarySchemaInterface
 {

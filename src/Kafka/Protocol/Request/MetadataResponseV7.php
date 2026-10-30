@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-430) appended a `topic_authorized_operations` to every topic entry and a `cluster_authorized_operations` to
  * the end of the frame, see {@see MetadataResponse}.
  *
- * @see docs/protocol/4.4.md, section "Metadata API (key 3, v0 to v13)"
+ * @see docs/protocol/overview.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class MetadataResponseV7 extends MetadataResponse
 {

@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsResponsePartition;
  * negative value - the -1 of a lag that is not known yet, which is every lag until the group acknowledged something
  * ({@see DescribeShareGroupOffsetsResponsePartition::UNINITIALIZED_LAG}).
  *
- * @see docs/protocol/4.4.md, section "The share-group admin methods"
+ * @see docs/protocol/overview.md, section "The share-group admin methods"
  */
 final class SharePartitionOffsetInfo
 {

@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Request\PushTelemetryResponse;
  * the 42 of a push after a terminating one are what the manager answers **on the connection of the instance**. A
  * 3.9.2 node kept the instance for its whole cache lifetime, whatever happened to the connection.
  *
- * @see docs/protocol/4.4.md, section "Client metrics (KIP-714) — wire only"
+ * @see docs/protocol/overview.md, section "Client metrics (KIP-714) — wire only"
  */
 #[CoversClass(GetTelemetrySubscriptionsRequest::class)]
 #[CoversClass(GetTelemetrySubscriptionsResponse::class)]

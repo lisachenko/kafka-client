@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `ClusterAuthorizationFailed` of a principal without `ALTER` on the cluster, the **35** of a `metadata.version`
  * below 4.4-IV2.
  *
- * @see docs/protocol/4.4.md, section "UnregisterController API (key 94, v0)"
+ * @see docs/protocol/overview.md, section "UnregisterController API (key 94, v0)"
  */
 class UnregisterControllerResponse extends AbstractResponse
 {

@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\DeleteShareGroupStateRequestTopic;
  * not a broker has no business sending it; the frames were captured for the grammar and never touch the state of a
  * share group another component owns.
  *
- * @see docs/protocol/4.4.md, section "DeleteShareGroupState API (key 86, v0)"
+ * @see docs/protocol/overview.md, section "DeleteShareGroupState API (key 86, v0)"
  */
 class DeleteShareGroupStateRequest extends AbstractRequest
 {

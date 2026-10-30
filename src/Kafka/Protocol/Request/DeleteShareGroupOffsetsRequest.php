@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Data\DeleteShareGroupOffsetsRequestTopic;
  * **Kafka 4.1 added the api** (`DeleteShareGroupOffsetsRequest.json` @ 4.1.0, `"validVersions": "0"`, flexible
  * from its version 0, a `broker` listener api).
  *
- * @see docs/protocol/4.4.md, section "DeleteShareGroupOffsets API (key 92, v0)"
+ * @see docs/protocol/overview.md, section "DeleteShareGroupOffsets API (key 92, v0)"
  */
 class DeleteShareGroupOffsetsRequest extends AbstractRequest
 {

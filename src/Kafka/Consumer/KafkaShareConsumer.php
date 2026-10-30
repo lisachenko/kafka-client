@@ -57,7 +57,7 @@ use Throwable;
  * **Kafka 4.4 (KIP-1191, `share.version` 2)** writes a rejected record, and one archived by the delivery count limit,
  * into the dead-letter queue of the group before it archives it, when the group config
  * `errors.deadletterqueue.topic.name` names one: the node does it on its own, nothing changes for the consumer - see
- * the section "The dead-letter queue of KIP-1191 (share.version 2)" of docs/protocol/4.4.md.
+ * the section "The dead-letter queue of KIP-1191 (share.version 2)" of docs/protocol/overview.md.
  *
  * Usage against a broker on 127.0.0.1:9092, see also examples/share-consumer.php:
  *
@@ -111,7 +111,7 @@ use Throwable;
  * are refused by the constructor, as `ShareConsumerConfig` @ 4.3.1 refuses them
  * ({@see ConsumerConfig::SHARE_GROUP_UNSUPPORTED_CONFIGS}).
  *
- * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/overview.md, section "The share consumer (KIP-932)"
  */
 class KafkaShareConsumer
 {

@@ -72,9 +72,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the class read by id as a KIP-848 member, as the client, for every topic of a group and for an id the node does
  * not know.
  *
- * @see docs/protocol/4.4.md, section "The member id and epoch of KIP-848 (v9)"
- * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.4.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
+ * @see docs/protocol/overview.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/overview.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(OffsetFetchRequest::class)]

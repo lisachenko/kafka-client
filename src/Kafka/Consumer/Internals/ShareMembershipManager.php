@@ -56,8 +56,8 @@ use Protocol\Kafka\Protocol\Request\ShareGroupHeartbeatResponse;
  * them. The session timeout is the broker's, `group.share.session.timeout.ms` (45000): a consumer that does not poll
  * for that long is dropped from its group, and its next poll() joins it again.
  *
- * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
- * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/overview.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/overview.md, section "ShareGroupHeartbeat API (key 76, v1)"
  */
 final class ShareMembershipManager
 {

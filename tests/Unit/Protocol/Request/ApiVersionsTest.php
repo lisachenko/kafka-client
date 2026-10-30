@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV4;
  * of KIP-1242, which appends the cluster id and the node id the client means to reach to the request and answers a
  * misrouted connection with the 129 `REBOOTSTRAP_REQUIRED`, in a frame of the answer that did not change.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsRequestV0::class)]

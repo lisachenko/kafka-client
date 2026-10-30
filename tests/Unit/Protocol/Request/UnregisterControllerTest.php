@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\Request\UnregisterControllerResponse;
  *
  * The frames are the ones the 4.4.0 node exchanged for the unknown controller id 4242 (`unregistercontroller.*.v0.unknown`).
  *
- * @see docs/protocol/4.4.md, section "UnregisterController API (key 94, v0)"
+ * @see docs/protocol/overview.md, section "UnregisterController API (key 94, v0)"
  */
 #[CoversClass(UnregisterControllerRequest::class)]
 #[CoversClass(UnregisterControllerResponse::class)]

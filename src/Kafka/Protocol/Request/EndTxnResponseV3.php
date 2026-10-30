@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * that follows a commit; the 120 is not written here by a 3.9.2 coordinator at all. The producer id and the
  * epoch of the **version 5** are Kafka 3.9's.
  *
- * @see docs/protocol/4.4.md, section "EndTxn API (key 26, v0 to v5)"
+ * @see docs/protocol/overview.md, section "EndTxn API (key 26, v0 to v5)"
  */
 final class EndTxnResponseV3 extends EndTxnResponse
 {

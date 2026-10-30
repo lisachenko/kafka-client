@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * which {@see ConsumerGroupDescribeRequest} sends: the version asks for the answer that gives every member its
  * `member_type`, and this one for the answer without it.
  *
- * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 final class ConsumerGroupDescribeRequestV0 extends ConsumerGroupDescribeRequest
 {

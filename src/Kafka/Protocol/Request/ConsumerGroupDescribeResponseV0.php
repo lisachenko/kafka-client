@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 1 (Kafka 4.0, KIP-1099) closes every member entry with the int8 `member_type`, see
  * {@see ConsumerGroupDescribeResponse}; this is the answer whose members end with their target assignment.
  *
- * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 final class ConsumerGroupDescribeResponseV0 extends ConsumerGroupDescribeResponse
 {

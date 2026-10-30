@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\ListTransactionsResponseTransactionState;
  * `transactional_id_pattern` the coordinator cannot compile, at the top level, with an empty list.
  * {@see ListTransactionsResponseV1} is the same frame at the version below.
  *
- * @see docs/protocol/4.4.md, section "ListTransactions API (key 66, v0 to v2)"
+ * @see docs/protocol/overview.md, section "ListTransactions API (key 66, v0 to v2)"
  */
 class ListTransactionsResponse extends AbstractResponse
 {

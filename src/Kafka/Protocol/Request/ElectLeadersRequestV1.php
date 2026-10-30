@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-460 gave the version 1 the leading `election_type` byte and KIP-482 made the version 2 of the same release
  * the first flexible one; the fields are the same in both, so this class only lowers the version constant.
  *
- * @see docs/protocol/4.4.md, section "ElectLeaders API (key 43, v0 to v2)"
+ * @see docs/protocol/overview.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 final class ElectLeadersRequestV1 extends ElectLeadersRequest
 {

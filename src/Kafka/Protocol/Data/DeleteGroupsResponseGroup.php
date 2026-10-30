@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * no message, because `GroupCoordinatorShard.deleteGroups` @ 4.4.0 sets the code alone.
  * {@see DeleteGroupsResponseGroupV2} is the entry of the versions below 3.
  *
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
+ * @see docs/protocol/overview.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 class DeleteGroupsResponseGroup implements BinarySchemaInterface
 {

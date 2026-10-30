@@ -32,7 +32,7 @@ use InvalidArgumentException;
  *   ]);
  * </code>
  *
- * @see docs/protocol/4.4.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/overview.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 final class AlterConfigOp
 {

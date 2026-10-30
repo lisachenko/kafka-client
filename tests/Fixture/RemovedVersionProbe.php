@@ -29,7 +29,7 @@ use RuntimeException;
  *
  * Every frame goes out on a connection of its own, so that one refusal can not cost the requests of a test.
  *
- * @see docs/protocol/4.4.md, section "The versions Kafka 4.0 removed (KIP-896)"
+ * @see docs/protocol/overview.md, section "The versions Kafka 4.0 removed (KIP-896)"
  */
 final class RemovedVersionProbe
 {

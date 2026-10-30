@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     Partitions => COMPACT_ARRAY of {@see AlterShareGroupOffsetsResponsePartition}
  * </pre>
  *
- * @see docs/protocol/4.4.md, section "AlterShareGroupOffsets API (key 91, v0)"
+ * @see docs/protocol/overview.md, section "AlterShareGroupOffsets API (key 91, v0)"
  */
 final class AlterShareGroupOffsetsResponseTopic implements BinarySchemaInterface
 {

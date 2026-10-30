@@ -24,8 +24,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * serves. A group the coordinator does not know and a stale member epoch of KIP-848 are answered the **22**
  * `IllegalGeneration` here, where the version 6 answers the 69 and the 113.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
- * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
  */
 final class TxnOffsetCommitRequestV5 extends TxnOffsetCommitRequest
 {

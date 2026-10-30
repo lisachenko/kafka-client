@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see self::MEMBER_TYPE_UNKNOWN} is what a version 0 entry leaves the field at.
  *
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponse
- * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 class ConsumerGroupDescribeMember implements BinarySchemaInterface
 {

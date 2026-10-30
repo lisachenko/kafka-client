@@ -62,7 +62,7 @@ use Protocol\Kafka\Protocol\Data\AddRaftVoterRequestListener;
  * what the controller's own auto-join of KIP-853 sends as false (`KafkaRaftClient.buildAddVoterRequest` @ 4.2.0); the
  * Java admin client @ 4.2.0 leaves it at its default. {@see AddRaftVoterRequestV0} is the frame below it.
  *
- * @see docs/protocol/4.4.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
+ * @see docs/protocol/overview.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode of
  *      Kafka 4.2 (v1)"
  */
 class AddRaftVoterRequest extends AbstractRequest

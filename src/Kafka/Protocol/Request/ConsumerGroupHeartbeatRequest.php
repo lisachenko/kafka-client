@@ -84,7 +84,7 @@ use Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatTopicPartitions;
  *
  * {@see ConsumerGroupHeartbeatRequestV0} is the frame of version 0, which has no field for the regex.
  *
- * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 class ConsumerGroupHeartbeatRequest extends AbstractRequest
 {

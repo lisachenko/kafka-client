@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\RemoveRaftVoterResponse;
  * not hold, and a new voter whose CONTROLLER endpoint is a closed port. Every test reads the quorum back and
  * demands the one voter it found.
  *
- * @see docs/protocol/4.4.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "RemoveRaftVoter API (key 81, v0)"
+ * @see docs/protocol/overview.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "RemoveRaftVoter API (key 81, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(AddRaftVoterRequest::class)]

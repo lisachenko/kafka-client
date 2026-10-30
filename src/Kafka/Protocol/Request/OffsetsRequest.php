@@ -155,7 +155,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * first offset behind that end. Only the third is answered with a real timestamp; the other five do not read a
  * message and are answered with the timestamp -1.
  *
- * @see docs/protocol/4.4.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
+ * @see docs/protocol/overview.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
  *      KIP-1075 (v10)", "The earliest pending upload offset of KIP-1023 (v11)" and "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest

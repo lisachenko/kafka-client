@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see OffsetCommitResponse::getScheme()} follows, so that the class of an answer always names the version of the
  * request that asked for it.
  *
- * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/overview.md, section "OffsetCommit API (key 8, v0 to v10)"
  */
 final class OffsetCommitResponseV2 extends OffsetCommitResponse
 {

@@ -83,8 +83,8 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopicV0;
  * {@see self::topicsByName()} maps the entries back to the names the request committed for;
  * {@see TxnOffsetCommitResponseV5} keeps the answer that names its topics.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
- * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {

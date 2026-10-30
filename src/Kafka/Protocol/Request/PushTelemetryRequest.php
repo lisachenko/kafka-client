@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `telemetry.max.bytes` is **118** (`TelemetryTooLarge`), a codec the broker does not accept is **76**
  * (`UnsupportedCompressionType`) and a push inside the interval is **89** (`ThrottlingQuotaExceeded`).
  *
- * @see docs/protocol/4.4.md, section "PushTelemetry API (key 72, v0)"
+ * @see docs/protocol/overview.md, section "PushTelemetry API (key 72, v0)"
  */
 class PushTelemetryRequest extends AbstractRequest
 {

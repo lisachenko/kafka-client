@@ -64,7 +64,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * version **5** Kafka 3.8 added moved the base class one number up; the version 5 is measured by
  * {@see Kip890TransactionVersionsTest}, which finds the same answers.
  *
- * @see docs/protocol/4.4.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
+ * @see docs/protocol/overview.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
 #[CoversClass(AddPartitionsToTxnRequestV4::class)]

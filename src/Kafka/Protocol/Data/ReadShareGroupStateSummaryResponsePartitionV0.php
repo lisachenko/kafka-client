@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see ReadShareGroupStateSummaryResponsePartition::$deliveryCompleteCount} keeps the -1 of the default, which is
  * "not known".
  *
- * @see docs/protocol/4.4.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
  */
 final class ReadShareGroupStateSummaryResponsePartitionV0 extends ReadShareGroupStateSummaryResponsePartition
 {

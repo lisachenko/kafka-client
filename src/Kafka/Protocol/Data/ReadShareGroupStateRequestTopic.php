@@ -22,7 +22,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `ReadShareGroupStateRequestData.ReadStateData` @ 4.1.0: the topic id and the partitions of the share group
  * whose state is read.
  *
- * @see docs/protocol/4.4.md, section "ReadShareGroupState API (key 84, v0)"
+ * @see docs/protocol/overview.md, section "ReadShareGroupState API (key 84, v0)"
  */
 class ReadShareGroupStateRequestTopic implements BinarySchemaInterface
 {

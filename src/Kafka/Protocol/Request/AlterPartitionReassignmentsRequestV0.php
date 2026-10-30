@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * 0 request always allows a partition to change its replication factor, which is the default **true** of the field
  * in the version 1. The `$allowReplicationFactorChange` argument of the constructor is therefore not written.
  *
- * @see docs/protocol/4.4.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
+ * @see docs/protocol/overview.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
  */
 final class AlterPartitionReassignmentsRequestV0 extends AlterPartitionReassignmentsRequest
 {

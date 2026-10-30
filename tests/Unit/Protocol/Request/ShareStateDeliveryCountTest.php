@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\WriteShareGroupStateResponseV0;
  * share group that does not exist, which the share coordinator refuses with the 42, and the summary of the same
  * partition for a share group that had fetched and acknowledged records - the start offset 0 and the count 2.
  *
- * @see docs/protocol/4.4.md, sections "WriteShareGroupState API (key 85, v0 and v1)" and "ReadShareGroupStateSummary
+ * @see docs/protocol/overview.md, sections "WriteShareGroupState API (key 85, v0 and v1)" and "ReadShareGroupStateSummary
  *      API (key 87, v0 and v1)"
  */
 #[CoversClass(WriteShareGroupStateRequest::class)]

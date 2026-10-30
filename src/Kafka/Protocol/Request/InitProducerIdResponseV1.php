@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * throttles, and version 2 writes the very same fields in the flexible encoding
  * ({@see InitProducerIdResponse}).
  *
- * @see docs/protocol/4.4.md, section "InitProducerId API (key 22, v0 to v5)"
+ * @see docs/protocol/overview.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 final class InitProducerIdResponseV1 extends InitProducerIdResponse
 {

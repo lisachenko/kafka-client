@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * class is the entry of version 18, {@see FetchRequestTopicV17} the one of version 17 and
  * {@see FetchRequestTopicV13} the one of the versions 13 to 16.
  *
- * @see docs/protocol/4.4.md, sections "Fetch API (key 1, v0 to v18)", "The topic ids of the fetch path
+ * @see docs/protocol/overview.md, sections "Fetch API (key 1, v0 to v18)", "The topic ids of the fetch path
  *      (v13, KIP-516)", "The replica directory id of KIP-853 (v17)" and "The high watermark of a follower, KIP-1166
  *      (v18)"
  */

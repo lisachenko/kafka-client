@@ -24,9 +24,9 @@ namespace Protocol\Kafka\Protocol\Request;
  * A 4.3.1 node answers a topic it does not have with the 3 `UNKNOWN_TOPIC_OR_PARTITION` here, where version 10
  * answers an id it does not know with the 100.
  *
- * @see docs/protocol/4.4.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
- * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+ * @see docs/protocol/overview.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/overview.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 final class OffsetCommitRequestV9 extends OffsetCommitRequest
 {

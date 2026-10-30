@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The throttle time, the top-level error and the result of every partition, without the
  * `allow_replication_factor_change` the version 1 of Kafka 4.1 repeats from the request.
  *
- * @see docs/protocol/4.4.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
+ * @see docs/protocol/overview.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
  */
 final class AlterPartitionReassignmentsResponseV0 extends AlterPartitionReassignmentsResponse
 {

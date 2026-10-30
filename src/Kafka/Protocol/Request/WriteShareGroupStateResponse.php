@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\ShareGroupStateTopicResult;
  * the answer declares no new field. {@see WriteShareGroupStateResponseV0} is the answer of a
  * {@see WriteShareGroupStateRequestV0}.
  *
- * @see docs/protocol/4.4.md, section "WriteShareGroupState API (key 85, v0 and v1)"
+ * @see docs/protocol/overview.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 class WriteShareGroupStateResponse extends AbstractResponse
 {

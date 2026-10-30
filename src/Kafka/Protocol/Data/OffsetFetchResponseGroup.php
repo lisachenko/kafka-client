@@ -47,8 +47,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * whose id the node can not find any more is left out of the answer (`KafkaApis.fetchAllOffsetsForGroup` @ 4.3.1).
  * {@see OffsetFetchResponseGroupV8} is the entry of the versions 8 and 9, which names its topics.
  *
- * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.4.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
+ * @see docs/protocol/overview.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 class OffsetFetchResponseGroup implements BinarySchemaInterface
 {

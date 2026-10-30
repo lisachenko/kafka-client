@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Common;
  * leader id, see {@see PartitionMetadata::$leaderEpoch}. A client that asks with version 6 or lower therefore has
  * no way of telling one leadership of a partition from the next.
  *
- * @see docs/protocol/4.4.md, section "Metadata API (key 3, v0 to v13)"
+ * @see docs/protocol/overview.md, section "Metadata API (key 3, v0 to v13)"
  */
 final class PartitionMetadataV5 extends PartitionMetadata
 {

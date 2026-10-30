@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV17;
  * (KIP-1166)". The field is read by the raft client of the metadata log on the controller listener; a fetch of an
  * ordinary topic is answered the same with and without it.
  *
- * @see docs/protocol/4.4.md, sections "Fetch API (key 1, v0 to v18)" and "The high watermark of a follower, KIP-1166
+ * @see docs/protocol/overview.md, sections "Fetch API (key 1, v0 to v18)" and "The high watermark of a follower, KIP-1166
  *      (v18)"
  */
 #[CoversClass(FetchRequest::class)]

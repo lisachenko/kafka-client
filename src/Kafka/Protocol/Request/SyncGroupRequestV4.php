@@ -22,8 +22,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * `areMandatoryProtocolTypeAndNamePresent()` before anything else. This version names neither and is accepted by
  * any generation.
  *
- * @see docs/protocol/4.4.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
- * @see docs/protocol/4.4.md, section "SyncGroup API (key 14, v0 to v5)"
+ * @see docs/protocol/overview.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
+ * @see docs/protocol/overview.md, section "SyncGroup API (key 14, v0 to v5)"
  */
 final class SyncGroupRequestV4 extends SyncGroupRequest
 {

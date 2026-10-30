@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * acknowledgements know the types 0 to 3 only. Version 2 (Kafka 4.2, KIP-1222) added `is_renew_ack` behind the
  * epoch ({@see ShareAcknowledgeRequest}); the flag of the constructor is not written by this version.
  *
- * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+ * @see docs/protocol/overview.md, section "ShareAcknowledge API (key 79, v1 and v2)"
  */
 final class ShareAcknowledgeRequestV1 extends ShareAcknowledgeRequest
 {

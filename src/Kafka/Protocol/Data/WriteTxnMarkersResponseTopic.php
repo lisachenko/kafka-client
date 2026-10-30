@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partitions => WriteTxnMarkersResponsePartition
  * </pre>
  *
- * @see docs/protocol/4.4.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
+ * @see docs/protocol/overview.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 class WriteTxnMarkersResponseTopic implements BinarySchemaInterface
 {

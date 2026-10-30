@@ -78,7 +78,7 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
  * every end of a transaction bumps the epoch. The tests hold for both protocols; the one place where the node answers
  * them differently - the commit of an expired transaction - says so.
  *
- * @see docs/protocol/4.4.md, section "Transactions"
+ * @see docs/protocol/overview.md, section "Transactions"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]

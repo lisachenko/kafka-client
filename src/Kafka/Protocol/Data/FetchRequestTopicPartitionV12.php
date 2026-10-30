@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * bytes of the two are the same as long as the sender is a consumer, because the zero uuid of a consumer is the
  * default of the field and a tagged field whose value is its default is not written at all.
  *
- * @see docs/protocol/4.4.md, section "Fetch API (key 1, v0 to v18)"
+ * @see docs/protocol/overview.md, section "Fetch API (key 1, v0 to v18)"
  */
 final class FetchRequestTopicPartitionV12 extends FetchRequestTopicPartition
 {

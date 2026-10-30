@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * There is no timeout in the request - the controller waits for the commit as long as its own
  * `controller.quorum.request.timeout.ms` - and no listener, because a voter that leaves needs no address.
  *
- * @see docs/protocol/4.4.md, section "RemoveRaftVoter API (key 81, v0)"
+ * @see docs/protocol/overview.md, section "RemoveRaftVoter API (key 81, v0)"
  */
 class RemoveRaftVoterRequest extends AbstractRequest
 {

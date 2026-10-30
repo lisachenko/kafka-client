@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `TxnOffsetCommitRequest.Builder` @ 4.0.0 caps at (`LAST_STABLE_VERSION_BEFORE_TRANSACTION_V2`) on a cluster that
  * does not finalize `transaction.version` 2, and the highest one a 3.x node serves.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
  */
 final class TxnOffsetCommitRequestV4 extends TxnOffsetCommitRequest
 {

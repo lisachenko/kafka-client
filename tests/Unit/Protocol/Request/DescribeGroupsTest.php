@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV5;
  * Version 6 (KIP-1043, Kafka 4.0) is the request of version 5 again; its answer puts an `error_message` behind the
  * error code of every entry, and describes a group the coordinator does not hold with the 69 rather than `Dead`.
  *
- * @see docs/protocol/4.4.md, section "DescribeGroups API (key 15, v0 to v6)"
+ * @see docs/protocol/overview.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 #[CoversClass(DescribeGroupsRequest::class)]
 #[CoversClass(DescribeGroupsRequestV0::class)]

@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * may carry the 69 `GroupIdNotFound` and the 113 `StaleMemberEpoch`. Version 10 (Kafka 4.2, KIP-848) names every
  * topic of the answer by its id ({@see OffsetCommitResponse}).
  *
- * @see docs/protocol/4.4.md, section "The member epoch of KIP-848 (v9)"
- * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/overview.md, section "OffsetCommit API (key 8, v0 to v10)"
  */
 final class OffsetCommitResponseV9 extends OffsetCommitResponse
 {

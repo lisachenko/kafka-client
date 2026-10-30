@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV4;
  * `ApiVersionsRequest.isValid()` refuses half a pair with the 42. The node is node 1 of one cluster, so "another
  * node" is any other id at its address and "another cluster" any other id; nothing here changes the node.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsRequestV4::class)]

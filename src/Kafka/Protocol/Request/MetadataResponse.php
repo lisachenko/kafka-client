@@ -106,7 +106,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/4.4.md, sections "Metadata API (key 3, v0 to v13)", "Metadata by topic id (v12, KIP-516)",
+ * @see docs/protocol/overview.md, sections "Metadata API (key 3, v0 to v13)", "Metadata by topic id (v12, KIP-516)",
  *      "The top-level error code of KIP-1102 (v13)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse

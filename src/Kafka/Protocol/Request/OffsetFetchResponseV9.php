@@ -21,8 +21,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * whose topic entries carry the name. Version 10 (Kafka 4.2, KIP-848) names every topic by its id
  * ({@see OffsetFetchResponse}).
  *
- * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.4.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/overview.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The member id and epoch of KIP-848 (v9)"
  */
 final class OffsetFetchResponseV9 extends OffsetFetchResponse
 {

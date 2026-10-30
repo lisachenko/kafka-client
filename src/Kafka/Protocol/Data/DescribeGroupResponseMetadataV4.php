@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * entry with the compact types; version 6 (KIP-1043, Kafka 4.0) put a nullable `error_message` behind the error
  * code, see {@see DescribeGroupResponseMetadata}. This is the entry without it.
  *
- * @see docs/protocol/4.4.md, section "DescribeGroups API (key 15, v0 to v6)"
+ * @see docs/protocol/overview.md, section "DescribeGroups API (key 15, v0 to v6)"
  */
 final class DescribeGroupResponseMetadataV4 extends DescribeGroupResponseMetadata
 {

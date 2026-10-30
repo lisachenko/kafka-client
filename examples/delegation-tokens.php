@@ -35,7 +35,7 @@ declare(strict_types=1);
  *   php examples/delegation-tokens.php
  *   KAFKA_SASL_SSL_BOOTSTRAP_SERVERS=127.0.0.1:9095 php examples/delegation-tokens.php   # inside TLS
  *
- * @see docs/protocol/4.4.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v3)",
+ * @see docs/protocol/overview.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v3)",
  *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
  *      "DescribeDelegationToken API (key 41, v0 to v3)"
  */

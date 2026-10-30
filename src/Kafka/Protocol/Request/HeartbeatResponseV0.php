@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * six-byte frame where a version 1 answer is a ten-byte one; this class only lowers the version constant that
  * {@see HeartbeatResponse::getScheme()} follows.
  *
- * @see docs/protocol/4.4.md, section "Heartbeat API (key 12, v0 to v4)"
+ * @see docs/protocol/overview.md, section "Heartbeat API (key 12, v0 to v4)"
  */
 final class HeartbeatResponseV0 extends HeartbeatResponse
 {

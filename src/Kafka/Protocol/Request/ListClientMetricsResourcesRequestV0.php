@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `ListConfigResources`, and the {@see ListClientMetricsResourcesRequest::$resourceTypes} of an instance of this
  * class never reaches the wire.
  *
- * @see docs/protocol/4.4.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config resources
+ * @see docs/protocol/overview.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config resources
  *      of KIP-1142 (v1)"
  */
 final class ListClientMetricsResourcesRequestV0 extends ListClientMetricsResourcesRequest

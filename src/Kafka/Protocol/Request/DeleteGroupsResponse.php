@@ -55,7 +55,7 @@ use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroupV2;
  * the 4.4.0 node). {@see DeleteGroupsResponseV2} decodes the answer of a broker below Kafka 4.4, whose entries end
  * with the code.
  *
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
+ * @see docs/protocol/overview.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 class DeleteGroupsResponse extends AbstractResponse
 {

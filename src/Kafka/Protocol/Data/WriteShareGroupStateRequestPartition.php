@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * consumer has read yet. {@see WriteShareGroupStateRequestPartitionV0} is the entry of the version 0, where the field
  * never reaches the wire.
  *
- * @see docs/protocol/4.4.md, section "WriteShareGroupState API (key 85, v0 and v1)"
+ * @see docs/protocol/overview.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 class WriteShareGroupStateRequestPartition implements BinarySchemaInterface
 {

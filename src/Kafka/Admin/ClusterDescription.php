@@ -30,7 +30,7 @@ use Protocol\Kafka\Common\Node;
  * client flags them with `Node.isFenced()`, and this description lists their ids in {@see self::$fencedNodeIds}
  * next to the nodes, because {@see Node} is the broker of a Metadata answer and has no such field.
  *
- * @see docs/protocol/4.4.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
+ * @see docs/protocol/overview.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
  *      (v1)" and "The fenced brokers of KIP-1073 (v2)"
  */
 final class ClusterDescription

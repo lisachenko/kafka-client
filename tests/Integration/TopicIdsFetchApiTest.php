@@ -59,7 +59,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV12;
  *
  * Every topic of this class is named `t2-31-…`, so that it can run next to the other suites on the shared node.
  *
- * @see docs/protocol/4.4.md, sections "The topic ids of the fetch path (v13, KIP-516)", "Metadata by topic id
+ * @see docs/protocol/overview.md, sections "The topic ids of the fetch path (v13, KIP-516)", "Metadata by topic id
  *      (v12, KIP-516)", "Fetch API (key 1, v0 to v18)" and "Metadata API (key 3, v0 to v13)"
  */
 #[CoversClass(FetchRequest::class)]

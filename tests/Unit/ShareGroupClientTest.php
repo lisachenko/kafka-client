@@ -45,10 +45,10 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * node really gave: every scripted answer below is a vector of `share-*.json`, and the frames the methods send are
  * read back field by field.
  *
- * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
- * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
- * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
- * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/overview.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/overview.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/overview.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+ * @see docs/protocol/overview.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]

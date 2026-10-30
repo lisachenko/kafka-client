@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * @see \Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatResponse
  * @see \Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator
- * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
  */
 class ConsumerGroupHeartbeatAssignment implements BinarySchemaInterface
 {

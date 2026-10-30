@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the two arguments of the constructor are not written by this version, as `ShareFetchRequest.Builder.build()` @
  * 4.2.0 refuses to send anything but the batch-optimized mode without a renew at version 1.
  *
- * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
+ * @see docs/protocol/overview.md, section "ShareFetch API (key 78, v1 and v2)"
  */
 final class ShareFetchRequestV1 extends ShareFetchRequest
 {

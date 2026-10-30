@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV4;
  * code its version 3 gained in Kafka 3.2, for the volume sizes of KIP-827 that its version 4 gained in Kafka 3.3
  * and for the cordon flag of KIP-1066 that its version 5 gained in Kafka 4.3.
  *
- * @see docs/protocol/4.4.md, section "DescribeLogDirs API (key 35, v0 to v5)"
+ * @see docs/protocol/overview.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 #[CoversClass(DescribeLogDirsRequest::class)]
 #[CoversClass(DescribeLogDirsRequestV4::class)]

@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * KIP-229; this class is the entry of the versions 0 to 2, which ends with the code and leaves
  * {@see DeleteGroupsResponseGroup::$errorMessage} at the null of the default.
  *
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
+ * @see docs/protocol/overview.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 final class DeleteGroupsResponseGroupV2 extends DeleteGroupsResponseGroup
 {

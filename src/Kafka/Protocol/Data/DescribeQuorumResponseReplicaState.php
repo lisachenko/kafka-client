@@ -61,7 +61,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see DescribeQuorumResponseReplicaStateV1} is the entry without that uuid, and
  * {@see DescribeQuorumResponseReplicaStateV0} the entry of the version below that, which has no timestamp either.
  *
- * @see docs/protocol/4.4.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
+ * @see docs/protocol/overview.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
  *      replica state (v1, KIP-836)"
  */
 class DescribeQuorumResponseReplicaState implements BinarySchemaInterface

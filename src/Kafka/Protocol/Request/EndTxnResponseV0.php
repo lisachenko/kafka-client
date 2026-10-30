@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-219 changed is the MOMENT it arrives - a throttled client of version 1 is answered first and muted
  * afterwards, and waits `throttle_time_ms` out itself.
  *
- * @see docs/protocol/4.4.md, section "EndTxn API (key 26, v0 to v5)"
+ * @see docs/protocol/overview.md, section "EndTxn API (key 26, v0 to v5)"
  */
 final class EndTxnResponseV0 extends EndTxnResponse
 {

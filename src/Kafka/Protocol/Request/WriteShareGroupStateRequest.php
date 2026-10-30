@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\Data\WriteShareGroupStateRequestTopicV0;
  * {@see \Protocol\Kafka\Protocol\Data\WriteShareGroupStateRequestTopicV0}s: the constructor converts what it is
  * given into the entries of its own version.
  *
- * @see docs/protocol/4.4.md, section "WriteShareGroupState API (key 85, v0 and v1)"
+ * @see docs/protocol/overview.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 class WriteShareGroupStateRequest extends AbstractRequest
 {

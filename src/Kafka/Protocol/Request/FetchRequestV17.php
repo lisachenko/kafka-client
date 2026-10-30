@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * is the default of that field and a tagged field whose value is its default is not written at all: the two frames
  * differ in the single byte of the api version of their header.
  *
- * @see docs/protocol/4.4.md, sections "Fetch API (key 1, v0 to v18)", "The replica directory id of KIP-853 (v17)" and
+ * @see docs/protocol/overview.md, sections "Fetch API (key 1, v0 to v18)", "The replica directory id of KIP-853 (v17)" and
  *      "The high watermark of a follower, KIP-1166 (v18)"
  */
 final class FetchRequestV17 extends FetchRequest

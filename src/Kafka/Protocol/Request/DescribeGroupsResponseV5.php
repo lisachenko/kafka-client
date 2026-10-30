@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see DescribeGroupsResponse} decodes it. An unknown group is the entry of the state `Dead` and the error code 0
  * here, where version 6 answers the 69 `GroupIdNotFound`.
  *
- * @see docs/protocol/4.4.md, section "DescribeGroups API (key 15, v0 to v6)"
- * @see docs/protocol/4.4.md, section "The 69 of an unknown group (v6, KIP-1043)"
+ * @see docs/protocol/overview.md, section "DescribeGroups API (key 15, v0 to v6)"
+ * @see docs/protocol/overview.md, section "The 69 of an unknown group (v6, KIP-1043)"
  */
 final class DescribeGroupsResponseV5 extends DescribeGroupsResponse
 {

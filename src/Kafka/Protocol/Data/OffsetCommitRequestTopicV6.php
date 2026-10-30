@@ -26,8 +26,8 @@ namespace Protocol\Kafka\Protocol\Data;
  * (Kafka 4.2, KIP-848) replaced it with the `TopicId` of {@see OffsetCommitRequestTopic}. The partition entries are
  * those of version 6 (KIP-320), which version 10 did not touch.
  *
- * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
- * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+ * @see docs/protocol/overview.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 final class OffsetCommitRequestTopicV6 extends OffsetCommitRequestTopic
 {

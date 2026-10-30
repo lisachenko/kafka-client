@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\DescribeShareGroupOffsetsRequestGroup;
  * 0, and the answer carries the share-partition `lag` of every partition. {@see DescribeShareGroupOffsetsRequestV0}
  * keeps the version 0.
  *
- * @see docs/protocol/4.4.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
+ * @see docs/protocol/overview.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
  */
 class DescribeShareGroupOffsetsRequest extends AbstractRequest
 {

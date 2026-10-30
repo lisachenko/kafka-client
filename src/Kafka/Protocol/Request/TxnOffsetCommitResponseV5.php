@@ -20,8 +20,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-1319) names every topic of the answer by its id ({@see TxnOffsetCommitResponse}) and reports the 69
  * `GroupIdNotFound` and the 113 `StaleMemberEpoch` that this version folds into the 22 `IllegalGeneration`.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
- * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
  */
 final class TxnOffsetCommitResponseV5 extends TxnOffsetCommitResponse
 {
