@@ -64,7 +64,8 @@ After the milestone the protocol document got a **name that does not change with
 of the sources and tests with it. Every rename of the line had touched some 1250 files with a one-line change each; the
 next release is written into the same file (a "What X adds to the Y protocol" section, the api-key table, the quirks)
 and leaves the references alone. `DocumentationSyncTest` still rejects a reference that names another document,
-versioned names included, so a cascade merge from `3.x` (`docs/protocol/3.9.md`) cannot slip one in.
+versioned names included. `3.x` took the same name first (PR #251) and the cascade brought it here, so both
+maintained lines point every reference at `docs/protocol/overview.md`.
 
 ## How it was verified
 
