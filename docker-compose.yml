@@ -27,7 +27,7 @@ services:
             # KRaft node answers Metadata with its own broker before any topic exists, but a fresh topic still
             # answers 5/6 for a moment, and the lines below had brokers that answered an EMPTY broker array until
             # the controller had pushed UpdateMetadata. Readiness is therefore a client-side concern - see
-            # tests/Fixture/ClusterReadinessProbe.php and the "Cluster readiness" section of docs/protocol/3.9.md.
+            # tests/Fixture/ClusterReadinessProbe.php and the "Cluster readiness" section of docs/protocol/overview.md.
             test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9092'"]
             interval: 5s
             timeout: 5s

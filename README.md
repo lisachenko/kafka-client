@@ -19,7 +19,7 @@ client sends is listed under
 the protocol snapshot below this line lives on `2.x` (Kafka 2.8.2) — see [Maintained lines](#maintained-lines) —
 and on the archived branches of the lines below 2.0, and every wire vector those lines captured is replayed against
 the classes of this branch. The grammar this branch
-implements is written down, byte for byte, in [docs/protocol/3.9.md](docs/protocol/3.9.md), verified against
+implements is written down, byte for byte, in [docs/protocol/overview.md](docs/protocol/overview.md), verified against
 a real Kafka 3.9.2 node running in KRaft mode; the plan of the line (and, once it is complete, its release
 record) is [docs/handoff/main.md](docs/handoff/main.md), the 2.x line's record is
 [docs/handoff/2.x.md](docs/handoff/2.x.md).
@@ -188,7 +188,7 @@ wrote there was deleted by `deleteRecords()` or by a retention run. That one the
 records fell below the start of the log, so the partition is numbered from the sequence 0 again
 and the batch is sent once more, under the same producer id and without touching any other
 partition. All three are documented, with what a real broker answers, in
-[docs/protocol/3.9.md](docs/protocol/3.9.md), section "The idempotent producer".
+[docs/protocol/overview.md](docs/protocol/overview.md), section "The idempotent producer".
 
 ### Transactions
 
@@ -261,7 +261,7 @@ $producer->commitTransaction();
 The consumer of that loop runs with `enable.auto.commit = false` and `read_committed`. A runnable
 version is [examples/transactional-producer.php](examples/transactional-producer.php); the wire
 protocol behind it — the five apis 24 to 28, the control batches and the last stable offset — is in
-[docs/protocol/3.9.md](docs/protocol/3.9.md), section "Transactions".
+[docs/protocol/overview.md](docs/protocol/overview.md), section "Transactions".
 
 Consumer API
 ------------
@@ -1050,8 +1050,8 @@ is skipped when it is unset:
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
 accepted — through the request and response classes and checks that the annotated dumps of
-[docs/protocol/3.9.md](docs/protocol/3.9.md) still hold the same bytes, and that every
-`@see docs/protocol/3.9.md, section "…"` of the sources names a heading that exists, so the
+[docs/protocol/overview.md](docs/protocol/overview.md) still hold the same bytes, and that every
+`@see docs/protocol/overview.md, section "…"` of the sources names a heading that exists, so the
 document and the code cannot drift apart.
 
 Examples

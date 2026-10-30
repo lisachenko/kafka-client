@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV3;
  * Kafka 3.9 added the version 4, which declares no field: it is the v3 frame with a 4 in its header, and what it
  * buys is a supported feature whose `min_version` is 0 in the answer (KAFKA-17011).
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsRequestV0::class)]

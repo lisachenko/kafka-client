@@ -63,7 +63,7 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  * expired as well on this node, where a 2.8.2 broker answered 66 for it - see
  * {@see self::testATokenThatRanOutOfItsMaximumLifetimeCanNotBeRenewedButCanStillBeExpired()}.
  *
- * @see docs/protocol/3.9.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v3)",
+ * @see docs/protocol/overview.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v3)",
  *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
  *      "DescribeDelegationToken API (key 41, v0 to v3)"
  */

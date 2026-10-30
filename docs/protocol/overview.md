@@ -2,7 +2,10 @@
 
 This document is the grammar that the `main` branch implements. It describes **only** what Apache Kafka 3.9.2
 speaks — the last release of the 3.x major, so it covers everything Kafka 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7,
-3.8 and 3.9 added and the bug-fix releases after them, which changed no wire format. Every line carries only its own
+3.8 and 3.9 added and the bug-fix releases after them, which changed no wire format. **The document keeps its name
+across Kafka releases**: a new release is written into it in place — a "What X adds to the Y protocol" section, the
+api-key table, the quirks re-measured — and every `@see docs/protocol/overview.md` of the sources stays as it is (it
+was `docs/protocol/3.9.md` until then, renamed with every line before). Every line carries only its own
 protocol document: the grammars of the lines below live on their own branches (`docs/protocol/2.8.md` on `2.x`,
 `docs/protocol/1.1.md` on `1.x`, `docs/protocol/0.11.0.md` on `0.11.x`, `docs/protocol/0.10.2.md` on `0.10.x`,
 `docs/protocol/0.9.0.md` on `0.9.x`, `docs/protocol/0.8.2.md` on `0.8.x`), while their wire vectors travel upwards

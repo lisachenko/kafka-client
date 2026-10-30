@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * is compressed with zstd is refused with the same code. The client-side half of the code is the
  * {@see UnsupportedCompressionTypeException} that this package raises without `ext-zstd`.
  *
- * @see docs/protocol/3.9.md, sections "The zstd codec (Kafka 2.1, KIP-110)" and "Version 10 and the zstd codec (KIP-110)"
+ * @see docs/protocol/overview.md, sections "The zstd codec (Kafka 2.1, KIP-110)" and "Version 10 and the zstd codec (KIP-110)"
  */
 #[CoversClass(CompressionCodec::class)]
 #[CoversClass(FetchRequest::class)]

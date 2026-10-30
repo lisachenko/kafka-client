@@ -11,7 +11,10 @@ every one of those files carries the release notes of its line with the plan it 
 `docs/handoff/2.x.md` is the record of the 2.x line and **`docs/handoff/main.md` is the record of the 3.x line**
 on this branch. The records of the archived lines live on their own branches. `main` and `2.x` were identical at
 `bc5dec5`, so the 3.x line started on `main` without branching anything off; its foundation commit renamed the
-grammar to `docs/protocol/3.9.md` and declared the api keys 65–87 and the error codes 105–127.
+grammar to `docs/protocol/3.9.md` and declared the api keys 65–87 and the error codes 105–127. The grammar has since
+become **`docs/protocol/overview.md`**, a name that does not change with the release: a new Kafka version is written
+into it in place (a "What X adds to the Y protocol" section, the api-key table, the quirks), and the `@see
+docs/protocol/overview.md, section "…"` references of the sources stay untouched. Never rename it.
 
 ## Maintenance
 
@@ -56,7 +59,7 @@ is new" (`DescribeTransactionsRequest`, `ConsumerGroupHeartbeatRequest`, …; ke
    verbatim.
 5. **The broker is the final authority.** Verify against a real broker of the branch's version
    (Docker, see below); spec sources in order: broker behaviour, Kafka sources at the release tag,
-   the protocol wiki. Record broker quirks in `docs/protocol/<version>.md`.
+   the protocol wiki. Record broker quirks in `docs/protocol/overview.md` (`docs/protocol/<version>.md` on the lines below 3.x).
 6. Tests are spec tests: byte-exact hex vectors (also replayed by `tests/Compliance`) plus
    integration tests against the real broker, skipped when `KAFKA_BOOTSTRAP_SERVERS` is unset.
 
