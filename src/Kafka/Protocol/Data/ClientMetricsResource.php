@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see \Protocol\Kafka\Protocol\Request\ListClientMetricsResourcesRequest}). {@see ClientMetricsResourceV0} is the
  * entry of the version 0, whose type is always the `CLIENT_METRICS` of the default.
  *
- * @see docs/protocol/4.4.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config
+ * @see docs/protocol/overview.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config
  *      resources of KIP-1142 (v1)"
  */
 class ClientMetricsResource implements BinarySchemaInterface

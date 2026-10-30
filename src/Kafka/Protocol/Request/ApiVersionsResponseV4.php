@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * answered, the 129 of a misrouted connection. This class only lowers the version constant, so that the version 4
  * wire vectors are replayed through the class of their own version.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 final class ApiVersionsResponseV4 extends ApiVersionsResponse
 {

@@ -64,7 +64,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the `super.users` of the node, while the SASL user `acltest` authenticates just as well and is then refused by
  * every api it asks for. Authentication is what this suite measures; authorization belongs to the ACL apis.
  *
- * @see docs/protocol/4.4.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
+ * @see docs/protocol/overview.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]

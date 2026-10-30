@@ -18,6 +18,9 @@ line (**Kafka 4.3.1**, `docker/kafka-4.3.1`), renamed the grammar to `docs/proto
 completed it (epic #213, PR #219). **Kafka 4.4.0** came out after that (2026-10-13), and the **4.4 milestone** moved the
 line onto it: the node `docker/kafka-4.4.0`, the grammar renamed to `docs/protocol/4.4.md`, the api keys 93 and 94,
 the error codes 134–136 and the five versions 4.4 added (see "What 4.4.0 adds to the 4.3.1 protocol" there).
+After that the grammar became **`docs/protocol/overview.md`**, a name that no longer changes with the release: a new
+Kafka version is written into it in place (a "What X adds to the Y protocol" section, the api-key table, the quirks),
+and the `@see docs/protocol/overview.md, section "…"` references of the sources stay untouched. Never rename it.
 
 ## Maintenance
 
@@ -63,7 +66,7 @@ client at the line's release for what is new".
    verbatim.
 5. **The broker is the final authority.** Verify against a real broker of the branch's version
    (Docker, see below); spec sources in order: broker behaviour, Kafka sources at the release tag,
-   the protocol wiki. Record broker quirks in `docs/protocol/<version>.md`.
+   the protocol wiki. Record broker quirks in `docs/protocol/overview.md` (`docs/protocol/<version>.md` on the lines below 3.x).
 6. Tests are spec tests: byte-exact hex vectors (also replayed by `tests/Compliance`) plus
    integration tests against the real broker, skipped when `KAFKA_BOOTSTRAP_SERVERS` is unset.
 

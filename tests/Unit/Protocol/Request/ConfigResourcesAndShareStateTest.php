@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\WriteShareGroupStateRequestV0;
  * The frames are the ones the 4.3.1 node answered; `tests/Compliance` replays them from `docs/protocol/vectors/`,
  * and this class asserts what a caller reads of them.
  *
- * @see docs/protocol/4.4.md, sections "The config resources of KIP-1142 (v1)" and "The share-group state apis (keys
+ * @see docs/protocol/overview.md, sections "The config resources of KIP-1142 (v1)" and "The share-group state apis (keys
  *      83 to 87) — wire only"
  */
 #[CoversClass(ListClientMetricsResourcesRequest::class)]

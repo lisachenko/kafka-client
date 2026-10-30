@@ -40,8 +40,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * entry until the client maps the id back to a name, see
  * {@see OffsetFetchResponseGroup::nameTopics()}; the partitions are those of version 8.
  *
- * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.4.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
+ * @see docs/protocol/overview.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The topic ids of OffsetFetch (v10, KIP-848)"
  */
 class OffsetFetchResponseTopic implements BinarySchemaInterface
 {

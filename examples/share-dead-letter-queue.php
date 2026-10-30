@@ -27,7 +27,7 @@ declare(strict_types=1);
  *   php examples/share-dead-letter-queue.php --copy
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/share-dead-letter-queue.php
  *
- * @see docs/protocol/4.4.md, section "The dead-letter queue of KIP-1191 (share.version 2)"
+ * @see docs/protocol/overview.md, section "The dead-letter queue of KIP-1191 (share.version 2)"
  */
 
 use Protocol\Kafka\Admin\AdminClient;

@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\AlterShareGroupOffsetsResponseTopic;
  * Two levels of error: the top-level pair for the group as a whole - the **68** `NonEmptyGroup` of a group with
  * members, the coordinator codes, 30 `GroupAuthorizationFailed` - and one code per partition.
  *
- * @see docs/protocol/4.4.md, section "AlterShareGroupOffsets API (key 91, v0)"
+ * @see docs/protocol/overview.md, section "AlterShareGroupOffsets API (key 91, v0)"
  */
 class AlterShareGroupOffsetsResponse extends AbstractResponse
 {

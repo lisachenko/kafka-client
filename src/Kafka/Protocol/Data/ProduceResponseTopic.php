@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * id, and this class is that entry. Its {@see self::$topic} is the empty string on the wire; the client maps the
  * id back to the name it produced to, see {@see \Protocol\Kafka\Client::produce()}.
  *
- * @see docs/protocol/4.4.md, sections "Produce API (key 0, v0 to v13)", "The leader discovery of KIP-951 (v10)" and
+ * @see docs/protocol/overview.md, sections "Produce API (key 0, v0 to v13)", "The leader discovery of KIP-951 (v10)" and
  *      "The topic ids of the produce path (v13, KIP-516)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface

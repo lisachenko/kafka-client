@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * a version 1 answer has no `throttle_time_ms` ({@see JoinGroupResponseV1}) - so a client that asks with this class
  * has to read the answer with the matching response class.
  *
- * @see docs/protocol/4.4.md, section "JoinGroup API (key 11, v0 to v9)"
+ * @see docs/protocol/overview.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupRequestV1 extends JoinGroupRequest
 {

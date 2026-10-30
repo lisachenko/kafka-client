@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `broker_epoch` int64 of KIP-380 to version 2, which is what {@see ControlledShutdownRequest} sends. This class
  * only lowers the version constant that its scheme follows.
  *
- * @see docs/protocol/4.4.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/overview.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 final class ControlledShutdownRequestV1 extends ControlledShutdownRequest
 {

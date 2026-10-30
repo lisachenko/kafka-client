@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * ({@see WriteTxnMarkersRequestMarker}); this is the entry below it, which a request of the version 0 or 1 carries.
  * Its {@see WriteTxnMarkersRequestMarker::$transactionVersion} is not written.
  *
- * @see docs/protocol/4.4.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
+ * @see docs/protocol/overview.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 final class WriteTxnMarkersRequestMarkerV1 extends WriteTxnMarkersRequestMarker
 {

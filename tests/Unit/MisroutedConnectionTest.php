@@ -34,7 +34,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * that is not the node the metadata names at its address drops the connection, reloads the cluster from its
  * bootstrap servers and is thrown as {@see RebootstrapRequiredException}.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]

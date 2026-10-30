@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\DescribeShareGroupOffsetsResponseV0;
 /**
  * Byte-exact tests for the share-group offset apis of Kafka 4.1 (KIP-932, api keys 90 to 92, v0 each).
  *
- * @see docs/protocol/4.4.md, sections "DescribeShareGroupOffsets API (key 90, v0 and v1)", "AlterShareGroupOffsets API (key
+ * @see docs/protocol/overview.md, sections "DescribeShareGroupOffsets API (key 90, v0 and v1)", "AlterShareGroupOffsets API (key
  *      91, v0)" and "DeleteShareGroupOffsets API (key 92, v0)"
  */
 #[CoversClass(DescribeShareGroupOffsetsRequest::class)]

@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Data\ReadShareGroupStateSummaryResponseTopicV0;
  * are {@see \Protocol\Kafka\Protocol\Data\ReadShareGroupStateSummaryResponseTopic}s, those of
  * {@see ReadShareGroupStateSummaryResponseV0} {@see \Protocol\Kafka\Protocol\Data\ReadShareGroupStateSummaryResponseTopicV0}s.
  *
- * @see docs/protocol/4.4.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
  */
 class ReadShareGroupStateSummaryResponse extends AbstractResponse
 {

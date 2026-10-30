@@ -32,7 +32,7 @@ declare(strict_types=1);
  *   php examples/admin-share-groups.php my-topic my-share-group
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/admin-share-groups.php
  *
- * @see docs/protocol/4.4.md, section "The share-group admin methods"
+ * @see docs/protocol/overview.md, section "The share-group admin methods"
  */
 
 use Protocol\Kafka\Admin\AdminClient;

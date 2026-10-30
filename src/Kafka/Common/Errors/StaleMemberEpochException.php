@@ -24,7 +24,7 @@ use Exception;
  * classic group is answered 22 (`IllegalGeneration`) for the same frame and may not send a version below 9 at all
  * (35, `UnsupportedVersion`).
  *
- * @see docs/protocol/4.4.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/overview.md, section "The member epoch of KIP-848 (v9)"
  */
 class StaleMemberEpochException extends KafkaException implements ServerExceptionInterface
 {

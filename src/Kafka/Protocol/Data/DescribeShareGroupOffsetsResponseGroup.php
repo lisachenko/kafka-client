@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The topic entries are those of the version this DTO is unpacked from, which its version constant picks in
  * {@see self::topicClass()}: {@see DescribeShareGroupOffsetsResponseGroupV0} carries the topics of the version 0.
  *
- * @see docs/protocol/4.4.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
+ * @see docs/protocol/overview.md, section "DescribeShareGroupOffsets API (key 90, v0 and v1)"
  */
 class DescribeShareGroupOffsetsResponseGroup implements BinarySchemaInterface
 {

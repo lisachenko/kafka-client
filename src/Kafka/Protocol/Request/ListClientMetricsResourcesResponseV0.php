@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * entries are keyed by that name, which is all an entry of this version has. Version 1 (Kafka 4.1, KIP-1142)
  * appended the type of every entry and made the answer a list ({@see ListClientMetricsResourcesResponse}).
  *
- * @see docs/protocol/4.4.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config resources
+ * @see docs/protocol/overview.md, sections "ListClientMetricsResources API (key 74, v0 and v1)" and "The config resources
  *      of KIP-1142 (v1)"
  */
 final class ListClientMetricsResourcesResponseV0 extends ListClientMetricsResourcesResponse

@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * and the partition, and a topic that is deleted and created again under its name is a different topic. The
  * results are a list, because a uuid is 16 raw bytes and no key of a PHP array a caller wants to read.
  *
- * @see docs/protocol/4.4.md, section "The share-group state apis (keys 83 to 87) — wire only"
+ * @see docs/protocol/overview.md, section "The share-group state apis (keys 83 to 87) — wire only"
  */
 class ShareGroupStateTopicResult implements BinarySchemaInterface
 {

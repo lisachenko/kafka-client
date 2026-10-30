@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *
  * Kafka 0.10.0 added the api that answers that question - **ApiVersions**, key 18 - so this class no longer has to
  * guess it the way the `0.8.x` and `0.9.x` lines did. The first half of the suite asks the node with
- * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/4.4.md`: **77
+ * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/overview.md`: **77
  * keys**, the `broker` listener set of the JSON message specifications @ 4.4.0 minus the two telemetry apis
  * ({@see self::SERVED_APIS}). Kafka 4.0 is the first release whose table does not start every row at 0: KIP-896
  * removed the versions below the Kafka 2.1 baseline of nineteen apis of the client listener, eighteen rows start at
@@ -94,7 +94,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * does not exist, which is answered 69 and creates nothing. Two apis of this node **do not answer an empty array at all** and are sent with one harmless
  * element instead ({@see self::body()}).
  *
- * @see docs/protocol/4.4.md, section "API keys"
+ * @see docs/protocol/overview.md, section "API keys"
  */
 #[CoversClass(ApiKeys::class)]
 #[CoversClass(ApiVersionsRequest::class)]

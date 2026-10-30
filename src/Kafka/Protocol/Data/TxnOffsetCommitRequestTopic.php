@@ -40,8 +40,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see self::$topic} still holds the name the client committed for, which is how the answer is read back;
  * {@see TxnOffsetCommitRequestTopicV2} is the entry of the versions 2 to 5, which names the topic.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
- * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
  */
 class TxnOffsetCommitRequestTopic implements BinarySchemaInterface
 {

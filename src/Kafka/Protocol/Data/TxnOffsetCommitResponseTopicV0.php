@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The entry did not change from version 0 to version 5; version 6 (Kafka 4.4, KIP-1319) replaced its name with the
  * `topic_id` of {@see TxnOffsetCommitResponseTopic}.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
  */
 final class TxnOffsetCommitResponseTopicV0 extends TxnOffsetCommitResponseTopic
 {

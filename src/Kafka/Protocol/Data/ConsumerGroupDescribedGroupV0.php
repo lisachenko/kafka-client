@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The group entry itself did not change at version 1 (Kafka 4.0, KIP-1099); its **members** did, and this class
  * decodes them as {@see ConsumerGroupDescribeMemberV0}, the entries without a `member_type`.
  *
- * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 final class ConsumerGroupDescribedGroupV0 extends ConsumerGroupDescribedGroup
 {

@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The entry did not change from version 0 to version 9; version 10 (Kafka 4.2, KIP-848) replaced its name with the
  * `topic_id` of {@see OffsetCommitResponseTopic}.
  *
- * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/overview.md, section "OffsetCommit API (key 8, v0 to v10)"
  */
 final class OffsetCommitResponseTopicV0 extends OffsetCommitResponseTopic
 {

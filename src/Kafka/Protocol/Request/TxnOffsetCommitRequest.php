@@ -123,8 +123,8 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV2;
  * {@see TxnOffsetCommitRequestV5} keeps the version that names the topics, which a client sends for a topic whose id
  * it does not know (`Builder.forTopicNames()` @ 4.4.0).
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
- * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {

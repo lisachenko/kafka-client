@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseTokenV2;
  * principal of KIP-373. The request is unchanged, so the version alone asks for them;
  * {@see DescribeDelegationTokenResponseV2} decodes the answer of a broker below Kafka 3.3.
  *
- * @see docs/protocol/4.4.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
+ * @see docs/protocol/overview.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 class DescribeDelegationTokenResponse extends AbstractResponse
 {

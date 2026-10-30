@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see WriteShareGroupStateRequestPartitionV0}. Either converts the partitions it is given into the entry of its own
  * version, so a caller builds the partitions once and the class of the request decides what reaches the wire.
  *
- * @see docs/protocol/4.4.md, section "WriteShareGroupState API (key 85, v0 and v1)"
+ * @see docs/protocol/overview.md, section "WriteShareGroupState API (key 85, v0 and v1)"
  */
 class WriteShareGroupStateRequestTopic implements BinarySchemaInterface
 {

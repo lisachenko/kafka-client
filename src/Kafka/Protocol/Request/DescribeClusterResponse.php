@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\Data\DescribeClusterBrokerV1;
  * changed. {@see DescribeClusterResponseV1} is the answer below it, whose brokers are
  * {@see DescribeClusterBrokerV1} entries.
  *
- * @see docs/protocol/4.4.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
+ * @see docs/protocol/overview.md, sections "DescribeCluster API (key 60, v0 to v2)", "The endpoint type of KIP-919
  *      (v1)" and "The fenced brokers of KIP-1073 (v2)"
  */
 class DescribeClusterResponse extends AbstractResponse

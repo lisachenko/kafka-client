@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * `errorMessage` property of the parent stays null for it. The class exists only to lower the version constant that
  * {@see CreateTopicsResponseTopic::getScheme()} follows.
  *
- * @see docs/protocol/4.4.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/overview.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsResponseTopicV0 extends CreateTopicsResponseTopic
 {

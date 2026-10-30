@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * share member has no use for - no instance id (share groups have no static members), no regex, no target
  * assignment, no member type.
  *
- * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/overview.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 final class ShareGroupDescribeMember implements BinarySchemaInterface
 {

@@ -54,7 +54,7 @@ namespace Protocol\Kafka\Protocol;
  * on: a ZooKeeper-backed broker serves the `zkBroker` set of the message specifications, a KRaft node the `broker`
  * set on its client listeners (and the `controller` set on its controller listener, which no client reaches). The
  * container of this line is a KRaft node of 4.4.0; what it lists is measured in `ApiVersionProbeTest` and written in
- * the "API keys" section of `docs/protocol/4.4.md`. The constants of the apis it does not list exist here so that a
+ * the "API keys" section of `docs/protocol/overview.md`. The constants of the apis it does not list exist here so that a
  * frame of any 4.4.0 api can be named.
  */
 class ApiKeys

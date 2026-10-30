@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * what this client does until the consumer of a later minor learns them; {@see TxnOffsetCommitRequestPartitionV0}
  * is the entry of the versions 0 and 1, which have no such field.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
  */
 class TxnOffsetCommitRequestPartition implements BinarySchemaInterface
 {

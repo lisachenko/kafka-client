@@ -47,7 +47,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * connection that echoes the correlation id of every request; the few answers no vector holds - a group error, a
  * partition error - are built by hand in the same layout.
  *
- * @see docs/protocol/4.4.md, section "The share-group admin methods"
+ * @see docs/protocol/overview.md, section "The share-group admin methods"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ListShareGroupOffsetsSpec::class)]

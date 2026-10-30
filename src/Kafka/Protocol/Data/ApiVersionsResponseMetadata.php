@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The entry itself has no version of its own: the versions 0, 1 and 2 of the answer carry the same three int16
  * fields, so the same class reads all three versions of the api.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 class ApiVersionsResponseMetadata implements BinarySchemaInterface
 {

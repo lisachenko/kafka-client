@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * versions `8-9`; version 10 (Kafka 4.2, KIP-848) names them by id in the {@see OffsetFetchResponseGroup} of that
  * version.
  *
- * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/overview.md, section "OffsetFetch API (key 9, v0 to v10)"
  */
 final class OffsetFetchResponseGroupV8 extends OffsetFetchResponseGroup
 {

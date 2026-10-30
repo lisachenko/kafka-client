@@ -64,9 +64,9 @@ use Protocol\Kafka\Protocol\Request\ShareFetchRequest;
  *
  * These are the wire classes; `ShareGroupAdminTest` measures the admin methods over them.
  *
- * @see docs/protocol/4.4.md, sections "DescribeShareGroupOffsets API (key 90, v0 and v1)", "AlterShareGroupOffsets API (key
+ * @see docs/protocol/overview.md, sections "DescribeShareGroupOffsets API (key 90, v0 and v1)", "AlterShareGroupOffsets API (key
  *      91, v0)" and "DeleteShareGroupOffsets API (key 92, v0)"
- * @see docs/protocol/4.4.md, section "The share-partition lag of KIP-1226 (v1)"
+ * @see docs/protocol/overview.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 #[CoversClass(DescribeShareGroupOffsetsRequest::class)]
 #[CoversClass(DescribeShareGroupOffsetsResponse::class)]

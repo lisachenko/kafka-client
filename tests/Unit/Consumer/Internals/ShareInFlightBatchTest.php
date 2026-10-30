@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Data\ShareAcknowledgementBatch;
  * The records of one topic-partition a share consumer holds (KIP-932): what the application said about them, how
  * that travels as acknowledgement batches, and the renewals of KIP-1222.
  *
- * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/overview.md, section "The share consumer (KIP-932)"
  */
 #[CoversClass(ShareInFlightBatch::class)]
 final class ShareInFlightBatchTest extends TestCase

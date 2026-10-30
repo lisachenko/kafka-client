@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `AlterReplicaLogDirsResponse.json` @ 2.8.2) and changed no field, so this class only lowers the version constant: the version
  * 1 is the frame a broker below Kafka 2.8 speaks.
  *
- * @see docs/protocol/4.4.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
+ * @see docs/protocol/overview.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 final class AlterReplicaLogDirsResponseV1 extends AlterReplicaLogDirsResponse
 {

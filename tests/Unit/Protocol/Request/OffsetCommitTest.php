@@ -68,8 +68,8 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV9;
  * Kafka 3.6) is the version 8 frame with another number in its header. **Version 10** (KIP-848, Kafka 4.2) names
  * every topic by its id instead of its name.
  *
- * @see docs/protocol/4.4.md, section "OffsetCommit API (key 8, v0 to v10)"
- * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+ * @see docs/protocol/overview.md, section "OffsetCommit API (key 8, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]

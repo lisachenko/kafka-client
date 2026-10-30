@@ -260,7 +260,7 @@ class AdminClient
      *
      * @throws RebootstrapRequiredException If the broker is not that node of this cluster
      *
-     * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+     * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
      */
     private function apiVersionsOf(Node $node): ApiVersionsResponse
     {
@@ -2396,7 +2396,7 @@ class AdminClient
      * @return array<string, KafkaException|null> Error of every feature of the call, null when it was changed (or,
      *         with `$validateOnly`, would be)
      *
-     * @see docs/protocol/4.4.md, section "The answer without results (v2, Kafka 4.0)"
+     * @see docs/protocol/overview.md, section "The answer without results (v2, Kafka 4.0)"
      */
     public function updateFeatures(
         array $updates,
@@ -3346,7 +3346,7 @@ class AdminClient
      *
      * @return array<string, TopicMetadata> The answer of every id, indexed by {@see Uuid::toString()} of that id
      *
-     * @see docs/protocol/4.4.md, section "Metadata by topic id (v12, KIP-516)"
+     * @see docs/protocol/overview.md, section "Metadata by topic id (v12, KIP-516)"
      */
     public function describeTopicsByIds(array $topicIds): array
     {
@@ -3398,7 +3398,7 @@ class AdminClient
      *
      * @throws KafkaException If the request as a whole, or the partition of the metadata log, was refused
      *
-     * @see docs/protocol/4.4.md, section "DescribeQuorum API (key 55, v0 to v2)"
+     * @see docs/protocol/overview.md, section "DescribeQuorum API (key 55, v0 to v2)"
      */
     public function describeMetadataQuorum(): QuorumInfo
     {
@@ -3842,7 +3842,7 @@ class AdminClient
      *
      * @return array<string, ConsumerGroupDescription> Descriptions, indexed by the group id
      *
-     * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+     * @see docs/protocol/overview.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
      */
     public function describeConsumerGroups(array $groupIds, bool $includeAuthorizedOperations = false): array
     {
@@ -3890,7 +3890,7 @@ class AdminClient
      *
      * @throws InvalidGroupIdException If the coordinator answered with no description of the group at all
      *
-     * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+     * @see docs/protocol/overview.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
      */
     public function describeConsumerGroup(
         string $groupId,
@@ -3940,7 +3940,7 @@ class AdminClient
      * @throws KafkaException            If the controller refused or aborted the change
      * @throws UnexpectedValueException If the directory id is not 16 bytes
      *
-     * @see docs/protocol/4.4.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode
+     * @see docs/protocol/overview.md, sections "AddRaftVoter API (key 80, v0 and v1)" and "The acknowledgement mode
      *      of Kafka 4.2 (v1)"
      */
     public function addRaftVoter(
@@ -4000,7 +4000,7 @@ class AdminClient
      * @throws KafkaException            If the controller refused the change
      * @throws UnexpectedValueException If the directory id is not 16 bytes
      *
-     * @see docs/protocol/4.4.md, section "RemoveRaftVoter API (key 81, v0)"
+     * @see docs/protocol/overview.md, section "RemoveRaftVoter API (key 81, v0)"
      */
     public function removeRaftVoter(int $voterId, string $voterDirectoryId, ?string $clusterId = null): void
     {
@@ -4047,7 +4047,7 @@ class AdminClient
      *
      * @throws KafkaException If the controller refused the request
      *
-     * @see docs/protocol/4.4.md, section "UnregisterController API (key 94, v0)"
+     * @see docs/protocol/overview.md, section "UnregisterController API (key 94, v0)"
      */
     public function unregisterController(int $controllerId): void
     {
@@ -4095,7 +4095,7 @@ class AdminClient
      *
      * @return array<string, ShareGroupDescribedGroup> Descriptions, indexed by the group id
      *
-     * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
+     * @see docs/protocol/overview.md, section "ShareGroupDescribe API (key 77, v1)"
      */
     public function describeShareGroups(array $groupIds, bool $includeAuthorizedOperations = false): array
     {
@@ -4143,7 +4143,7 @@ class AdminClient
      *
      * @throws InvalidGroupIdException If the coordinator answered with no description of the group at all
      *
-     * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
+     * @see docs/protocol/overview.md, section "ShareGroupDescribe API (key 77, v1)"
      */
     public function describeShareGroup(string $groupId, bool $includeAuthorizedOperations = false): ShareGroupDescribedGroup
     {
@@ -4178,7 +4178,7 @@ class AdminClient
      *
      * @return list<ConfigResource> Every config resource of those types, in the order of the answer
      *
-     * @see docs/protocol/4.4.md, section "The config resources of KIP-1142 (v1)"
+     * @see docs/protocol/overview.md, section "The config resources of KIP-1142 (v1)"
      */
     public function listConfigResources(array $resourceTypes = []): array
     {
@@ -4222,7 +4222,7 @@ class AdminClient
      *         partition index: `null` when the offset is committed, the exception of its code otherwise - among them
      *         100 `UnknownTopicId` for an id the node does not know and 3 for a partition it does not have
      *
-     * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+     * @see docs/protocol/overview.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
      */
     public function alterConsumerGroupOffsets(string $groupId, array $offsets): array
     {
@@ -4354,7 +4354,7 @@ class AdminClient
      * @return array<string, array<int, int>> Earliest pending upload offsets as topic => partition => offset, -1
      *         for a partition of which nothing is pending upload
      *
-     * @see docs/protocol/4.4.md, section "The earliest pending upload offset of KIP-1023 (v11)"
+     * @see docs/protocol/overview.md, section "The earliest pending upload offset of KIP-1023 (v11)"
      */
     public function listEarliestPendingUploadOffsets(iterable $topicPartitions): array
     {
@@ -4381,7 +4381,7 @@ class AdminClient
      *
      * @return array<string, ListGroupResponseProtocol> Share groups of the cluster, indexed by the group id
      *
-     * @see docs/protocol/4.4.md, section "The share-group admin methods"
+     * @see docs/protocol/overview.md, section "The share-group admin methods"
      */
     public function listShareGroups(array $states = []): array
     {
@@ -4421,7 +4421,7 @@ class AdminClient
      * @return array<string, array<string, array<int, SharePartitionOffsetInfo|null>>> Offsets per group, topic and
      *         partition index; null for a partition without a start offset
      *
-     * @see docs/protocol/4.4.md, section "The share-group admin methods"
+     * @see docs/protocol/overview.md, section "The share-group admin methods"
      */
     public function listShareGroupOffsets(array $groupSpecs): array
     {
@@ -4519,7 +4519,7 @@ class AdminClient
      * @return array<string, array<int, KafkaException|null>> One entry per requested partition, indexed by topic and
      *         partition index: null when the start offset is set, the exception of its code otherwise
      *
-     * @see docs/protocol/4.4.md, section "The share-group admin methods"
+     * @see docs/protocol/overview.md, section "The share-group admin methods"
      */
     public function alterShareGroupOffsets(string $groupId, array $offsets): array
     {
@@ -4596,7 +4596,7 @@ class AdminClient
      *
      * @return array<string, KafkaException|null> One entry per topic, null when its state is deleted
      *
-     * @see docs/protocol/4.4.md, section "The share-group admin methods"
+     * @see docs/protocol/overview.md, section "The share-group admin methods"
      */
     public function deleteShareGroupOffsets(string $groupId, array $topics): array
     {
@@ -4668,7 +4668,7 @@ class AdminClient
      *
      * @return array<string, KafkaException|null> Error of every requested group, null when it was deleted
      *
-     * @see docs/protocol/4.4.md, section "The share-group admin methods"
+     * @see docs/protocol/overview.md, section "The share-group admin methods"
      */
     public function deleteShareGroups(array $groupIds): array
     {

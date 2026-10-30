@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `member_type` ({@see \Protocol\Kafka\Protocol\Data\ConsumerGroupDescribeMember::$memberType}).
  * {@see ConsumerGroupDescribeRequestV0} is the frame of version 0.
  *
- * @see docs/protocol/4.4.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ConsumerGroupDescribe API (key 69, v0 and v1)"
  */
 class ConsumerGroupDescribeRequest extends AbstractRequest
 {

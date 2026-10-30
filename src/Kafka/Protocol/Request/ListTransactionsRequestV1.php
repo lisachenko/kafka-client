@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see ListTransactionsRequest::$transactionalIdPattern} of an instance of this class never reaches the wire, and
  * the coordinator lists every transactional id the other three filters let through.
  *
- * @see docs/protocol/4.4.md, sections "ListTransactions API (key 66, v0 to v2)" and "The transactional id pattern
+ * @see docs/protocol/overview.md, sections "ListTransactions API (key 66, v0 to v2)" and "The transactional id pattern
  *      of KIP-1152 (v2)"
  */
 final class ListTransactionsRequestV1 extends ListTransactionsRequest

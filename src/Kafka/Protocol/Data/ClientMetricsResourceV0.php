@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see ClientMetricsResource}, and an entry of this version is always a `client-metrics` resource, which is the
  * `"default": 16` its {@see ClientMetricsResource::$resourceType} keeps.
  *
- * @see docs/protocol/4.4.md, section "ListClientMetricsResources API (key 74, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ListClientMetricsResources API (key 74, v0 and v1)"
  */
 final class ClientMetricsResourceV0 extends ClientMetricsResource
 {

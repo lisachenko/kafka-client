@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see AlterConfigsResponseResource}, and a separate class only because the two apis are separate keys with
  * separate versions.
  *
- * @see docs/protocol/4.4.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/overview.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 class IncrementalAlterConfigsResponseResource implements BinarySchemaInterface
 {

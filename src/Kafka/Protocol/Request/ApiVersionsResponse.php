@@ -99,7 +99,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * id, measured on the 4.4.0 node. {@see ApiVersionsResponseV4} reads the answer one version below, which is the same
  * frame.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 class ApiVersionsResponse extends AbstractResponse
 {

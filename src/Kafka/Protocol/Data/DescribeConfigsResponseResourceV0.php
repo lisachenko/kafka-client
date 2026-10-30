@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * boolean instead of the `config_source` and the synonyms of KIP-226, so this class only lowers the version constant
  * that {@see DescribeConfigsResponseResource::entryClass()} follows.
  *
- * @see docs/protocol/4.4.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/overview.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class DescribeConfigsResponseResourceV0 extends DescribeConfigsResponseResource
 {

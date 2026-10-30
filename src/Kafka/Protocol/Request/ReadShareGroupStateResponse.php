@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Data\ReadShareGroupStateResponseTopic;
  * own key (the group, the topic id and the partition), and a request without a topic, without a partition or
  * without a group id is answered with an empty result array.
  *
- * @see docs/protocol/4.4.md, section "ReadShareGroupState API (key 84, v0)"
+ * @see docs/protocol/overview.md, section "ReadShareGroupState API (key 84, v0)"
  */
 class ReadShareGroupStateResponse extends AbstractResponse
 {

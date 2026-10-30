@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see \Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV4} - and {@see DescribeLogDirsResponseV3}
  * keeps the frame that has no volume sizes either.
  *
- * @see docs/protocol/4.4.md, section "DescribeLogDirs API (key 35, v0 to v5)"
+ * @see docs/protocol/overview.md, section "DescribeLogDirs API (key 35, v0 to v5)"
  */
 final class DescribeLogDirsResponseV4 extends DescribeLogDirsResponse
 {

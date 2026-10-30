@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see self::$topic} stays next to the id for the client that filled it in; an entry that was **decoded** from a
  * version 13 frame carries the empty name.
  *
- * @see docs/protocol/4.4.md, sections "Produce API (key 0, v0 to v13)" and "The topic ids of the produce path (v13,
+ * @see docs/protocol/overview.md, sections "Produce API (key 0, v0 to v13)" and "The topic ids of the produce path (v13,
  *      KIP-516)"
  */
 class ProduceRequestTopic implements BinarySchemaInterface

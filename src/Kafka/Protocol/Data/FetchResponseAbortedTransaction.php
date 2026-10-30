@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * @since Version 4 of the Fetch API (Kafka 0.11.0, KIP-98)
  *
- * @see docs/protocol/4.4.md, section "Fetch API (key 1, v0 to v18)"
+ * @see docs/protocol/overview.md, section "Fetch API (key 1, v0 to v18)"
  */
 class FetchResponseAbortedTransaction implements BinarySchemaInterface
 {

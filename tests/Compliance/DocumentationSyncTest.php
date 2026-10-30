@@ -19,7 +19,7 @@ use RecursiveIteratorIterator;
 use SplFileInfo;
 
 /**
- * Keeps `docs/protocol/4.4.md` and `docs/protocol/vectors/*.json` from drifting apart.
+ * Keeps `docs/protocol/overview.md` and `docs/protocol/vectors/*.json` from drifting apart.
  *
  * Every vector is documented twice: as an annotated hex dump in the protocol document, introduced by an
  * `<!-- vector: <id> -->` marker, and as raw hex plus decoded fields in the vector file that {@see ProtocolVectorTest}
@@ -37,15 +37,16 @@ final class DocumentationSyncTest extends TestCase
      * Matches a section reference of a docblock: the name of the protocol document, `, section` or `, sections`,
      * the rest of the line, which is where the quoted heading - or the two of an `"a" and "b"` reference - sits,
      * and every following docblock line that continues the list with a quoted heading (a reference wrapped at
-     * the line length: ` * "..."` or ` * and "..."`). The `%s` is the file name of the protocol document of the line,
-     * quoted by {@see self::sectionReferencePattern()}: the pattern follows the document when a line renames it
+     * the line length: ` * "..."` or ` * and "..."`). The `%s` is the file name of the protocol document,
+     * quoted by {@see self::sectionReferencePattern()}
      */
     private const string SECTION_REFERENCE_PATTERN = '/%s, sections? (?P<sections>.+(?:\R[ \t]*\*[ \t]+(?:and[ \t]+)?"[^\n]*)*)$/m';
 
     /**
-     * Matches the name of any protocol document in a section reference, whatever line it belongs to
+     * Matches the name of any protocol document in a section reference: `overview.md` or a versioned name of the
+     * time before it (`2.8.md`), which a cascade merge can bring along
      */
-    private const string ANY_DOCUMENT_REFERENCE_PATTERN = '/docs\/protocol\/(?P<document>[0-9.]+\.md), sections? "/';
+    private const string ANY_DOCUMENT_REFERENCE_PATTERN = '/docs\/protocol\/(?P<document>[a-z0-9.\-]+\.md), sections? "/';
 
     /**
      * Directories whose PHP files may reference a section of the protocol document
@@ -131,8 +132,10 @@ final class DocumentationSyncTest extends TestCase
     /**
      * A section reference names the protocol document of this line and no other
      *
-     * The document is renamed with every line (`docs/protocol/3.9.md` became `docs/protocol/4.4.md`), and a
-     * reference that still names the old file is a reference nothing checks.
+     * The document keeps one name across versions (`docs/protocol/overview.md`) and is edited in place when the
+     * line moves to a new Kafka release. Before that every line named it after its version (`docs/protocol/2.8.md`
+     * on `2.x`), so a cascade merge can bring such a name along, and a reference that names another file is a
+     * reference nothing checks.
      */
     public function testEverySectionReferenceNamesTheProtocolDocumentOfThisLine(): void
     {

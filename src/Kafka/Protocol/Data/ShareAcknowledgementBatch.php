@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * * {@see self::RENEW} - keep the record acquired and start its acquisition lock over (version 2, Kafka 4.2,
  *   KIP-1222): only in a request that says `is_renew_ack`, which is the 42 of the partition otherwise.
  *
- * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+ * @see docs/protocol/overview.md, section "ShareAcknowledge API (key 79, v1 and v2)"
  */
 final class ShareAcknowledgementBatch implements BinarySchemaInterface
 {

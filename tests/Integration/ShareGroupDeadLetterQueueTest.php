@@ -49,7 +49,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * a DLQ topic and a share group of its own; the cluster-wide `errors.deadletterqueue.auto.create.topics.enable` is
  * never touched (it is `false` on the node), so every DLQ topic is created by the test.
  *
- * @see docs/protocol/4.4.md, section "The dead-letter queue of KIP-1191 (share.version 2)"
+ * @see docs/protocol/overview.md, section "The dead-letter queue of KIP-1191 (share.version 2)"
  */
 #[CoversClass(KafkaShareConsumer::class)]
 final class ShareGroupDeadLetterQueueTest extends IntegrationTestCase

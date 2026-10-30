@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the only place that says why - `Topic already has 5 partitions.`, `Increasing the number of partitions by adding
  * more replicas is not supported.`, and so on.
  *
- * @see docs/protocol/4.4.md, section "CreatePartitions API (key 37, v0 to v3)"
+ * @see docs/protocol/overview.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 class CreatePartitionsResponseTopic implements BinarySchemaInterface
 {

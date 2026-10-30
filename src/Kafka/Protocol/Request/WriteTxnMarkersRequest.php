@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarkerV1;
  * markers given to the constructor are encoded as the entries of the version of the class, so a marker built with a
  * transaction version loses it in {@see WriteTxnMarkersRequestV1}, which keeps the version 1.
  *
- * @see docs/protocol/4.4.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
+ * @see docs/protocol/overview.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 class WriteTxnMarkersRequest extends AbstractRequest
 {

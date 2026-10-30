@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-219 changed is the MOMENT it arrives - a throttled client of version 1 is answered first and muted
  * afterwards, and waits `throttle_time_ms` out itself.
  *
- * @see docs/protocol/4.4.md, section "RenewDelegationToken API (key 39, v0 to v2)"
+ * @see docs/protocol/overview.md, section "RenewDelegationToken API (key 39, v0 to v2)"
  */
 final class RenewDelegationTokenResponseV0 extends RenewDelegationTokenResponse
 {

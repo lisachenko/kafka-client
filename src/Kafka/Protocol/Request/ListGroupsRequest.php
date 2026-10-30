@@ -58,7 +58,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * which is case insensitive and maps anything it does not know to `GroupType.UNKNOWN`, a type no group ever has -
  * so an unknown type is an empty answer and never an error. The two filters are combined with **and**.
  *
- * @see docs/protocol/4.4.md, section "ListGroups API (key 16, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ListGroups API (key 16, v0 to v5)"
  */
 class ListGroupsRequest extends AbstractRequest
 {

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see DescribeClusterBroker::$isFenced} stays false, because an answer of those versions never lists a fenced
  * broker.
  *
- * @see docs/protocol/4.4.md, section "The fenced brokers of KIP-1073 (v2)"
+ * @see docs/protocol/overview.md, section "The fenced brokers of KIP-1073 (v2)"
  */
 final class DescribeClusterBrokerV1 extends DescribeClusterBroker
 {

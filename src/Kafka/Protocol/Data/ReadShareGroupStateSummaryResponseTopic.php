@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see ReadShareGroupStateSummaryResponsePartition}, with the `DeliveryCompleteCount` of that version;
  * {@see ReadShareGroupStateSummaryResponseTopicV0} reads them as {@see ReadShareGroupStateSummaryResponsePartitionV0}.
  *
- * @see docs/protocol/4.4.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
  */
 class ReadShareGroupStateSummaryResponseTopic implements BinarySchemaInterface
 {

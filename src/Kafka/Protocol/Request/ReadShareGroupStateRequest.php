@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\ReadShareGroupStateRequestTopic;
  * not a broker has no business sending it; the frames were captured for the grammar and never touch the state of a
  * share group another component owns.
  *
- * @see docs/protocol/4.4.md, section "ReadShareGroupState API (key 84, v0)"
+ * @see docs/protocol/overview.md, section "ReadShareGroupState API (key 84, v0)"
  */
 class ReadShareGroupStateRequest extends AbstractRequest
 {

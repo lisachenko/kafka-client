@@ -43,7 +43,7 @@
 
 ## Specification references (the broker is the final authority)
 - Kafka sources at the release tag: `<SCRATCH>/kafka-src-<version>` (`core/src/main/scala/kafka/api`, `clients/src/main/java/org/apache/kafka/common/protocol`).
-- `docs/protocol/<version>.md` on the branch; the protocol wiki text; kafka-python 1.x as the Python analogue.
+- `docs/protocol/overview.md` on the branch (`docs/protocol/<version>.md` on the lines below 3.x); the protocol wiki text; kafka-python 1.x as the Python analogue.
 - Plan / working agreement: the epic issue of the line.
 
 ## Mandatory design rules (see CLAUDE.md)

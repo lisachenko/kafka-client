@@ -42,7 +42,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * their **batch index** and adds a partition-wide message. The condition is produced here with the cheapest
  * validation a client can trigger: a record without a key on a `cleanup.policy=compact` topic.
  *
- * @see docs/protocol/4.4.md, section "The record errors of a refused batch (v8, KIP-467)"
+ * @see docs/protocol/overview.md, section "The record errors of a refused batch (v8, KIP-467)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]

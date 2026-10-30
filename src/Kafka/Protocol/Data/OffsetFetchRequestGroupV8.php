@@ -24,8 +24,8 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * a member id or an epoch carried in an entry of *this* class never reaches the wire - version 8 has no place
  * for them.
  *
- * @see docs/protocol/4.4.md, section "OffsetFetch API (key 9, v0 to v10)"
- * @see docs/protocol/4.4.md, section "The member id and epoch of KIP-848 (v9)"
+ * @see docs/protocol/overview.md, section "OffsetFetch API (key 9, v0 to v10)"
+ * @see docs/protocol/overview.md, section "The member id and epoch of KIP-848 (v9)"
  */
 final class OffsetFetchRequestGroupV8 extends OffsetFetchRequestGroup
 {

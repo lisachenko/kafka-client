@@ -37,8 +37,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * committed for ({@see \Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse::topicsByName()});
  * {@see TxnOffsetCommitResponseTopicV0} is the entry of the versions 0 to 5.
  *
- * @see docs/protocol/4.4.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
- * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
+ * @see docs/protocol/overview.md, section "TxnOffsetCommit API (key 28, v0 to v6)"
+ * @see docs/protocol/overview.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
  */
 class TxnOffsetCommitResponseTopic implements BinarySchemaInterface
 {

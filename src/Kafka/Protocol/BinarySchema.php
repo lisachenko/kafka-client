@@ -53,7 +53,7 @@ use function strlen;
  * `RequestHeaderData.json` @ 2.8.2) and the tagged-field section of a header, which is declared explicitly with
  * {@see self::TYPE_TAG_BUFFER} because it sits in the *middle* of a frame rather than at the end of a structure.
  *
- * @see docs/protocol/4.4.md, section "Implementation model"
+ * @see docs/protocol/overview.md, section "Implementation model"
  */
 class BinarySchema
 {

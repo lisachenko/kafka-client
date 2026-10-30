@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * so this class only lowers the version constant. A node that answers it leaves the `lag` out of every partition
  * ({@see DescribeShareGroupOffsetsResponseV0}).
  *
- * @see docs/protocol/4.4.md, section "The share-partition lag of KIP-1226 (v1)"
+ * @see docs/protocol/overview.md, section "The share-partition lag of KIP-1226 (v1)"
  */
 final class DescribeShareGroupOffsetsRequestV0 extends DescribeShareGroupOffsetsRequest
 {

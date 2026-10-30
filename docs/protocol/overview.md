@@ -4,8 +4,11 @@ This document is the grammar that the `main` branch implements. It is written to
 speaks — the line started on Kafka 4.3.1, the last 4.x release at the time, and was extended to 4.4.0 when that
 release came out (see "What 4.4.0 adds to the 4.3.1 protocol"), so it covers everything Kafka 4.0, 4.1, 4.2, 4.3
 and 4.4 added and the bug-fix releases after them, on top of what the 3.x line delivered (Kafka **3.9.2** and the KIP-848
-consumer protocol, re-measured on the 4.3.1 node), and the KIP-932 share consumer. Every line carries
-only its own protocol document: the grammars of the lines below live on their own branches (`docs/protocol/3.9.md`
+consumer protocol, re-measured on the 4.3.1 node), and the KIP-932 share consumer. **The document keeps its name
+across Kafka releases**: when the line moves to a new release it is edited in place — a "What X adds to the Y
+protocol" section, the api-key table, the quirks re-measured — and every `@see docs/protocol/overview.md` of the
+sources stays as it is (up to Kafka 4.4.0 it was renamed with every release: `docs/protocol/4.3.md`, then
+`docs/protocol/4.4.md`). Every line carries only its own protocol document: the grammars of the lines below live on their own branches (`docs/protocol/overview.md`
 on `3.x`, `docs/protocol/2.8.md` on `2.x`, `docs/protocol/1.1.md` on `1.x`, `docs/protocol/0.11.0.md` on `0.11.x`,
 `docs/protocol/0.10.2.md` on `0.10.x`, `docs/protocol/0.9.0.md` on `0.9.x`, `docs/protocol/0.8.2.md` on `0.8.x`),
 while their wire vectors travel upwards in [`vectors/`](vectors) and are replayed against the classes of this line.

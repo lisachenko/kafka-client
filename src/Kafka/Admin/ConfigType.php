@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Admin;
  * {@see AlterConfigOp::APPEND} or an {@see AlterConfigOp::SUBTRACT} may touch, and a `PASSWORD` is the type of
  * every option whose value the broker replaces with `null` on the wire.
  *
- * @see docs/protocol/4.4.md, section "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/overview.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class ConfigType
 {

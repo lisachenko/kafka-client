@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\UpdatableFeatureResult;
  * a list of results could only ever repeat the one top-level code. {@see UpdateFeaturesResponseV1} and
  * {@see UpdateFeaturesResponseV0} are the answers that still carry it; {@see self::$results} stays empty here.
  *
- * @see docs/protocol/4.4.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
+ * @see docs/protocol/overview.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
  *      of KIP-778 (v1)" and "The answer without results (v2, Kafka 4.0)"
  */
 class UpdateFeaturesResponse extends AbstractResponse

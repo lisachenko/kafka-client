@@ -53,7 +53,7 @@ use Throwable;
  * null topic array**: that would ask about - or reassign - the partitions of every other suite on the shared
  * container.
  *
- * @see docs/protocol/4.4.md, sections "AlterPartitionReassignments API (key 45, v0 and v1)" and
+ * @see docs/protocol/overview.md, sections "AlterPartitionReassignments API (key 45, v0 and v1)" and
  *      "ListPartitionReassignments API (key 46, v0)"
  */
 #[CoversClass(AdminClient::class)]

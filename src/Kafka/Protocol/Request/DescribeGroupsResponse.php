@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadataV4;
  * the versions below answer the state `Dead` and the error code 0. {@see DescribeGroupsResponseV5} is the answer of
  * version 5, whose entries have no message.
  *
- * @see docs/protocol/4.4.md, sections "DescribeGroups API (key 15, v0 to v6)" and "Quotas and throttle time"
+ * @see docs/protocol/overview.md, sections "DescribeGroups API (key 15, v0 to v6)" and "Quotas and throttle time"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {

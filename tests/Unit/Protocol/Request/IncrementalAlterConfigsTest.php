@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponseV0;
  * and its value, and an option the request does not name keeps the value it has. The frames below were captured on
  * the `kafka-4-4-0` container.
  *
- * @see docs/protocol/4.4.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
+ * @see docs/protocol/overview.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 #[CoversClass(IncrementalAlterConfigsRequest::class)]
 #[CoversClass(IncrementalAlterConfigsResponse::class)]

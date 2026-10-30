@@ -61,7 +61,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * message sets of the formats v0 and v1 stay a format of this package - their classes, the vectors the lines below
  * captured on real brokers and the unit tests of the codecs - for a peer of Kafka 3.x.
  *
- * @see docs/protocol/4.4.md, sections "MessageSet and Message" and "What the broker converts, and when"
+ * @see docs/protocol/overview.md, sections "MessageSet and Message" and "What the broker converts, and when"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]

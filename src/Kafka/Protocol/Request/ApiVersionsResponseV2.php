@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * bump of Kafka 2.0 changed when a throttled broker answers, not what it answers - so this class only lowers the
  * version constant that the version-aware `getScheme()` follows.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 final class ApiVersionsResponseV2 extends ApiVersionsResponse
 {

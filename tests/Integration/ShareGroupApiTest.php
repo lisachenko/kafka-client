@@ -49,8 +49,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every group of this class carries the `t3-41-sg-` prefix, every member of it leaves with the epoch -1 in
  * {@see self::tearDownAfterClass()} at the latest, and every group is deleted there.
  *
- * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
- * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/overview.md, section "ShareGroupHeartbeat API (key 76, v1)"
+ * @see docs/protocol/overview.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]

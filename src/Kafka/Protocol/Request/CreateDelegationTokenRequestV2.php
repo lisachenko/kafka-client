@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * 3.3 is asked with and what always issues the token for the principal of the connection.
  * {@see CreateDelegationTokenRequestV1} is the same body in the encoding before KIP-482.
  *
- * @see docs/protocol/4.4.md, section "CreateDelegationToken API (key 38, v0 to v3)"
+ * @see docs/protocol/overview.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 final class CreateDelegationTokenRequestV2 extends CreateDelegationTokenRequest
 {

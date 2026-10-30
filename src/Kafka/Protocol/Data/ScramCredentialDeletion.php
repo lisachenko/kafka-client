@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * A deletion names the user **and** the mechanism: a user may have a SCRAM-SHA-256 and a SCRAM-SHA-512 credential
  * at the same time, and removing one leaves the other alone.
  *
- * @see docs/protocol/4.4.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/overview.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 class ScramCredentialDeletion implements BinarySchemaInterface
 {

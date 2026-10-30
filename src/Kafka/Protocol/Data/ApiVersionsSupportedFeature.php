@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `ApiVersionsResponse.json` @ 2.8.2 and travels as a **tagged field**, which is why a ZooKeeper-backed 2.8.2
  * broker - which supports no feature at all - simply leaves it out of its answer instead of sending an empty array.
  *
- * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+ * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
  */
 class ApiVersionsSupportedFeature implements BinarySchemaInterface
 {

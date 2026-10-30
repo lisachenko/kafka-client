@@ -218,7 +218,7 @@ use Throwable;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/4.4.md
+ * @see docs/protocol/overview.md
  */
 class Client
 {
@@ -316,7 +316,7 @@ class Client
      * @throws RebootstrapRequiredException If the broker is not the node `$node` names, of the cluster of this
      *         client (the 129 of KIP-1242); the cluster has been reloaded from its bootstrap servers by then
      *
-     * @see docs/protocol/4.4.md, section "ApiVersions API (key 18, v0 to v5)"
+     * @see docs/protocol/overview.md, section "ApiVersions API (key 18, v0 to v5)"
      */
     public function apiVersions(Node $node): ApiVersionsResponse
     {
@@ -676,7 +676,7 @@ class Client
             );
         }
 
-        // The wire format carries one opaque record set per topic-partition, see docs/protocol/4.4.md
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/overview.md
         $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
@@ -1430,7 +1430,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws UnknownTopicIdException If a topic id stayed stale after every retry (100, version 10)
      *
-     * @see docs/protocol/4.4.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
+     * @see docs/protocol/overview.md, section "The topic ids of OffsetCommit (v10, KIP-848)"
      */
     public function commitGroupOffsets(
         Node $coordinatorNode,
@@ -3572,7 +3572,7 @@ class Client
      * @throws KafkaException The error code of the first partition that was refused
      * @throws UnknownTopicIdException If a topic id stayed stale after every retry (100, version 6)
      *
-     * @see docs/protocol/4.4.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
+     * @see docs/protocol/overview.md, section "What Kafka 4.4 changed here (KIP-1319): the version 6"
      */
     public function txnOffsetCommit(
         Node $coordinatorNode,
@@ -3753,7 +3753,7 @@ class Client
      *
      * @return array<string, int|string>
      *
-     * @see docs/protocol/4.4.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
+     * @see docs/protocol/overview.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
      *      KIP-951 (v16)"
      */
     private static function leaderHintOf(
@@ -3814,7 +3814,7 @@ class Client
      * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a (re-)join
      * @throws Common\Errors\InvalidRegularExpressionException If the coordinator cannot compile the regex (128)
      *
-     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/overview.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function joinConsumerGroup(
         Node $coordinatorNode,
@@ -3877,7 +3877,7 @@ class Client
      * @throws Common\Errors\GroupAuthorizationFailedException
      * @throws Common\Errors\InvalidRegularExpressionException If the coordinator cannot compile the regex (128)
      *
-     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/overview.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function consumerGroupHeartbeat(
         Node $coordinatorNode,
@@ -3930,7 +3930,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.4.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
+     * @see docs/protocol/overview.md, section "ConsumerGroupHeartbeat API (key 68, v0 and v1)"
      */
     public function leaveConsumerGroup(
         Node $coordinatorNode,
@@ -4233,7 +4233,7 @@ class Client
      * @throws Common\Errors\GroupMaxSizeReachedException If the group is full (`group.share.max.size`)
      * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a join
      *
-     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/overview.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function joinShareGroup(
         Node $coordinatorNode,
@@ -4279,7 +4279,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/overview.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function shareGroupHeartbeat(
         Node $coordinatorNode,
@@ -4324,7 +4324,7 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.4.md, section "ShareGroupHeartbeat API (key 76, v1)"
+     * @see docs/protocol/overview.md, section "ShareGroupHeartbeat API (key 76, v1)"
      */
     public function leaveShareGroup(Node $coordinatorNode, string $groupId, string $memberId): ShareGroupHeartbeatResponse
     {
@@ -4392,8 +4392,8 @@ class Client
      * The request is the **version 2** of the api (Kafka 4.2, KIP-1206 and KIP-1222); a Renew renews the acquisition
      * lock of the records it names for another `acquisitionLockTimeoutMs`.
      *
-     * @see docs/protocol/4.4.md, section "ShareFetch API (key 78, v1 and v2)"
-     * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+     * @see docs/protocol/overview.md, section "ShareFetch API (key 78, v1 and v2)"
+     * @see docs/protocol/overview.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public function shareFetch(
         Node $leaderNode,
@@ -4476,8 +4476,8 @@ class Client
      * @throws Common\Errors\InvalidRequestException If the frame breaks a rule of the api (42)
      * @throws Common\Errors\GroupAuthorizationFailedException
      *
-     * @see docs/protocol/4.4.md, section "ShareAcknowledge API (key 79, v1 and v2)"
-     * @see docs/protocol/4.4.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
+     * @see docs/protocol/overview.md, section "ShareAcknowledge API (key 79, v1 and v2)"
+     * @see docs/protocol/overview.md, section "The acquire mode and the renew acknowledgement (v2, KIP-1206 and KIP-1222)"
      */
     public function shareAcknowledge(
         Node $leaderNode,

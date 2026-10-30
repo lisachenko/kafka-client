@@ -41,7 +41,7 @@ use Protocol\Kafka\Common\Errors\KafkaException;
  *
  * Even a retriable error means that the acknowledgement did not complete: the records have to be fetched again.
  *
- * @see docs/protocol/4.4.md, section "The share consumer (KIP-932)"
+ * @see docs/protocol/overview.md, section "The share consumer (KIP-932)"
  */
 interface AcknowledgementCommitCallback
 {

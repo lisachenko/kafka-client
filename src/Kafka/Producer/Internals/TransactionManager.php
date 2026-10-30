@@ -141,7 +141,7 @@ use Throwable;
  * the protocol v2 also needs {@see self::canEnrolPartitionsByProduce()}.
  *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/4.4.md, sections "InitProducerId API (key 22, v0 to v5)", "The idempotent producer" and "The
+ * @see docs/protocol/overview.md, sections "InitProducerId API (key 22, v0 to v5)", "The idempotent producer" and "The
  *      transaction protocol v2 on a node that finalizes it (Kafka 4.0)"
  */
 class TransactionManager

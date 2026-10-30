@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (KIP-1023)" and declares not a field of it, see {@see OffsetsResponse}. This class decodes the answer of a request
  * that asked with {@see OffsetsRequestV10}.
  *
- * @see docs/protocol/4.4.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
+ * @see docs/protocol/overview.md, sections "Offsets API (key 2, v0 to v11), a.k.a. ListOffset", "The timeout of
  *      KIP-1075 (v10)" and "The earliest pending upload offset of KIP-1023 (v11)"
  */
 final class OffsetsResponseV10 extends OffsetsResponse

@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * WriteTxnMarkersRequest version 2 (KIP-1228)"* in `WriteTxnMarkersResponse.json` @ 4.2.0) and changed no field,
  * so this class only lowers the version constant.
  *
- * @see docs/protocol/4.4.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
+ * @see docs/protocol/overview.md, section "WriteTxnMarkers API (key 27, v0 to v2)"
  */
 final class WriteTxnMarkersResponseV1 extends WriteTxnMarkersResponse
 {

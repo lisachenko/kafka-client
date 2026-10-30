@@ -57,7 +57,7 @@ use Protocol\Kafka\Protocol\Data\FeatureUpdateKeyV0;
  * @ 4.0.0: the version tells the controller that this client reads an answer without the per-feature `results`
  * ({@see UpdateFeaturesResponse}). {@see UpdateFeaturesRequestV1} is the same bytes one version lower.
  *
- * @see docs/protocol/4.4.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
+ * @see docs/protocol/overview.md, sections "UpdateFeatures API (key 57, v0 to v2)", "The upgrade type and the dry run
  *      of KIP-778 (v1)" and "The answer without results (v2, Kafka 4.0)"
  */
 class UpdateFeaturesRequest extends AbstractRequest

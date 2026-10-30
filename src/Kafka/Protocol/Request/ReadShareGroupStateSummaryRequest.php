@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Data\ReadShareGroupStateRequestTopic;
  * The version asks for the answer of {@see ReadShareGroupStateSummaryResponse}, whose partitions carry the count;
  * {@see ReadShareGroupStateSummaryRequestV0} is the request of the answer without it.
  *
- * @see docs/protocol/4.4.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
+ * @see docs/protocol/overview.md, section "ReadShareGroupStateSummary API (key 87, v0 and v1)"
  */
 class ReadShareGroupStateSummaryRequest extends AbstractRequest
 {

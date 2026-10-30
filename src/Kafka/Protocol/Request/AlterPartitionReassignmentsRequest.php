@@ -60,7 +60,7 @@ use Protocol\Kafka\Protocol\Data\ReassignableTopic;
  * have, the 39 of that validation answers first.
  * {@see AlterPartitionReassignmentsRequestV0} is the frame of Kafka 2.4.
  *
- * @see docs/protocol/4.4.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
+ * @see docs/protocol/overview.md, section "AlterPartitionReassignments API (key 45, v0 and v1)"
  */
 class AlterPartitionReassignmentsRequest extends AbstractRequest
 {

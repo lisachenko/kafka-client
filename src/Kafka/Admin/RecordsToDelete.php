@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
  *   RecordsToDelete::allRecords();        // everything up to the high watermark of the partition
  * </code>
  *
- * @see docs/protocol/4.4.md, section "DeleteRecords API (key 21, v0 to v2)"
+ * @see docs/protocol/overview.md, section "DeleteRecords API (key 21, v0 to v2)"
  */
 final class RecordsToDelete
 {

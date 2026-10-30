@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
 /**
  * Tests the value objects of the admin apis Kafka 0.11 added.
  *
- * @see docs/protocol/4.4.md, sections "DeleteRecords API (key 21, v0 to v2)" and "DescribeConfigs API (key 32, v0 to v4)"
+ * @see docs/protocol/overview.md, sections "DeleteRecords API (key 21, v0 to v2)" and "DescribeConfigs API (key 32, v0 to v4)"
  */
 #[CoversClass(ConfigResource::class)]
 #[CoversClass(ConfigEntry::class)]

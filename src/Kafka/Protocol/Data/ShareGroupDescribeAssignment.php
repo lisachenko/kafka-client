@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * only - there is no target assignment to reconcile with, because nothing is revoked from a share member before
  * another one may fetch the same partition.
  *
- * @see docs/protocol/4.4.md, section "ShareGroupDescribe API (key 77, v1)"
+ * @see docs/protocol/overview.md, section "ShareGroupDescribe API (key 77, v1)"
  */
 final class ShareGroupDescribeAssignment implements BinarySchemaInterface
 {

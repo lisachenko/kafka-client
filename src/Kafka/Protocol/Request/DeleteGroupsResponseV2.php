@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see \Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroupV2} - and {@see DeleteGroupsResponseV1} keeps the
  * plain encoding of Kafka 2.0.
  *
- * @see docs/protocol/4.4.md, section "DeleteGroups API (key 42, v0 to v3)"
+ * @see docs/protocol/overview.md, section "DeleteGroups API (key 42, v0 to v3)"
  */
 final class DeleteGroupsResponseV2 extends DeleteGroupsResponse
 {
