@@ -20,7 +20,7 @@ jobs:
         # The next PHP release: an allowed-to-fail row on main (pushes and pull requests into it) only
         include: ${{ fromJSON((github.ref == 'refs/heads/main' || github.base_ref == 'main') && '[{"php":"8.6","experimental":true}]' || '[]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
@@ -31,7 +31,7 @@ jobs:
   cs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -42,7 +42,7 @@ jobs:
   phpstan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -64,7 +64,7 @@ jobs:
       # Coverage is collected once, on PHP 8.4, for the pushes to main only (the Codecov badge of the README)
       COVERAGE: ${{ matrix.php == '8.4' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
@@ -80,7 +80,7 @@ jobs:
       - name: Run the unit and compliance suites with coverage
         if: env.COVERAGE == 'true'
         run: vendor/bin/phpunit --testsuite unit,compliance --coverage-clover=coverage.xml
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         if: env.COVERAGE == 'true'
         with:
           files: coverage.xml
@@ -96,7 +96,7 @@ jobs:
     env:
       COVERAGE: ${{ matrix.php == '8.4' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
@@ -111,7 +111,7 @@ jobs:
           KAFKA_SASL_BOOTSTRAP_SERVERS: 127.0.0.1:9094
           KAFKA_SASL_SSL_BOOTSTRAP_SERVERS: 127.0.0.1:9095
         run: vendor/bin/phpunit --testsuite integration ${{ env.COVERAGE == 'true' && '--coverage-clover=coverage.xml' || '' }}
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         if: env.COVERAGE == 'true'
         with:
           files: coverage.xml
